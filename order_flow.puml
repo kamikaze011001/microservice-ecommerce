@@ -1,0 +1,124 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+
+participant Client
+participant OrderService
+participant PaymentService
+participant InventoryService
+participant NotiService
+participant Paypal
+
+Client -> OrderService : call api validate order
+Note over Client
+Path : /order-service/v1/orders
+Header : Authorization "Bearer Token"
+Method : POST
+Request Body :
+{
+    "address" : "string",
+    "phone_number" : "string",
+    "items" : [
+        {
+            "product_id" : "string",
+            "quantity" : "long",
+            "price" : "double"
+        },...
+    ]
+}
+end note
+OrderService -> InventoryService : call api get product list
+Note over InventoryService
+Path : /inventory-service/internal-v1/inventories
+Method : GET
+Request Body : {
+    "ids" : [
+        "string", "string", "string"
+    ]
+}
+end note
+alt error when call api
+InventoryService --> OrderService : return error
+OrderService --> Client : return internal server error
+end
+InventoryService --> OrderService : return response
+Note over InventoryService
+{
+    "status" : "200",
+    "timestamp" : "23:00:00T15.30Z",
+    "data" : {
+        "inventory_products" : [
+            {
+                "id" : "string",
+                "name" : "string",
+                "quantity" : "string",
+                "price" : "double"
+            },...
+        ]
+    }
+}
+end note
+OrderService -> OrderService : validate quantity in order
+Note over OrderService
+check with quantity in inventory and who in purchase
+end note
+alt invalid quantity
+OrderService --> Client : return 400 bad request
+end
+OrderService -> OrderService : save order and change status to PROCESSING
+OrderService -> OrderService : save order to redis
+OrderService -> OrderService : update quantity in redis
+OrderService -> OrderService : save order quantity map in redis
+OrderService --> Client : return response
+Note over OrderService
+{
+    "status" : "OK",
+    "timestamp" : "time",
+    "data" : {
+        "order_id" : "string"
+    }
+}
+end note
+Client -> PaymentService : call api purchase
+Note over Client
+Path : /payment-service/v1/payments
+Method : POST
+Header : Authorization "Bearer Token"
+Request Body:
+{
+    "order_id" : "string",
+}
+end note
+PaymentService -> PaymentService : validate order in redis
+alt order info invalid
+PaymentService --> Client : return 400 bad request
+end
+PaymentService -> Paypal : call api create order
+alt have error
+Paypal --> PaymentService : return error
+PaymentService -> PaymentService : change order status to FAILED
+PaymentService -> OrderService : publish event Payment.Failed
+OrderService -> OrderService : update quantity queue map
+OrderService -> OrderService : delete order in cache
+OrderService -> OrderService : update order status to FAILED
+PaymentService --> Client : return error
+end
+Paypal --> PaymentService : return valid response
+PaymentService --> Client : return paypal link
+Client -> Paypal : purchase order
+alt cancelled
+Paypal -> PaymentService : call api /payment-service/v1/paypal:cancel
+PaymentService -> PaymentService : change payment status to CANCELED
+PaymentService -> OrderService : publish event Payment.Canceled
+OrderService -> OrderService : change status order to CANCELED
+OrderService -> OrderService : update quantity in cache
+OrderService -> OrderService : delete order in cache
+end
+Paypal -> PaymentService : call api /payment-service/v1/paypal:success
+PaymentService -> PaymentService : change payment status to SUCCESS
+PaymentService -> OrderService : publish Payment.Successes
+OrderService -> OrderService : change order to SUCCESS
+OrderService -> InventoryService : publish event Order.Successes
+InventoryService -> InventoryService : update quantity in database
+InventoryService -> InventoryService : delete order in cache
+InventoryService -> InventoryService : update quantity in cache
+@enduml

@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  ecommerce-mongodb:
+    hostname: localhost
+    image: mongo:8.0.1
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_DB_NAME}
+    volumes:
+      - ecommerce_data:/data/db
+      - ./temp-keyfile.key:/data/temp-keyfile.key
+    entrypoint:
+      - bash
+      - -c
+      - |
+          cd data
+          cp ./temp-keyfile.key ./mongo-keyfile
+          chmod 400 mongo-keyfile
+          chown mongodb:mongodb mongo-keyfile
+          exec docker-entrypoint.sh mongod --bind_ip_all --replSet rs0 --keyFile /data/mongo-keyfile
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --quiet --authenticationDatabase admin -u ${MONGO_USERNAME} -p ${MONGO_PASSWORD}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  mongo-init:
+    image: mongo:8.0.1
+    depends_on:
+      ecommerce-mongodb:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts
+    environment:
+      - MONGO_USERNAME=${MONGO_USERNAME}
+      - MONGO_PASSWORD=${MONGO_PASSWORD}
+      - MONGO_DB_NAME=${MONGO_DB_NAME}
+    entrypoint: ["/bin/bash", "/scripts/init-mongo.sh"]
+    restart: no
+volumes:
+  ecommerce_data:
+    driver: local

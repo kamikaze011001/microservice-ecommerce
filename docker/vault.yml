@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  vault:
+    image: hashicorp/vault:1.18
+    container_name: dev-vault
+    ports:
+      - "8200:8200"
+    volumes:
+      - vault-data:/vault/file
+      - ./vault-config/vault-config.hcl:/vault/config/vault-config.hcl
+    cap_add:
+      - IPC_LOCK
+    command: vault server --config=/vault/config/vault-config.hcl
+volumes:
+  vault-data:
+    driver: local

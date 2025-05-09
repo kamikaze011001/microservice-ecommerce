@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: inventory-service
+  cloud:
+    vault:
+      uri: http://localhost:8200
+      token: ${VAULT_TOKEN}
+      fail-fast: true
+      kv:
+        enabled: true
+        application-name: ecommerce,inventory-service
+        profiles: dev
+        backend: kv
+  config:
+    import: optional:vault://
+  kafka:
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      acks: all
+
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+      properties:
+        specific.avro.reader: true
+      auto-offset-reset: latest
+server:
+  servlet:
+    context-path: /inventory-service
+application:
+  kafka:
+    group-id:
+      product.update: product-update-group
+      payment.success: payment-success-group
+    topics:
+      inventory-service.product.update: inventory-service.product.update
+      inventory-service.inventory-product.update-quantity: inventory-service.inventory-product.update-quantity

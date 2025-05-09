@@ -1,0 +1,119 @@
+[
+  {
+    "_id": {"$oid": "67a4c904f5b8bc1b957eeba4"},
+    "path": "/v3/api-docs/**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67a4c925f5b8bc1b957eeba8"},
+    "path": "/v3/api-docs**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67a4c925f5b8bc1b957eeba9"},
+    "path": "/swagger-ui**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67a4c925f5b8bc1b957eebaa"},
+    "path": "/swagger-ui/**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67a4da5ef5b8bc1b957eebb2"},
+    "path": "/webjars**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67a4da8df5b8bc1b957eebb7"},
+    "path": "/webjars/**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67a4dba3f5b8bc1b957eebb9"},
+    "path": "/inventory-service/v3/api-docs/**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67a4dbaef5b8bc1b957eebbb"},
+    "path": "/product-service/v3/api-docs/**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67a4dbbdf5b8bc1b957eebbd"},
+    "path": "/authorization-server/v3/api-docs/**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67a4e118f5b8bc1b957eebbf"},
+    "path": "/authorization-server/v1/users/**",
+    "roles": ["AUTHORIZED"]
+  },
+  {
+    "_id": {"$oid": "67a4e128f5b8bc1b957eebc1"},
+    "path": "/authorization-server/v1/admin/**",
+    "roles": ["ADMIN"]
+  },
+  {
+    "_id": {"$oid": "67a4e13cf5b8bc1b957eebc3"},
+    "path": "/authorization-server/v1/auth/**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67a4e156f5b8bc1b957eebc5"},
+    "path": "/authorization-server/v1/auth**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67a4e164f5b8bc1b957eebc7"},
+    "path": "/authorization-server/v1/admin**",
+    "roles": ["ADMIN"]
+  },
+  {
+    "_id": {"$oid": "67a4e18df5b8bc1b957eebc9"},
+    "path": "/authorization-server/.well-known/jwks.json/**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67a6df0d44ff8d44e59559bb"},
+    "path": "/product-service/v1/products/**",
+    "roles": ["ADMIN"],
+    "method": ["POST", "PUT"]
+  },
+  {
+    "_id": {"$oid": "67a6df2244ff8d44e59559bd"},
+    "path": "/product-service/v1/products/**",
+    "roles": ["PERMIT_ALL"],
+    "method": ["GET"]
+  },
+  {
+    "_id": {"$oid": "67a6e1f744ff8d44e59559c0"},
+    "path": "/product-service/v1/products**",
+    "roles": ["ADMIN"],
+    "method": ["POST", "PUT"]
+  },
+  {
+    "_id": {"$oid": "67b741615dbb2d7c65775386"},
+    "path": "/inventory-service/v1/inventories/**",
+    "roles": ["AUTHORIZED"],
+    "method": ["GET"]
+  },
+  {
+    "_id": {"$oid": "67b741625dbb2d7c65775387"},
+    "path": "/inventory-service/v1/inventories/**",
+    "roles": ["ADMIN"],
+    "method": ["PATCH"]
+  },
+  {
+    "_id": {"$oid": "67b741625dbb2d7c65775388"},
+    "path": "/order-service/v1/shopping-carts/**",
+    "roles": ["AUTHORIZED"],
+    "method": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+  },
+  {
+    "_id": {"$oid": "67bdd5f4159bec37d09bb69f"},
+    "path": "/order-service/v1/shopping-carts**",
+    "roles": ["AUTHORIZED"],
+    "method": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+  }
+]

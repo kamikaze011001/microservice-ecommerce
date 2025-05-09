@@ -1,0 +1,15 @@
+{
+  "type": "record",
+  "namespace": "org.aibles.ecommerce.common_dto.avro_kafka",
+  "name": "ProductQuantityUpdated",
+  "fields": [
+    {
+      "name": "productId",
+      "type": "string"
+    },
+    {
+      "name": "quantity",
+      "type": "long"
+    }
+  ]
+}

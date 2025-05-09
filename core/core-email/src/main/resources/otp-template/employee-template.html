@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <style>
+    body {
+      background-color: #f4f4f4;
+      margin: 40px;
+      color: #333;
+    }
+    .container {
+      background-color: #ffffff;
+      border-radius: 8px;
+      padding: 20px;
+      max-width: 600px;
+      margin: auto;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .header {
+      background-color: #007BFF;
+      color: #ffffff;
+      padding: 10px 20px;
+      border-top-left-radius: 8px;
+      border-top-right-radius: 8px;
+      text-align: center;
+      font-size: 24px;
+    }
+    p {
+      font-size: 16px;
+      line-height: 1.5;
+      text-align: center;
+      margin-top: 20px;
+    }
+    .otp {
+      font-size: 20px;
+      font-weight: bold;
+      color: #007BFF;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    INFORMATION EMPLOYEE
+  </div>
+  <p>Your Username is: </p>
+  <p class="username" th:text="${username}"></p>
+  <p>Your Password is: </p>
+  <p class="password" th:text="${password}"></p>
+</div>
+</body>
+</html>
+

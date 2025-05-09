@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: order-service
+  cloud:
+    vault:
+      uri: http://localhost:8200
+      token: ${VAULT_TOKEN}
+      fail-fast: true
+      kv:
+        enabled: true
+        application-name: ecommerce,order-service
+        profiles: dev
+        backend: kv
+  config:
+    import: optional:vault://
+  jpa:
+    hibernate:
+      ddl-auto: update
+  kafka:
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      acks: all
+
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+      properties:
+        specific.avro.reader: true
+      auto-offset-reset: latest
+server:
+  servlet:
+    context-path: /order-service
+application:
+  kafka:
+    group-id:
+      order.update-status: order.update-status
+    topics:
+      order-service.order.success-status: order-service.order.success-status
+      order-service.order.failed-status: order-service.order.failed-status
+      order-service.order.canceled-status: order-service.order.canceled-status

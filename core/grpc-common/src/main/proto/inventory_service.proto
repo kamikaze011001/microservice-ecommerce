@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package org.aibles.ecommerce;
+
+option java_multiple_files = true;
+option java_package = "org.aibles.ecommerce.inventory.grpc";
+option java_outer_classname = "InventoryServiceProto";
+
+service InventoryService {
+  rpc ListInventoryProducts (InventoryProductIdsRequest) returns (InventoryProductIdsResponse) {}
+}
+
+message InventoryProductIdsRequest {
+  repeated string ids = 1;
+}
+
+message InventoryProductIdsResponse {
+  repeated InventoryProduct inventory_products = 1;
+}
+
+message InventoryProduct {
+  string id = 1;
+  string name = 2;
+  double price = 3;
+  int64 quantity = 4;
+}

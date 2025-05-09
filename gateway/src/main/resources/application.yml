@@ -1,0 +1,57 @@
+spring:
+  application:
+    name: cloud-gateway
+  config:
+    import: optional:vault://
+  cloud:
+    gateway:
+      routes:
+        - id: authorization-server
+          uri: lb://AUTHORIZATION-SERVER
+          predicates:
+            - Path=/authorization-server/**
+        - id: inventory-service
+          uri: lb://INVENTORY-SERVICE
+          predicates:
+            - Path=/inventory-service/**
+        - id: product-service
+          uri: lb://PRODUCT-SERVICE
+          predicates:
+            - Path=/product-service/**
+        - id: order-service
+          uri: lb://ORDER-SERVICE
+          predicates:
+            - Path=/order-service/**
+        - id: payment-service
+          uri: lb://PAYMENT-SERVICE
+          predicates:
+            - Path=/payment-service/**
+    vault:
+      uri: http://localhost:8200
+      token: ${VAULT_TOKEN}
+      fail-fast: true
+      kv:
+        enabled: true
+        application-name: ecommerce,gateway
+        profiles: dev
+        backend: kv
+springdoc:
+  swagger-ui:
+    urls:
+      - name: gateway-service
+        url: /v3/api-docs
+      - name: product-service
+        url: /product-service/v3/api-docs
+      - name: inventory-service
+        url: /inventory-service/v3/api-docs
+      - name: authorization-server
+        url: /authorization-server/v3/api-docs
+      - name: order-service
+        url: /order-service/v3/api-docs
+      - name: payment-service
+        url: /payment-service/v3/api-docs
+    enabled: true
+    path: /swagger-ui.html
+eureka:
+  client:
+    fetch-registry: true

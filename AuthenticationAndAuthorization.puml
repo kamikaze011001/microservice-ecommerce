@@ -1,0 +1,24 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+participant Client
+participant APIGateway
+participant AuthorizationServer
+participant OrderService
+autonumber
+
+Client -> AuthorizationServer : call api login
+AuthorizationServer -> AuthorizationServer : validate username and password
+AuthorizationServer -> AuthorizationServer : generate JWT token
+AuthorizationServer -> AuthorizationServer : sign the JWT token by private key
+AuthorizationServer -> Client : return access token and refresh token
+Client -> APIGateway : call api POST /api/v1/orders
+note over Client
+Header : Bearer <JWT Access Token>
+end note
+APIGateway -> AuthorizationServer : call api to get JWK
+APIGateway -> APIGateway : validate the signer by JWK
+APIGateway -> APIGateway : validate expiration date
+APIGateway -> APIGateway : extract info from JWT token
+APIGateway -> OrderService : maybe add some custom authen and author logic and route
+OrderService -> Client : return response to client
+@enduml

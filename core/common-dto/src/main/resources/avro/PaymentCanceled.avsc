@@ -1,0 +1,11 @@
+{
+  "type": "record",
+  "namespace": "org.aibles.ecommerce.common_dto.avro_kafka",
+  "name": "PaymentCanceled",
+  "fields": [
+    {
+      "name": "orderId",
+      "type": "string"
+    }
+  ]
+}

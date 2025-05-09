@@ -1,0 +1,19 @@
+{
+  "type": "record",
+  "name": "ProductUpdate",
+  "namespace": "org.aibles.ecommerce.common_dto.avro_kafka",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string"
+    },
+    {
+      "name": "name",
+      "type": "string"
+    },
+    {
+      "name": "price",
+      "type": "double"
+    }
+  ]
+}

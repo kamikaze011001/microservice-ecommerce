@@ -1,0 +1,121 @@
+version: '3.8'
+services:
+  master:
+    image: mysql:8.0.40
+    container_name: mysql-master
+    command: >
+      --server-id=1
+      --log-bin=mysql-bin
+      --binlog-format=row
+      --gtid-mode=ON
+      --enforce-gtid-consistency=ON
+      --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_MASTER_PASSWORD:-masterpassword}
+    networks:
+      - mysql-cluster
+    ports:
+      - "3306:3306"
+    volumes:
+      - master-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_MASTER_PASSWORD:-masterpassword}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  slave1:
+    image: mysql:8.0.40
+    container_name: mysql-slave1
+    command: >
+      --server-id=2
+      --log-bin=mysql-bin
+      --binlog-format=row
+      --gtid-mode=ON
+      --enforce-gtid-consistency=ON
+      --default-authentication-plugin=mysql_native_password
+      --skip-slave-start=1
+      --read-only=ON
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_SLAVE1_PASSWORD:-slave1password}
+    networks:
+      - mysql-cluster
+    depends_on:
+      master:
+        condition: service_healthy
+    ports:
+      - "3307:3306"
+    volumes:
+      - slave1-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_SLAVE1_PASSWORD:-slave1password}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  slave2:
+    image: mysql:8.0.40
+    container_name: mysql-slave2
+    command: >
+      --server-id=3
+      --log-bin=mysql-bin
+      --binlog-format=row
+      --gtid-mode=ON
+      --enforce-gtid-consistency=ON
+      --default-authentication-plugin=mysql_native_password
+      --skip-slave-start=1
+      --read-only=ON
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_SLAVE2_PASSWORD:-slave2password}
+    networks:
+      - mysql-cluster
+    depends_on:
+      master:
+        condition: service_healthy
+    ports:
+      - "3308:3306"
+    volumes:
+      - slave2-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_SLAVE2_PASSWORD:-slave2password}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mysql-init:
+    image: mysql:8.0.40
+    container_name: mysql-init
+    networks:
+      - mysql-cluster
+    volumes:
+      - ./scripts:/scripts
+    environment:
+      MYSQL_MASTER_PASSWORD: ${MYSQL_MASTER_PASSWORD:-masterpassword}
+      MYSQL_SLAVE1_PASSWORD: ${MYSQL_SLAVE1_PASSWORD:-slave1password}
+      MYSQL_SLAVE2_PASSWORD: ${MYSQL_SLAVE2_PASSWORD:-slave2password}
+      MYSQL_REPL_USER: ${MYSQL_REPL_USER:-repl_user}
+      MYSQL_REPL_PASSWORD: ${MYSQL_REPL_PASSWORD:-replica_ecommerce}
+    command: ["/bin/bash", "/scripts/init-mysql.sh"]
+    depends_on:
+      master:
+        condition: service_healthy
+      slave1:
+        condition: service_healthy
+      slave2:
+        condition: service_healthy
+    restart: no
+
+networks:
+  mysql-cluster:
+    driver: bridge
+
+volumes:
+  master-data:
+    driver: local
+  slave1-data:
+    driver: local
+  slave2-data:
+    driver: local

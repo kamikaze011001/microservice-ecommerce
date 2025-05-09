@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: orchestrator-service
+  cloud:
+    vault:
+      uri: http://localhost:8200
+      token: ${VAULT_TOKEN}
+      fail-fast: true
+      kv:
+        enabled: true
+        application-name: ecommerce,orchestrator-service
+        profiles: dev
+        backend: kv
+  config:
+    import: optional:vault://
+  kafka:
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      acks: all
+
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+      properties:
+        specific.avro.reader: false
+      auto-offset-reset: latest
+application:
+  kafka:
+    group-id:
+      mongo.event: mongo-event-group
+    topics:
+      mongo.event: ecommerce_db.event
+      product-service.product.update-quantity: product-service.product.update-quantity
+      order-service.order.success-status: order-service.order.success-status
+      inventory-service.inventory-product.update-quantity: inventory-service.inventory-product.update-quantity
+      order-service.order.failed-status: order-service.order.failed-status
+      order-service.order.canceled-status: order-service.order.canceled-status
+      inventory-service.product.update: inventory-service.product.update

@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: payment-service
+  cloud:
+    vault:
+      uri: http://localhost:8200
+      token: ${VAULT_TOKEN}
+      fail-fast: true
+      kv:
+        enabled: true
+        application-name: ecommerce,payment-service
+        profiles: dev
+        backend: kv
+  config:
+    import: optional:vault://
+  jpa:
+    hibernate:
+      ddl-auto: update
+  kafka:
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      acks: all
+
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+      properties:
+        specific.avro.reader: true
+      auto-offset-reset: latest
+server:
+  servlet:
+    context-path: /payment-service
+
+application:
+  paypal:
+    client-id: ${PAYPAL_CLIENT_ID}
+    client-secret: ${PAYPAL_CLIENT_SECRET}
+    base-url: https://api-m.sandbox.paypal.com
+    tunnel-url: ${PAYPAL_TUNNEL_URL}
+    success-path: /payment-service/v1/paypal:success
+    cancel-path: /payment-service/v1/paypal:cancel

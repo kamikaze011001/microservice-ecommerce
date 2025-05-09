@@ -1,0 +1,157 @@
+[
+  {
+    "_id": {"$oid": "67bdcd9cd75c4919ce32d6a4"},
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "attributes": {
+      "color": "Red",
+      "material": "cotton",
+      "size": ["XL", "XXL", "X", "L"]
+    },
+    "name": "Uniqlo shirt",
+    "price": 200
+  },
+  {
+    "_id": {"$oid": "67bdd0bed75c4919ce32d6a5"},
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "attributes": {
+      "color": "Blue",
+      "material": "cotton",
+      "size": ["XL", "XXL", "X", "L"]
+    },
+    "name": "Uniqlo jean",
+    "price": 250
+  },
+  {
+    "_id": {"$oid": "67bdd0d3d75c4919ce32d6a6"},
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "attributes": {
+      "color": "White",
+      "material": "cotton",
+      "size": ["XL", "XXL", "X", "L"]
+    },
+    "name": "Uniqlo jean",
+    "price": 250
+  },
+  {
+    "_id": {"$oid": "67bdd146d75c4919ce32d6a7"},
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "attributes": {
+      "color": "White",
+      "size": ["38", "39", "40", "42"],
+      "gender": "MALE"
+    },
+    "name": "Adidas Ultraboost 5",
+    "price": 500
+  },
+  {
+    "_id": {"$oid": "67bdd160d75c4919ce32d6a8"},
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "attributes": {
+      "color": "White",
+      "size": ["38", "39", "40", "42"],
+      "gender": "MALE"
+    },
+    "name": "Anta sport 5",
+    "price": 300
+  },
+  {
+    "_id": {"$oid": "67bdd194d75c4919ce32d6a9"},
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "attributes": {
+      "color": "White",
+      "RAM": "8GB",
+      "CPU": "10 cores",
+      "Storage": "356GB SSD"
+    },
+    "name": "Iphone XV",
+    "price": 300
+  },
+  {
+    "_id": {"$oid": "67bdd198d75c4919ce32d6aa"},
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "attributes": {
+      "color": "Red",
+      "RAM": "8GB",
+      "CPU": "10 cores",
+      "Storage": "356GB SSD"
+    },
+    "name": "Iphone XV",
+    "price": 300
+  },
+  {
+    "_id": {"$oid": "67bdd1c2d75c4919ce32d6ab"},
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "attributes": {
+      "color": "White",
+      "RAM": "16GB",
+      "CPU": "10 cores",
+      "Storage": "356GB SSD",
+      "GPU": "8 cores"
+    },
+    "name": "Mac mini",
+    "price": 800
+  },
+  {
+    "_id": {"$oid": "67bdd1ccd75c4919ce32d6ac"},
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "attributes": {
+      "color": "White",
+      "RAM": "16GB",
+      "CPU": "10 cores",
+      "Storage": "356GB SSD",
+      "GPU": "8 cores"
+    },
+    "name": "Macbook Air",
+    "price": 1000
+  },
+  {
+    "_id": {"$oid": "67bdd1dbd75c4919ce32d6ad"},
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "attributes": {
+      "color": "White",
+      "RAM": "16GB",
+      "CPU": "10 cores",
+      "Storage": "356GB SSD",
+      "GPU": "8 cores"
+    },
+    "name": "Macbook Pro",
+    "price": 2000
+  },
+  {
+    "_id": {"$oid": "67bdd210d75c4919ce32d6ae"},
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "attributes": {
+      "color": "Black",
+      "RAM": "16GB",
+      "CPU": "10 cores",
+      "Storage": "356GB SSD",
+      "GPU": "8 cores"
+    },
+    "name": "Lenovo Legion 7",
+    "price": 2000
+  },
+  {
+    "_id": {"$oid": "67bdd21cd75c4919ce32d6af"},
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "attributes": {
+      "color": "Black",
+      "RAM": "16GB",
+      "CPU": "8 cores",
+      "Storage": "356GB SSD",
+      "GPU": "8 cores"
+    },
+    "name": "Lenovo Legion 5",
+    "price": 1500
+  },
+  {
+    "_id": {"$oid": "67bdd337d75c4919ce32d6b0"},
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "attributes": {
+      "color": "Red",
+      "type": "Smart Phone",
+      "RAM": "16GB"
+    },
+    "name": "Iphone XV",
+    "price": 2500
+  }
+]
