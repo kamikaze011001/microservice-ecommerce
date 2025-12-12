@@ -4,6 +4,7 @@ import org.aibles.ecommerce.core_exception_api.configuration.EnableCoreException
 import org.aibles.ecommerce.core_redis.configuration.EnableCoreRedis;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.ecommerce.core_routing_db.configuration.EnableDatasourceRouting;
+import org.aibles.ecommerce.inventory_service.repository.ProcessedPaymentEventRepository;
 import org.aibles.ecommerce.inventory_service.repository.master.MasterInventoryProductRepository;
 import org.aibles.ecommerce.inventory_service.repository.master.MasterProductQuantityHistoryRepo;
 import org.aibles.ecommerce.inventory_service.repository.slave.SlaveInventoryProductRepository;
@@ -34,13 +35,15 @@ public class InventoryServiceConfiguration {
                                              SlaveProductQuantityHistoryRepo slaveProductQuantityHistoryRepo,
                                              ApplicationEventPublisher applicationEventPublisher,
                                              RedisRepository redisRepository,
-                                             RedissonClient redissonClient) {
+                                             RedissonClient redissonClient,
+                                             ProcessedPaymentEventRepository processedPaymentEventRepository) {
         return new InventoryServiceImpl(masterInventoryProductRepository,
                 slaveInventoryProductRepository,
                 masterProductQuantityHistoryRepo,
                 slaveProductQuantityHistoryRepo,
                 applicationEventPublisher,
                 redisRepository,
-                redissonClient);
+                redissonClient,
+                processedPaymentEventRepository);
     }
 }

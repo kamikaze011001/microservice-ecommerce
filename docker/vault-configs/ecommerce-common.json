@@ -1,0 +1,34 @@
+{
+  "spring.datasource.master.jdbc-url": "jdbc:mysql://localhost:3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
+  "spring.datasource.master.username": "root",
+  "spring.datasource.master.password": "masterpassword",
+  "spring.datasource.master.driver-class-name": "com.mysql.cj.jdbc.Driver",
+  
+  "spring.datasource.slave1.jdbc-url": "jdbc:mysql://localhost:3307/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
+  "spring.datasource.slave1.username": "root",
+  "spring.datasource.slave1.password": "slave1password",
+  "spring.datasource.slave1.driver-class-name": "com.mysql.cj.jdbc.Driver",
+  
+  "spring.datasource.slave2.jdbc-url": "jdbc:mysql://localhost:3308/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
+  "spring.datasource.slave2.username": "root",
+  "spring.datasource.slave2.password": "slave2password",
+  "spring.datasource.slave2.driver-class-name": "com.mysql.cj.jdbc.Driver",
+  
+  "spring.data.redis.host": "localhost",
+  "spring.data.redis.port": "6379",
+  "spring.data.redis.password": "redis123",
+  "spring.data.redis.database": "0",
+  
+  "spring.data.mongodb.uri": "mongodb://ecommerce:ecommerce123@localhost:27017/ecommerce_inventory?authSource=admin",
+  
+  "spring.kafka.bootstrap-servers": "localhost:9092",
+  "spring.kafka.properties.schema.registry.url": "http://localhost:8081",
+  
+  "spring.mail.host": "smtp.gmail.com",
+  "spring.mail.port": "587",
+  "spring.mail.username": "your-email@gmail.com",
+  "spring.mail.password": "your-app-password",
+  "spring.mail.protocol": "smtp",
+  "spring.mail.properties.mail.smtp.auth": "true",
+  "spring.mail.properties.mail.smtp.starttls.enable": "true"
+}

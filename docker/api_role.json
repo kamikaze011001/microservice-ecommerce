@@ -115,5 +115,51 @@
     "path": "/order-service/v1/shopping-carts**",
     "roles": ["AUTHORIZED"],
     "method": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+  },
+  {
+    "_id": {"$oid": "67bdd5f4159bec37d09bb6a0"},
+    "path": "/order-service/v3/api-docs/**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67bdd5f4159bec37d09bb6a1"},
+    "path": "/order-service/v1/orders/**",
+    "roles": ["AUTHORIZED"],
+    "method": ["GET", "POST"]
+  },
+  {
+    "_id": {"$oid": "67bdd5f4159bec37d09bb6a2"},
+    "path": "/order-service/v1/orders**",
+    "roles": ["AUTHORIZED"],
+    "method": ["GET", "POST"]
+  },
+  {
+    "_id": {"$oid": "67bdd5f4159bec37d09bb6a3"},
+    "path": "/payment-service/v3/api-docs/**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67bdd5f4159bec37d09bb6a4"},
+    "path": "/payment-service/v1/payments/**",
+    "roles": ["AUTHORIZED"],
+    "method": ["GET", "POST"]
+  },
+  {
+    "_id": {"$oid": "67bdd5f4159bec37d09bb6a5"},
+    "path": "/payment-service/v1/payments**",
+    "roles": ["AUTHORIZED"],
+    "method": ["GET", "POST"]
+  },
+  {
+    "_id": {"$oid": "67bdd5f4159bec37d09bb6a6"},
+    "path": "/payment-service/v1/paypal:success",
+    "roles": ["PERMIT_ALL"],
+    "method": ["GET"]
+  },
+  {
+    "_id": {"$oid": "67bdd5f4159bec37d09bb6a7"},
+    "path": "/payment-service/v1/paypal:cancel",
+    "roles": ["PERMIT_ALL"],
+    "method": ["GET"]
   }
 ]

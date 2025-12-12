@@ -153,7 +153,27 @@ public class PaypalServiceImpl implements PaypalService {
     }
 
     private String getAccessToken() {
-        String auth = paypalConfiguration.getClientId() + ":" + paypalConfiguration.getClientSecret();
+        String clientId = paypalConfiguration.getClientId();
+        String clientSecret = paypalConfiguration.getClientSecret();
+        String baseUrl = paypalConfiguration.getBaseUrl();
+
+        // Mask sensitive data in logs
+        String maskedClientId = clientId != null && clientId.length() > 8
+            ? clientId.substring(0, 8) + "..."
+            : "NOT_SET";
+        String maskedClientSecret = clientSecret != null && !clientSecret.isEmpty()
+            ? "****" + clientSecret.substring(clientSecret.length() - 4)
+            : "NOT_SET";
+
+        log.info("(getAccessToken) Attempting PayPal OAuth with clientId: {}, clientSecret: {}, baseUrl: {}",
+                clientId, clientSecret, baseUrl);
+
+        if (clientId == null || clientId.isEmpty() || clientSecret == null || clientSecret.isEmpty()) {
+            log.error("(getAccessToken) CRITICAL: PayPal credentials not set! Check PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET environment variables");
+            throw new IllegalStateException("PayPal credentials not configured");
+        }
+
+        String auth = clientId + ":" + clientSecret;
         String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes());
 
         HttpHeaders headers = new HttpHeaders();
@@ -162,12 +182,15 @@ public class PaypalServiceImpl implements PaypalService {
 
         HttpEntity<String> entity = new HttpEntity<>("grant_type=client_credentials", headers);
 
+        log.info("(getAccessToken) Sending OAuth request to: {}", baseUrl + "/v1/oauth2/token");
+
         ResponseEntity<AuthPaypalResponse> response = restTemplate.postForEntity(
-                paypalConfiguration.getBaseUrl() + "/v1/oauth2/token",
+                baseUrl + "/v1/oauth2/token",
                 entity,
                 AuthPaypalResponse.class
         );
 
+        log.info("(getAccessToken) Successfully obtained PayPal access token");
         return Objects.requireNonNull(response.getBody()).getAccessToken();
     }
 }

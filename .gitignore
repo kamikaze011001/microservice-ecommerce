@@ -1,2 +1,5 @@
 docker/vault-config/vault-key.txt
 docker/.env
+.idea
+*.log
+vault-keys.json

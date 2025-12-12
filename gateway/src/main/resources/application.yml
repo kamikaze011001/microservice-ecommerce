@@ -32,9 +32,9 @@ spring:
       fail-fast: true
       kv:
         enabled: true
-        application-name: ecommerce,gateway
-        profiles: dev
-        backend: kv
+        backend: secret
+        default-context: ecommerce
+        application-name: gateway
 springdoc:
   swagger-ui:
     urls:

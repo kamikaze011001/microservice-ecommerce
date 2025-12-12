@@ -11,9 +11,10 @@ echo "Starting MySQL replication setup..."
 # Wait an additional moment to ensure all MySQL servers are fully available
 sleep 10
 
-# Setup replication user on master
-echo "Setting up replication user on master..."
+# Setup database and replication user on master
+echo "Setting up database and replication user on master..."
 mysql -h master -uroot -p"$MYSQL_MASTER_PASSWORD" -e "
+CREATE DATABASE IF NOT EXISTS ecommerce_dev;
 CREATE USER IF NOT EXISTS '$MYSQL_REPL_USER'@'%' IDENTIFIED WITH mysql_native_password BY '$MYSQL_REPL_PASSWORD';
 GRANT REPLICATION SLAVE ON *.* TO '$MYSQL_REPL_USER'@'%';
 FLUSH PRIVILEGES;

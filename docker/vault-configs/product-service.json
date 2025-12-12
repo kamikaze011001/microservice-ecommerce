@@ -1,0 +1,6 @@
+{
+  "server.port": "7777",
+  "application.kafka.topics.inventory-service.product.update": "inventory-service.product.update",
+  "application.kafka.topics.product-service.product.update-quantity": "product-service.product.update-quantity",
+  "application.kafka.group-id.product-service.product.update-quantity": "product-service.product.update-quantity"
+}

@@ -1,0 +1,6 @@
+{
+  "server.port": "6666",
+  "application.access-token.life-time": "900000",
+  "application.refresh-token.life-time": "86400000",
+  "application.authentication-key-id": "ecommerce-auth-key-2024"
+}

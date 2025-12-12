@@ -13,7 +13,9 @@ import org.aibles.ecommerce.common_dto.response.InventoryProductResponse;
 import org.aibles.ecommerce.core_redis.constant.RedisConstant;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.ecommerce.inventory_service.entity.InventoryProduct;
+import org.aibles.ecommerce.inventory_service.entity.ProcessedPaymentEvent;
 import org.aibles.ecommerce.inventory_service.entity.ProductQuantityHistory;
+import org.aibles.ecommerce.inventory_service.repository.ProcessedPaymentEventRepository;
 import org.aibles.ecommerce.inventory_service.repository.master.MasterInventoryProductRepository;
 import org.aibles.ecommerce.inventory_service.repository.master.MasterProductQuantityHistoryRepo;
 import org.aibles.ecommerce.inventory_service.repository.projection.ProductQuantitySummary;
@@ -22,8 +24,10 @@ import org.aibles.ecommerce.inventory_service.repository.slave.SlaveProductQuant
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -51,9 +55,16 @@ public class InventoryServiceImpl implements InventoryService {
 
     private final RedissonClient redissonClient;
 
+    private final ProcessedPaymentEventRepository processedPaymentEventRepository;
+
     public InventoryServiceImpl(MasterInventoryProductRepository masterInventoryProductRepository,
-                                SlaveInventoryProductRepository slaveInventoryProductRepository, MasterProductQuantityHistoryRepo masterProductQuantityHistoryRepo, SlaveProductQuantityHistoryRepo slaveProductQuantityHistoryRepo,
-                                ApplicationEventPublisher applicationEventPublisher, RedisRepository redisRepository, RedissonClient redissonClient) {
+                                SlaveInventoryProductRepository slaveInventoryProductRepository,
+                                MasterProductQuantityHistoryRepo masterProductQuantityHistoryRepo,
+                                SlaveProductQuantityHistoryRepo slaveProductQuantityHistoryRepo,
+                                ApplicationEventPublisher applicationEventPublisher,
+                                RedisRepository redisRepository,
+                                RedissonClient redissonClient,
+                                ProcessedPaymentEventRepository processedPaymentEventRepository) {
         this.masterInventoryProductRepository = masterInventoryProductRepository;
         this.slaveInventoryProductRepository = slaveInventoryProductRepository;
         this.masterProductQuantityHistoryRepo = masterProductQuantityHistoryRepo;
@@ -61,6 +72,7 @@ public class InventoryServiceImpl implements InventoryService {
         this.applicationEventPublisher = applicationEventPublisher;
         this.redisRepository = redisRepository;
         this.redissonClient = redissonClient;
+        this.processedPaymentEventRepository = processedPaymentEventRepository;
     }
 
     @Override
@@ -144,16 +156,35 @@ public class InventoryServiceImpl implements InventoryService {
     public void handleSuccessPayment(String orderId) {
         log.info("(handleSuccessPayment)orderId: {}", orderId);
 
-        Optional<Map<String, Long>> productQuantityFromOrderOptional = redisRepository.getMapStringLong(RedisConstant.QUEUE_ORDER_KEY + orderId);
+        // Idempotency check: Skip if already processed
+        // If this returns false, the record is ALREADY saved by isEventAlreadyProcessed()
+        if (isEventAlreadyProcessed(orderId, "PAYMENT_SUCCESS")) {
+            log.warn("(handleSuccessPayment) Order {} already processed, skipping", orderId);
+            return;
+        }
+
+        // Process the inventory update (event already recorded above)
+        processInventoryUpdate(orderId);
+    }
+
+    /**
+     * Processes inventory update for a successful payment.
+     * Decrements inventory for all products in the order.
+     * Also releases queue reservations and removes order from pending orders.
+     */
+    private void processInventoryUpdate(String orderId) {
+        log.info("(processInventoryUpdate) Processing inventory update for order: {}", orderId);
+
+        Optional<Map<String, Long>> productQuantityFromOrderOptional = redisRepository.getProductQuantitiesForOrder(orderId);
         if (productQuantityFromOrderOptional.isEmpty()) {
-            log.warn("(handleSuccessPayment)orderId: {} is invalid", orderId);
+            log.warn("(processInventoryUpdate) orderId: {} is invalid or already processed", orderId);
             return;
         }
 
         Map<String, Long> productQuantityFromOrder = productQuantityFromOrderOptional.get();
 
         if (productQuantityFromOrder.isEmpty()) {
-            log.warn("(handleSuccessPayment)orderId: {} has no product", orderId);
+            log.warn("(processInventoryUpdate) orderId: {} has no product", orderId);
             return;
         }
 
@@ -171,11 +202,16 @@ public class InventoryServiceImpl implements InventoryService {
             ProductQuantityHistory productQuantityHistory;
 
             for (Map.Entry<String, Long> entry : productQuantityFromOrder.entrySet()) {
+                // 1. Decrement actual inventory in database
                 productQuantityHistory = new ProductQuantityHistory();
                 productQuantityHistory.setProductId(entry.getKey());
                 productQuantityHistory.setQuantity(entry.getValue() * -1);
                 masterProductQuantityHistoryRepo.save(productQuantityHistory);
+
+                // 2. Release queue reservation (decrement queue counter)
                 redisRepository.decr(RedisConstant.QUEUE_PRODUCT_KEY + entry.getKey(), entry.getValue());
+
+                // 3. Publish inventory update event
                 productQuantityUpdated = ProductQuantityUpdated.newBuilder()
                         .setProductId(entry.getKey())
                         .setQuantity(entry.getValue() * -1)
@@ -185,8 +221,13 @@ public class InventoryServiceImpl implements InventoryService {
                         productQuantityUpdated);
                 applicationEventPublisher.publishEvent(mongoSavedEvent);
             }
+
+            // 4. Remove order from pending orders (cleanup)
+            redisRepository.removeFromPendingOrders(orderId);
+            log.info("(processInventoryUpdate) Successfully processed inventory and cleaned up order: {}", orderId);
+
         } catch (Exception e) {
-            log.error("(handleSuccessPayment)error happen when update quantity for success orderId: {}", orderId, e);
+            log.error("(processInventoryUpdate) error happen when update quantity for success orderId: {}", orderId, e);
             throw new InternalErrorException();
         } finally {
             releaseLockInReverse(productIds, locks);
@@ -233,6 +274,43 @@ public class InventoryServiceImpl implements InventoryService {
         }
         log.error("(acquireLockWithRetry) Failed to acquire lock after multiple attempts with key : {}", lockKey);
         throw new InternalErrorException();
+    }
+
+    /**
+     * Checks if a payment event has already been processed for this order.
+     * MongoDB's unique compound index on (orderId, eventType) ensures atomicity.
+     *
+     * IMPORTANT: This method SAVES the record if it doesn't exist (returns false).
+     * No need to call a separate "record" method afterward.
+     *
+     * @param orderId Order ID to check
+     * @param eventType Event type (PAYMENT_SUCCESS)
+     * @return true if event was already processed, false otherwise (and saves the record)
+     */
+    private boolean isEventAlreadyProcessed(String orderId, String eventType) {
+        log.debug("(isEventAlreadyProcessed) Checking if event {} for order {} was already processed",
+                eventType, orderId);
+
+        try {
+            // Try to insert the record
+            ProcessedPaymentEvent event = ProcessedPaymentEvent.builder()
+                    .orderId(orderId)
+                    .eventType(eventType)
+                    .processedAt(LocalDateTime.now())
+                    .build();
+
+            processedPaymentEventRepository.save(event);
+
+            // If save succeeded, event was NOT processed before (and we just saved it)
+            log.info("(isEventAlreadyProcessed) First time processing event {} for order {}, record saved",
+                    eventType, orderId);
+            return false;
+        } catch (DuplicateKeyException e) {
+            // Duplicate key means event was already processed
+            log.info("(isEventAlreadyProcessed) Event {} for order {} already processed, skipping",
+                    eventType, orderId);
+            return true;
+        }
     }
 
 }

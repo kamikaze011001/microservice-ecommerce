@@ -9,12 +9,10 @@ import org.aibles.ecommerce.common_dto.response.PagingResponse;
 import org.aibles.ecommerce.product_service.dto.request.ProductRequest;
 import org.aibles.ecommerce.product_service.dto.response.ProductResponse;
 import org.aibles.ecommerce.product_service.entity.Product;
-import org.aibles.ecommerce.product_service.entity.ProductQuantityHistory;
 import org.aibles.ecommerce.product_service.repository.ProductQuantityHistoryRepo;
 import org.aibles.ecommerce.product_service.repository.ProductRepository;
 import org.aibles.ecommerce.product_service.service.ProductService;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;

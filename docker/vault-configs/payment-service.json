@@ -1,0 +1,6 @@
+{
+  "server.port": "8484",
+  "application.paypal.base-url": "https://api-m.sandbox.paypal.com",
+  "application.paypal.success-path": "/payment-service/v1/paypal:success",
+  "application.paypal.cancel-path": "/payment-service/v1/paypal:cancel"
+}

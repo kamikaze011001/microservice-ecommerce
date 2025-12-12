@@ -8,9 +8,9 @@ spring:
       fail-fast: true
       kv:
         enabled: true
-        application-name: ecommerce,inventory-service
-        profiles: dev
-        backend: kv
+        backend: secret
+        default-context: ecommerce
+        application-name: inventory-service
   config:
     import: optional:vault://
   kafka:

@@ -47,7 +47,7 @@ public class PaymentServiceImpl implements PaymentService {
     @Transactional
     public BaseResponse purchase(String orderId) {
         log.info("(purchase)orderId: {}", orderId);
-        double totalPrice = redisRepository.getDouble(RedisConstant.ORDER_PRICE_KEY + orderId).orElse(0.0);
+        double totalPrice = redisRepository.getOrderPrice(orderId).orElse(0.0);
 
         if (totalPrice == 0) {
             log.error("(purchase)orderId: {} is invalid", orderId);

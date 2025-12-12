@@ -2,7 +2,6 @@ version: '3.8'
 
 services:
   ecommerce-mongodb:
-    hostname: localhost
     image: mongo:8.0.1
     ports:
       - "27017:27017"
@@ -12,35 +11,67 @@ services:
       - MONGO_INITDB_DATABASE=${MONGO_DB_NAME}
     volumes:
       - ecommerce_data:/data/db
-      - ./temp-keyfile.key:/data/temp-keyfile.key
+      - ./temp-keyfile.key:/tmp/temp-keyfile.key
     entrypoint:
       - bash
       - -c
       - |
-          cd data
-          cp ./temp-keyfile.key ./mongo-keyfile
-          chmod 400 mongo-keyfile
-          chown mongodb:mongodb mongo-keyfile
-          exec docker-entrypoint.sh mongod --bind_ip_all --replSet rs0 --keyFile /data/mongo-keyfile
+        # First, start MongoDB without authentication to create user
+        echo "Starting MongoDB without authentication to initialize..."
+        mongod --bind_ip_all --replSet rs0 &
+        MONGO_PID=$!
+        
+        # Wait for MongoDB to start
+        echo "Waiting for MongoDB to be ready..."
+        until mongosh --eval "db.runCommand('ismaster')" >/dev/null 2>&1; do
+          sleep 1
+        done
+        
+        # Initialize replica set
+        echo "Initializing replica set..."
+        mongosh --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]})" || true
+        
+        # Wait for primary
+        echo "Waiting for primary..."
+        until mongosh --eval "rs.isMaster().ismaster" --quiet | grep -q "true"; do
+          sleep 1
+        done
+        
+        # Create admin user
+        echo "Creating admin user..."
+        mongosh admin --eval "
+          db.createUser({
+            user: '${MONGO_USERNAME}',
+            pwd: '${MONGO_PASSWORD}',
+            roles: [
+              {role: 'root', db: 'admin'},
+              {role: 'readWriteAnyDatabase', db: 'admin'},
+              {role: 'dbAdminAnyDatabase', db: 'admin'}
+            ]
+          })
+        " || echo "User might already exist"
+        
+        # Shutdown MongoDB
+        echo "Shutting down MongoDB..."
+        mongosh admin --eval "db.shutdownServer()" || true
+        wait $MONGO_PID
+        
+        # Setup keyfile
+        echo "Setting up keyfile..."
+        cp /tmp/temp-keyfile.key /data/mongo-keyfile
+        chmod 400 /data/mongo-keyfile
+        chown mongodb:mongodb /data/mongo-keyfile
+        
+        # Start MongoDB with authentication
+        echo "Starting MongoDB with authentication..."
+        exec mongod --bind_ip_all --replSet rs0 --keyFile /data/mongo-keyfile --auth
     healthcheck:
       test: echo 'db.runCommand("ping").ok' | mongosh --quiet --authenticationDatabase admin -u ${MONGO_USERNAME} -p ${MONGO_PASSWORD}
       interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-  mongo-init:
-    image: mongo:8.0.1
-    depends_on:
-      ecommerce-mongodb:
-        condition: service_healthy
-    volumes:
-      - ./scripts:/scripts
-    environment:
-      - MONGO_USERNAME=${MONGO_USERNAME}
-      - MONGO_PASSWORD=${MONGO_PASSWORD}
-      - MONGO_DB_NAME=${MONGO_DB_NAME}
-    entrypoint: ["/bin/bash", "/scripts/init-mongo.sh"]
-    restart: no
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
 volumes:
   ecommerce_data:
     driver: local

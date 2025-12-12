@@ -1,0 +1,8 @@
+{
+  "server.port": "6868",
+  "application.jwk-set-uri": "http://authorization-server/authorization-server/.well-known/jwks.json",
+  "jwt.token.retry.max-attempts": "3",
+  "jwt.token.retry.delay": "500",
+  "jwt.token.cache.refresh-minutes": "30",
+  "jwt.token.cache.force-refresh-threshold": "5"
+}

@@ -1,0 +1,8 @@
+{
+  "server.port": "6969",
+  "grpc.server.port": "9090",
+  "application.kafka.topics.inventory-service.product.update": "inventory-service.product.update",
+  "application.kafka.topics.inventory-service.inventory-product.update-quantity": "inventory-service.inventory-product.update-quantity",
+  "application.kafka.group-id.product.update": "product-update-group",
+  "application.kafka.group-id.payment.success": "payment-success-group"
+}

@@ -8,9 +8,9 @@ spring:
       fail-fast: true
       kv:
         enabled: true
-        application-name: ecommerce,authorization-server
-        profiles: dev
-        backend: kv
+        backend: secret
+        default-context: ecommerce
+        application-name: authorization-server
   config:
     import: optional:vault://
   mail:

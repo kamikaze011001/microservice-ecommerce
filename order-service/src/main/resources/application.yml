@@ -8,9 +8,9 @@ spring:
       fail-fast: true
       kv:
         enabled: true
-        application-name: ecommerce,order-service
-        profiles: dev
-        backend: kv
+        backend: secret
+        default-context: ecommerce
+        application-name: order-service
   config:
     import: optional:vault://
   jpa:

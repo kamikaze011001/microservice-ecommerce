@@ -10,8 +10,20 @@ services:
       --gtid-mode=ON
       --enforce-gtid-consistency=ON
       --default-authentication-plugin=mysql_native_password
+      --bind-address=0.0.0.0
+      --sync-binlog=100
+      --innodb-flush-log-at-trx-commit=2
+      --binlog-transaction-dependency-tracking=WRITESET
+      --transaction-write-set-extraction=XXHASH64
+      --binlog-group-commit-sync-delay=1000
+      --binlog-group-commit-sync-no-delay-count=10
+      --binlog-cache-size=1M
+      --innodb-buffer-pool-size=256M
+      --innodb-log-buffer-size=32M
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_MASTER_PASSWORD:-masterpassword}
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_DATABASE: ecommerce_dev
     networks:
       - mysql-cluster
     ports:
@@ -37,8 +49,20 @@ services:
       --default-authentication-plugin=mysql_native_password
       --skip-slave-start=1
       --read-only=ON
+      --bind-address=0.0.0.0
+      --replica-parallel-workers=8
+      --replica-parallel-type=LOGICAL_CLOCK
+      --replica-preserve-commit-order=ON
+      --sync-relay-log=1000
+      --sync-relay-log-info=1000
+      --innodb-flush-log-at-trx-commit=2
+      --sync-binlog=100
+      --innodb-buffer-pool-size=256M
+      --innodb-log-buffer-size=32M
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_SLAVE1_PASSWORD:-slave1password}
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_DATABASE: ecommerce_dev
     networks:
       - mysql-cluster
     depends_on:
@@ -67,8 +91,20 @@ services:
       --default-authentication-plugin=mysql_native_password
       --skip-slave-start=1
       --read-only=ON
+      --bind-address=0.0.0.0
+      --replica-parallel-workers=8
+      --replica-parallel-type=LOGICAL_CLOCK
+      --replica-preserve-commit-order=ON
+      --sync-relay-log=1000
+      --sync-relay-log-info=1000
+      --innodb-flush-log-at-trx-commit=2
+      --sync-binlog=100
+      --innodb-buffer-pool-size=256M
+      --innodb-log-buffer-size=32M
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_SLAVE2_PASSWORD:-slave2password}
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_DATABASE: ecommerce_dev
     networks:
       - mysql-cluster
     depends_on:

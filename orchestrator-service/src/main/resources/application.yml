@@ -8,9 +8,9 @@ spring:
       fail-fast: true
       kv:
         enabled: true
-        application-name: ecommerce,orchestrator-service
-        profiles: dev
-        backend: kv
+        backend: secret
+        default-context: ecommerce
+        application-name: orchestrator-service
   config:
     import: optional:vault://
   kafka:
@@ -30,7 +30,7 @@ application:
     group-id:
       mongo.event: mongo-event-group
     topics:
-      mongo.event: ecommerce_db.event
+      mongo.event: ecommerce_db.ecommerce_inventory.event
       product-service.product.update-quantity: product-service.product.update-quantity
       order-service.order.success-status: order-service.order.success-status
       inventory-service.inventory-product.update-quantity: inventory-service.inventory-product.update-quantity

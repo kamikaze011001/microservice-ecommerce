@@ -1,0 +1,9 @@
+{
+  "server.port": "9696",
+  "grpc.server.host": "localhost",
+  "grpc.server.port": "9090",
+  "application.kafka.topics.order-service.order.success-status": "order-service.order.success-status",
+  "application.kafka.topics.order-service.order.failed-status": "order-service.order.failed-status",
+  "application.kafka.topics.order-service.order.canceled-status": "order-service.order.canceled-status",
+  "application.kafka.group-id.order.update-status": "order.update-status"
+}

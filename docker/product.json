@@ -22,17 +22,6 @@
     "price": 250
   },
   {
-    "_id": {"$oid": "67bdd0d3d75c4919ce32d6a6"},
-    "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "attributes": {
-      "color": "White",
-      "material": "cotton",
-      "size": ["XL", "XXL", "X", "L"]
-    },
-    "name": "Uniqlo jean",
-    "price": 250
-  },
-  {
     "_id": {"$oid": "67bdd146d75c4919ce32d6a7"},
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
     "attributes": {

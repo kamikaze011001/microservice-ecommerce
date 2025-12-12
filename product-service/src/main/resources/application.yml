@@ -8,9 +8,9 @@ spring:
       fail-fast: true
       kv:
         enabled: true
-        application-name: ecommerce,product-service
-        profiles: dev
-        backend: kv
+        backend: secret
+        default-context: ecommerce
+        application-name: product-service
   config:
     import: optional:vault://
   kafka:

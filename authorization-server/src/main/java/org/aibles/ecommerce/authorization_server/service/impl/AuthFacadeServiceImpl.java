@@ -228,7 +228,7 @@ public class AuthFacadeServiceImpl implements AuthFacadeService {
             throw new OtpInvalidException();
         }
 
-        String resetPassKey = GeneratorUtil.generateResetPassKey(email, otp);
+        String resetPassKey = GeneratorUtil.generateResetPassKey(email);
         redisRepository.save(CacheConstant.RESET_PASSWORD_KEY, email, resetPassKey);
 
         return VerifyForgotPasswordOtpResponse.builder()

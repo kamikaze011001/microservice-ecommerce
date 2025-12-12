@@ -1,10 +1,13 @@
 package org.aibles.gateway.filter;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.jwk.JWKSet;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.aibles.core_jwt_util.dto.TokenClaims;
 import org.aibles.core_jwt_util.util.JwtUtil;
 import org.aibles.ecommerce.common_dto.exception.InternalErrorException;
 import org.aibles.ecommerce.common_dto.exception.UnauthorizedException;
@@ -20,7 +23,6 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextImpl;
-import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.server.ServerWebExchange;
@@ -34,11 +36,14 @@ import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.time.Duration;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -51,6 +56,7 @@ public class JwtAuthenticationFilter implements WebFilter {
 
     // Injected properties
     private final WebClient lbWebClient;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${application.jwk-set-uri}")
     private String jwksUri;
@@ -73,8 +79,17 @@ public class JwtAuthenticationFilter implements WebFilter {
     private final AtomicLong failedValidationCount = new AtomicLong(0);
     private final AtomicReference<Mono<JWKSet>> currentRefreshOperation = new AtomicReference<>();
 
-    // Scheduler for periodic tasks
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    // QUALITY FIX: Scheduler with named threads for better debugging
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(new ThreadFactory() {
+        private final AtomicInteger threadNumber = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable r) {
+            Thread thread = new Thread(r, "jwt-cache-refresh-" + threadNumber.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        }
+    });
 
     // Constructor
     public JwtAuthenticationFilter(WebClient lbWebClient) {
@@ -170,31 +185,49 @@ public class JwtAuthenticationFilter implements WebFilter {
                 });
     }
 
+    /**
+     * CRITICAL BUG FIX: Line 182 was calling getSubjectFromToken() twice instead of getEmailFromToken()
+     * PERFORMANCE OPTIMIZATION: Now uses verifyAndExtractClaims() for single-pass verification + extraction
+     * QUALITY FIX: Added null validation and removed overly broad Exception catch
+     */
     private Mono<Authentication> validateTokenWithJWKSet(String token, JWKSet jwkSet) {
         try {
-            if (!JwtUtil.verifyToken(jwkSet, token)) {
-                log.warn("(validateTokenWithJWKSet) Token verification failed");
+            // PERFORMANCE: Single-pass verification and extraction
+            TokenClaims claims = JwtUtil.verifyAndExtractClaims(jwkSet, token);
+
+            if (claims == null) {
+                log.warn("(validateTokenWithJWKSet) Token verification failed or token expired");
                 trackFailedValidation();
                 return Mono.error(new UnauthorizedException());
             }
 
-            String userId = JwtUtil.getSubjectFromToken(token);
-            String email = JwtUtil.getSubjectFromToken(token);
-            Collection<SimpleGrantedAuthority> roles = getAuthorities(JwtUtil.getRolesFromToken(token));
+            // QUALITY FIX: Validate all required claims are present
+            if (!claims.isValid()) {
+                log.error("(validateTokenWithJWKSet) Missing required claims - userId: {}, email: {}, roles: {}",
+                        claims.getUserId(), claims.getEmail(), claims.getRoles());
+                return Mono.error(new UnauthorizedException());
+            }
 
-            log.debug("(validateTokenWithJWKSet) Token validated successfully for user: {}", email);
-            return Mono.just(new UsernamePasswordAuthenticationToken(email, userId, roles));
+            Collection<SimpleGrantedAuthority> roles = getAuthorities(claims.getRoles());
+
+            log.debug("(validateTokenWithJWKSet) Token validated successfully for user: {}", claims.getEmail());
+
+            // CRITICAL BUG FIX: Using email as principal, userId as credentials (was using subject for both)
+            return Mono.just(new UsernamePasswordAuthenticationToken(
+                    claims.getEmail(),    // Principal - FIXED: was getSubjectFromToken()
+                    claims.getUserId(),   // Credentials - correct
+                    roles
+            ));
+
         } catch (ParseException e) {
             log.error("(validateTokenWithJWKSet) Error parsing token: {}", e.getMessage());
-            return Mono.error(e);
+            return Mono.error(new UnauthorizedException());
         } catch (JOSEException e) {
             log.error("(validateTokenWithJWKSet) JOSE exception during token validation: {}", e.getMessage());
             trackFailedValidation();
-            return Mono.error(e);
-        } catch (Exception e) {
-            log.error("(validateTokenWithJWKSet) Unexpected error during token validation: {}", e.getMessage());
-            return Mono.error(new InternalErrorException());
+            return Mono.error(new UnauthorizedException());
         }
+        // QUALITY FIX: Removed overly broad Exception catch - specific exceptions only
     }
 
     private void trackFailedValidation() {
@@ -205,10 +238,13 @@ public class JwtAuthenticationFilter implements WebFilter {
             log.warn("(trackFailedValidation) Failure threshold reached ({}), scheduling refresh",
                     forceRefreshThreshold);
 
-            // Trigger refresh asynchronously on bounded elastic scheduler to avoid blocking
+            // QUALITY FIX: Added error handler to prevent silent failures
             fetchAndUpdateCache()
                     .subscribeOn(Schedulers.boundedElastic())
-                    .subscribe();
+                    .subscribe(
+                            jwkSet -> log.info("(trackFailedValidation) Emergency cache refresh completed"),
+                            error -> log.error("(trackFailedValidation) Emergency cache refresh failed: {}", error.getMessage())
+                    );
         }
     }
 
@@ -282,6 +318,7 @@ public class JwtAuthenticationFilter implements WebFilter {
 
     /**
      * Fetches and caches the JWK Set - using a shared Mono to prevent multiple refreshes
+     * PERFORMANCE FIX: Fixed race condition on line 303 by capturing value once
      */
     private Mono<JWKSet> fetchAndUpdateCache() {
         // Check if there's already a refresh operation in progress
@@ -291,18 +328,24 @@ public class JwtAuthenticationFilter implements WebFilter {
             return existingOperation;
         }
 
-        // Create a new refresh operation
+        // Create a new refresh operation with reference holder for lambda
+        final AtomicReference<Mono<JWKSet>> operationRef = new AtomicReference<>();
+
         Mono<JWKSet> newOperation = fetchJWKSet()
                 .doOnNext(jwkSet -> {
                     cachedJWKSet.set(jwkSet);
                     log.info("(fetchAndUpdateCache) JWK Set cached with {} keys", jwkSet.getKeys().size());
                 })
-                .doFinally(signalType ->
-                    // Clear the current operation reference when done
-                    // No circular reference because we're not using the variable inside the lambda
-                    currentRefreshOperation.compareAndSet(currentRefreshOperation.get(), null)
-                )
+                .doFinally(signalType -> {
+                    // PERFORMANCE FIX: Use captured reference to avoid calling get() twice
+                    Mono<JWKSet> operationToRemove = operationRef.get();
+                    if (operationToRemove != null) {
+                        currentRefreshOperation.compareAndSet(operationToRemove, null);
+                    }
+                })
                 .cache(); // Make it shared so multiple subscribers get the same result
+
+        operationRef.set(newOperation);
 
         // Try to store our operation - use CAS to ensure only one thread succeeds
         if (currentRefreshOperation.compareAndSet(null, newOperation)) {
@@ -311,7 +354,8 @@ public class JwtAuthenticationFilter implements WebFilter {
         } else {
             // Another thread set an operation first, use that one instead
             log.debug("(fetchAndUpdateCache) Using refresh operation set by another thread");
-            return currentRefreshOperation.get();
+            Mono<JWKSet> currentOperation = currentRefreshOperation.get();
+            return currentOperation != null ? currentOperation : newOperation;
         }
     }
 
@@ -358,43 +402,43 @@ public class JwtAuthenticationFilter implements WebFilter {
                 .toList();
     }
 
+    /**
+     * SECURITY & QUALITY FIX: Replaced manual JSON building with Jackson ObjectMapper
+     * - Prevents XSS vulnerabilities from unescaped special characters
+     * - Handles proper JSON escaping automatically
+     * - More maintainable and less error-prone
+     */
     private Mono<Void> createErrorResponse(ServerWebExchange exchange, HttpStatus status, String message, Map<String, Object> additionalInfo) {
         exchange.getResponse().setStatusCode(status);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
-        String errorJson = buildErrorJson(status, message, exchange.getRequest().getPath().value(), additionalInfo);
-        byte[] bytes = errorJson.getBytes(StandardCharsets.UTF_8);
-        DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(bytes);
+        try {
+            Map<String, Object> errorBody = new LinkedHashMap<>();
+            errorBody.put("status", status.value());
+            errorBody.put("error", status.getReasonPhrase());
+            errorBody.put("message", message);
+            errorBody.put("path", exchange.getRequest().getPath().value());
 
-        log.warn("(createErrorResponse) Returning error response: {}", errorJson);
-        return exchange.getResponse().writeWith(Mono.just(buffer));
-    }
-
-    private String buildErrorJson(HttpStatus status, String message, String path, Map<String, Object> additionalInfo) {
-        StringBuilder jsonBuilder = new StringBuilder();
-        jsonBuilder.append("{");
-        jsonBuilder.append("\"status\":").append(status.value()).append(",");
-        jsonBuilder.append("\"error\":\"").append(status.getReasonPhrase()).append("\",");
-        jsonBuilder.append("\"message\":\"").append(message).append("\",");
-        jsonBuilder.append("\"path\":\"").append(path).append("\"");
-
-        // Add any additional info
-        if (additionalInfo != null && !additionalInfo.isEmpty()) {
-            for (Map.Entry<String, Object> entry : additionalInfo.entrySet()) {
-                jsonBuilder.append(",");
-                jsonBuilder.append("\"").append(entry.getKey()).append("\":");
-
-                Object value = entry.getValue();
-                if (value instanceof String) {
-                    jsonBuilder.append("\"").append(value).append("\"");
-                } else {
-                    jsonBuilder.append(value);
-                }
+            // Add any additional info
+            if (additionalInfo != null && !additionalInfo.isEmpty()) {
+                errorBody.putAll(additionalInfo);
             }
-        }
 
-        jsonBuilder.append("}");
-        return jsonBuilder.toString();
+            String errorJson = objectMapper.writeValueAsString(errorBody);
+            byte[] bytes = errorJson.getBytes(StandardCharsets.UTF_8);
+            DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(bytes);
+
+            log.warn("(createErrorResponse) Returning error response: {}", errorJson);
+            return exchange.getResponse().writeWith(Mono.just(buffer));
+
+        } catch (JsonProcessingException e) {
+            log.error("(createErrorResponse) Failed to serialize error response", e);
+            // Fallback to simple error message
+            String fallbackJson = "{\"status\":" + status.value() + ",\"error\":\"Internal error\"}";
+            byte[] bytes = fallbackJson.getBytes(StandardCharsets.UTF_8);
+            DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(bytes);
+            return exchange.getResponse().writeWith(Mono.just(buffer));
+        }
     }
 
     @PreDestroy

@@ -5,6 +5,7 @@ import org.aibles.ecommerce.core_redis.configuration.EnableCoreRedis;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.ecommerce.core_routing_db.configuration.EnableDatasourceRouting;
 import org.aibles.order_service.client.InventoryGrpcClientService;
+import org.aibles.order_service.repository.ProcessedPaymentEventRepository;
 import org.aibles.order_service.repository.master.MasterOrderItemRepo;
 import org.aibles.order_service.repository.master.MasterOrderRepo;
 import org.aibles.order_service.repository.master.MasterShoppingCartItemRepo;
@@ -44,11 +45,13 @@ public class OrderServiceConfiguration {
                                      RedisRepository redisRepository,
                                      MasterOrderRepo masterOrderRepo,
                                      MasterOrderItemRepo masterOrderItemRepo,
-                                     RedissonClient redissonClient) {
+                                     RedissonClient redissonClient,
+                                     ProcessedPaymentEventRepository processedPaymentEventRepository) {
         return new OrderServiceImpl(inventoryGrpcClientService,
                 redisRepository,
                 masterOrderRepo,
                 masterOrderItemRepo,
-                redissonClient);
+                redissonClient,
+                processedPaymentEventRepository);
     }
 }

@@ -33,8 +33,17 @@ public class MongoEventListener {
     private void handleChangeStream(@Payload final GenericRecord genericRecord,
                                     @Header(KafkaHeaders.OFFSET) final Long offset) throws JsonProcessingException {
         log.info("(handleChangeStream)stream: {}, offset: {}", genericRecord, offset);
-        String fullDocument = genericRecord.get("fullDocument").toString();
+
+        // Get fullDocument from MongoDB change stream
+        Object fullDocumentObj = genericRecord.get("fullDocument");
+        if (fullDocumentObj == null) {
+            log.warn("(handleChangeStream)fullDocument is null, skipping");
+            return;
+        }
+
+        String fullDocument = fullDocumentObj.toString();
         EventDTO eventDTO = mapper.readValue(fullDocument, EventDTO.class);
+
         Optional<EcommerceEvent> eventOptional = EcommerceEvent.resolve(eventDTO.getName());
         if (eventOptional.isEmpty()) {
             log.warn("(handleChangeStream)event name : {} is not available", eventDTO.getName());

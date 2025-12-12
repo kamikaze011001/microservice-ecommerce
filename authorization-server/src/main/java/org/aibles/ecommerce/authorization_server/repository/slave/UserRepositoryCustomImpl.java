@@ -87,32 +87,23 @@ public class UserRepositoryCustomImpl implements UserRepositoryCustom {
 
     private Predicate createPredicate(CriteriaBuilder cb, Root<User> root, String field, String operation, String value) {
 
-        switch (operation) {
-            case "eq":
-                return cb.equal(root.get(field), value);
-            case "ne":
-                return cb.notEqual(root.get(field), value);
-            case "gt":
-                return cb.greaterThan(root.get(field), value);
-            case "lt":
-                return cb.lessThan(root.get(field), value);
-            case "ge":
-                return cb.greaterThanOrEqualTo(root.get(field), value);
-            case "le":
-                return cb.lessThanOrEqualTo(root.get(field), value);
-            case "like":
-                return cb.like(root.get(field), value);
-        }
-        return null;
+        return switch (operation) {
+            case "eq" -> cb.equal(root.get(field), value);
+            case "ne" -> cb.notEqual(root.get(field), value);
+            case "gt" -> cb.greaterThan(root.get(field), value);
+            case "lt" -> cb.lessThan(root.get(field), value);
+            case "ge" -> cb.greaterThanOrEqualTo(root.get(field), value);
+            case "le" -> cb.lessThanOrEqualTo(root.get(field), value);
+            case "like" -> cb.like(root.get(field), value);
+            default -> null;
+        };
     }
 
     private Order createOrder(CriteriaBuilder cb, Root<User> root, String field, String direction) {
-        switch (direction) {
-            case "asc":
-                return cb.asc(root.get(field));
-            case "desc":
-                return cb.desc(root.get(field));
-        }
-        return null;
+        return switch (direction) {
+            case "asc" -> cb.asc(root.get(field));
+            case "desc" -> cb.desc(root.get(field));
+            default -> null;
+        };
     }
 }

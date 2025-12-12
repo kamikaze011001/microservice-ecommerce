@@ -1,0 +1,10 @@
+{
+  "server.port": "9999",
+  "application.kafka.topics.product-service.product.update-quantity": "product-service.product.update-quantity",
+  "application.kafka.topics.order-service.order.success-status": "order-service.order.success-status",
+  "application.kafka.topics.order-service.order.failed-status": "order-service.order.failed-status",
+  "application.kafka.topics.order-service.order.canceled-status": "order-service.order.canceled-status",
+  "application.kafka.topics.inventory-service.inventory-product.update-quantity": "inventory-service.inventory-product.update-quantity",
+  "application.kafka.topics.inventory-service.product.update": "inventory-service.product.update",
+  "application.kafka.group-id.mongo.event": "mongo-event-group"
+}
