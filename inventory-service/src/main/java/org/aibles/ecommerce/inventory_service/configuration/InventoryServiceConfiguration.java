@@ -1,6 +1,8 @@
 package org.aibles.ecommerce.inventory_service.configuration;
 
 import org.aibles.ecommerce.core_exception_api.configuration.EnableCoreExceptionApi;
+import org.aibles.ecommerce.core_order_cache.configuration.EnableOrderCache;
+import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheRepository;
 import org.aibles.ecommerce.core_redis.configuration.EnableCoreRedis;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.ecommerce.core_routing_db.configuration.EnableDatasourceRouting;
@@ -25,6 +27,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @EnableAsync
 @EnableMongoAuditing
 @EnableCoreRedis
+@EnableOrderCache
 @EnableJpaAuditing
 public class InventoryServiceConfiguration {
 
@@ -35,6 +38,7 @@ public class InventoryServiceConfiguration {
                                              SlaveProductQuantityHistoryRepo slaveProductQuantityHistoryRepo,
                                              ApplicationEventPublisher applicationEventPublisher,
                                              RedisRepository redisRepository,
+                                             PendingOrderCacheRepository pendingOrderCacheRepository,
                                              RedissonClient redissonClient,
                                              ProcessedPaymentEventRepository processedPaymentEventRepository) {
         return new InventoryServiceImpl(masterInventoryProductRepository,
@@ -43,6 +47,7 @@ public class InventoryServiceConfiguration {
                 slaveProductQuantityHistoryRepo,
                 applicationEventPublisher,
                 redisRepository,
+                pendingOrderCacheRepository,
                 redissonClient,
                 processedPaymentEventRepository);
     }

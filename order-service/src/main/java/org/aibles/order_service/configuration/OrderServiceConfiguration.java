@@ -1,6 +1,8 @@
 package org.aibles.order_service.configuration;
 
 import org.aibles.ecommerce.core_exception_api.configuration.EnableCoreExceptionApi;
+import org.aibles.ecommerce.core_order_cache.configuration.EnableOrderCache;
+import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheRepository;
 import org.aibles.ecommerce.core_redis.configuration.EnableCoreRedis;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.ecommerce.core_routing_db.configuration.EnableDatasourceRouting;
@@ -28,6 +30,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @EnableDatasourceRouting
 @EnableDiscoveryClient
 @EnableCoreRedis
+@EnableOrderCache
 @EnableJpaAuditing
 @EnableMongoAuditing
 @EnableAsync
@@ -43,12 +46,14 @@ public class OrderServiceConfiguration {
     @Bean
     public OrderService orderService(InventoryGrpcClientService inventoryGrpcClientService,
                                      RedisRepository redisRepository,
+                                     PendingOrderCacheRepository pendingOrderCacheRepository,
                                      MasterOrderRepo masterOrderRepo,
                                      MasterOrderItemRepo masterOrderItemRepo,
                                      RedissonClient redissonClient,
                                      ProcessedPaymentEventRepository processedPaymentEventRepository) {
         return new OrderServiceImpl(inventoryGrpcClientService,
                 redisRepository,
+                pendingOrderCacheRepository,
                 masterOrderRepo,
                 masterOrderItemRepo,
                 redissonClient,

@@ -3,3 +3,5 @@ docker/.env
 .idea
 *.log
 vault-keys.json
+*.lck
+target

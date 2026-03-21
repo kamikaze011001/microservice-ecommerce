@@ -5,10 +5,13 @@ import org.aibles.ecommerce.common_dto.exception.InternalErrorException;
 import org.aibles.ecommerce.common_dto.request.InventoryProductIdsRequest;
 import org.aibles.ecommerce.common_dto.response.InventoryProductIdsResponse;
 import org.aibles.ecommerce.common_dto.response.InventoryProductResponse;
+import org.aibles.ecommerce.core_order_cache.constant.OrderCacheConstant;
+import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheRepository;
 import org.aibles.ecommerce.core_redis.constant.RedisConstant;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.order_service.client.InventoryGrpcClientService;
 import org.aibles.order_service.constant.OrderStatus;
+import org.aibles.order_service.constant.PaymentEventType;
 import org.aibles.order_service.dto.request.OrderItemRequest;
 import org.aibles.order_service.dto.request.OrderRequest;
 import org.aibles.order_service.dto.response.OrderCreatedResponse;
@@ -43,6 +46,7 @@ public class OrderServiceImpl implements OrderService {
 
     private final InventoryGrpcClientService inventoryGrpcClientService;
     private final RedisRepository redisRepository;
+    private final PendingOrderCacheRepository pendingOrderCacheRepository;
     private final MasterOrderRepo masterOrderRepo;
     private final MasterOrderItemRepo masterOrderItemRepo;
     private final RedissonClient redissonClient;
@@ -50,12 +54,14 @@ public class OrderServiceImpl implements OrderService {
 
     public OrderServiceImpl(InventoryGrpcClientService inventoryGrpcClientService,
                             RedisRepository redisRepository,
+                            PendingOrderCacheRepository pendingOrderCacheRepository,
                             MasterOrderRepo masterOrderRepo,
                             MasterOrderItemRepo masterOrderItemRepo,
                             RedissonClient redissonClient,
                             ProcessedPaymentEventRepository processedPaymentEventRepository) {
         this.inventoryGrpcClientService = inventoryGrpcClientService;
         this.redisRepository = redisRepository;
+        this.pendingOrderCacheRepository = pendingOrderCacheRepository;
         this.masterOrderRepo = masterOrderRepo;
         this.masterOrderItemRepo = masterOrderItemRepo;
         this.redissonClient = redissonClient;
@@ -185,7 +191,7 @@ public class OrderServiceImpl implements OrderService {
         validateProductExistence(inventoryResponse.getInventoryProducts(), productQuantityMap);
 
         // Atomically check and reserve using Lua script
-        boolean reserved = redisRepository.checkAndReserveAtomic(
+        boolean reserved = pendingOrderCacheRepository.checkAndReserveAtomic(
                 RedisConstant.QUEUE_PRODUCT_KEY,
                 productQuantityMap,
                 maxInventoryMap
@@ -287,10 +293,10 @@ public class OrderServiceImpl implements OrderService {
 
         // Add to pending orders ZSET (stores price AND product quantities)
         long expiryTimestamp = Instant.now()
-                .plus(RedisConstant.ORDER_EXPIRY_HOURS, ChronoUnit.HOURS)
+                .plus(OrderCacheConstant.ORDER_EXPIRY_HOURS, ChronoUnit.HOURS)
                 .toEpochMilli();
 
-        redisRepository.addToPendingOrders(
+        pendingOrderCacheRepository.addToPendingOrders(
                 order.getId(),
                 reservation.getTotalOrderPrice(),
                 reservation.getReservedQuantities(),
@@ -330,7 +336,7 @@ public class OrderServiceImpl implements OrderService {
 
         // Idempotency check: Skip if already processed
         // If this returns false, the record is ALREADY saved by isEventAlreadyProcessed()
-        if (isEventAlreadyProcessed(orderId, "PAYMENT_CANCELED")) {
+        if (isEventAlreadyProcessed(orderId, PaymentEventType.PAYMENT_CANCELED)) {
             log.warn("(handleCanceledOrder) Order {} already processed, skipping", orderId);
             return;
         }
@@ -346,7 +352,7 @@ public class OrderServiceImpl implements OrderService {
 
         // Idempotency check: Skip if already processed
         // If this returns false, the record is ALREADY saved by isEventAlreadyProcessed()
-        if (isEventAlreadyProcessed(orderId, "PAYMENT_FAILED")) {
+        if (isEventAlreadyProcessed(orderId, PaymentEventType.PAYMENT_FAILED)) {
             log.warn("(handleFailedOrder) Order {} already processed, skipping", orderId);
             return;
         }
@@ -362,7 +368,7 @@ public class OrderServiceImpl implements OrderService {
 
         // Idempotency check: Skip if already processed
         // If this returns false, the record is ALREADY saved by isEventAlreadyProcessed()
-        if (isEventAlreadyProcessed(orderId, "PAYMENT_SUCCESS")) {
+        if (isEventAlreadyProcessed(orderId, PaymentEventType.PAYMENT_SUCCESS)) {
             log.warn("(handleSuccessOrder) Order {} already processed, skipping", orderId);
             return;
         }
@@ -376,7 +382,7 @@ public class OrderServiceImpl implements OrderService {
     private void processOrderStatusChange(String orderId, OrderStatus newStatus) {
         log.info("(processOrderStatusChange) Processing order {} status change to {}", orderId, newStatus);
 
-        Optional<Map<String, Long>> productQuantityMapOptional = redisRepository.getProductQuantitiesForOrder(orderId);
+        Optional<Map<String, Long>> productQuantityMapOptional = pendingOrderCacheRepository.getProductQuantitiesForOrder(orderId);
 
         Map<String, Long> productQuantityMap = productQuantityMapOptional.orElse(new HashMap<>());
 
@@ -390,7 +396,7 @@ public class OrderServiceImpl implements OrderService {
 
         // Remove from pending orders ZSET (order is now processed)
         // This also removes the price and product quantities stored in ZSET
-        redisRepository.removeFromPendingOrders(orderId);
+        pendingOrderCacheRepository.removeFromPendingOrders(orderId);
         log.debug("(processOrderStatusChange) Removed order {} from pending orders ZSET", orderId);
     }
 
@@ -521,7 +527,7 @@ public class OrderServiceImpl implements OrderService {
      * @param eventType Event type (PAYMENT_SUCCESS, PAYMENT_FAILED, PAYMENT_CANCELED)
      * @return true if event was already processed, false otherwise (and saves the record)
      */
-    private boolean isEventAlreadyProcessed(String orderId, String eventType) {
+    private boolean isEventAlreadyProcessed(String orderId, PaymentEventType eventType) {
         log.debug("(isEventAlreadyProcessed) Checking if event {} for order {} was already processed",
                 eventType, orderId);
 

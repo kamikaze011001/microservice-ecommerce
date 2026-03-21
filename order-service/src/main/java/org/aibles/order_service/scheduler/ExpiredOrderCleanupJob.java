@@ -1,6 +1,7 @@
 package org.aibles.order_service.scheduler;
 
 import lombok.extern.slf4j.Slf4j;
+import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheRepository;
 import org.aibles.ecommerce.core_redis.constant.RedisConstant;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.redisson.api.RLock;
@@ -29,10 +30,14 @@ public class ExpiredOrderCleanupJob {
     private static final int LOCK_LEASE_TIME_SECONDS = 10;
 
     private final RedisRepository redisRepository;
+    private final PendingOrderCacheRepository pendingOrderCacheRepository;
     private final RedissonClient redissonClient;
 
-    public ExpiredOrderCleanupJob(RedisRepository redisRepository, RedissonClient redissonClient) {
+    public ExpiredOrderCleanupJob(RedisRepository redisRepository,
+                                  PendingOrderCacheRepository pendingOrderCacheRepository,
+                                  RedissonClient redissonClient) {
         this.redisRepository = redisRepository;
+        this.pendingOrderCacheRepository = pendingOrderCacheRepository;
         this.redissonClient = redissonClient;
     }
 
@@ -86,7 +91,7 @@ public class ExpiredOrderCleanupJob {
      */
     private Map<String, Map<String, Long>> getExpiredOrdersFromRedis(long currentTimestamp) {
         log.debug("(getExpiredOrdersFromRedis) Fetching expired orders with timestamp < {}", currentTimestamp);
-        return redisRepository.getExpiredOrders(currentTimestamp);
+        return pendingOrderCacheRepository.getExpiredOrders(currentTimestamp);
     }
 
     /**
@@ -183,7 +188,7 @@ public class ExpiredOrderCleanupJob {
 
         try {
             // Remove from pending orders ZSET (this also removes price and product quantities)
-            redisRepository.removeFromPendingOrders(orderId);
+            pendingOrderCacheRepository.removeFromPendingOrders(orderId);
 
             log.debug("(cleanupExpiredOrderMetadata) Cleaned up metadata for order: {}", orderId);
         } catch (Exception e) {

@@ -22,10 +22,17 @@ public class Payment {
     @Enumerated(EnumType.STRING)
     private PaymentType type;
 
+    @Column(nullable = false)
     private String orderId;
 
     @Enumerated(EnumType.STRING)
     private PaymentStatus status;
 
+    @Column(nullable = false)
     private Double totalPrice;
+
+    @Column(nullable = false)
+    private String token;
+
+    private String captureId;
 }

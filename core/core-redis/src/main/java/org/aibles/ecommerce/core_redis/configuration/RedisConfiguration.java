@@ -1,6 +1,5 @@
 package org.aibles.ecommerce.core_redis.configuration;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.ecommerce.core_redis.repository.impl.RedisRepositoryImpl;
 import org.redisson.Redisson;
@@ -28,8 +27,8 @@ public class RedisConfiguration {
     }
 
     @Bean
-    public RedisRepository redisRepository(RedisTemplate<String, Object> redisTemplate, ObjectMapper objectMapper) {
-        return new RedisRepositoryImpl(redisTemplate, objectMapper);
+    public RedisRepository redisRepository(RedisTemplate<String, Object> redisTemplate) {
+        return new RedisRepositoryImpl(redisTemplate);
     }
 
     @Bean

@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.aibles.ecommerce.inventory_service.constant.PaymentEventType;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
@@ -40,7 +41,7 @@ public class ProcessedPaymentEvent {
     /**
      * Type of payment event: PAYMENT_SUCCESS, PAYMENT_FAILED, PAYMENT_CANCELED
      */
-    private String eventType;
+    private PaymentEventType eventType;
 
     /**
      * When this event was first processed

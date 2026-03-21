@@ -19,17 +19,15 @@ public class IPNPaypalController {
 
     @ResponseStatus(HttpStatus.OK)
     @GetMapping("/paypal:success")
-    public BaseResponse ipnSuccess(@RequestParam("token") String token) {
+    public void ipnSuccess(@RequestParam("token") String token) {
         log.info("IPN PayPal success");
         paymentService.handleSuccessPayment(token);
-        return BaseResponse.ok();
     }
 
     @ResponseStatus(HttpStatus.OK)
     @GetMapping("/paypal:cancel")
-    public BaseResponse ipnCancel(@RequestParam("token") String token) {
+    public void ipnCancel(@RequestParam("token") String token) {
         log.info("IPN PayPal cancel");
         paymentService.handleCancelPayment(token);
-        return BaseResponse.ok();
     }
 }

@@ -108,6 +108,11 @@
 			<version>0.0.1</version>
 		</dependency>
 		<dependency>
+			<groupId>org.aibles.ecommerce</groupId>
+			<artifactId>core-order-cache</artifactId>
+			<version>0.0.1</version>
+		</dependency>
+		<dependency>
 			<groupId>io.grpc</groupId>
 			<artifactId>grpc-netty-shaded</artifactId>
 			<version>1.62.2</version>

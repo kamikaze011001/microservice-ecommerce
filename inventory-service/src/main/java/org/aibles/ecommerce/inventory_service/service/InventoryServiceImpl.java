@@ -10,8 +10,10 @@ import org.aibles.ecommerce.common_dto.exception.NotFoundException;
 import org.aibles.ecommerce.common_dto.request.InventoryProductIdsRequest;
 import org.aibles.ecommerce.common_dto.response.InventoryProductIdsResponse;
 import org.aibles.ecommerce.common_dto.response.InventoryProductResponse;
+import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheRepository;
 import org.aibles.ecommerce.core_redis.constant.RedisConstant;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
+import org.aibles.ecommerce.inventory_service.constant.PaymentEventType;
 import org.aibles.ecommerce.inventory_service.entity.InventoryProduct;
 import org.aibles.ecommerce.inventory_service.entity.ProcessedPaymentEvent;
 import org.aibles.ecommerce.inventory_service.entity.ProductQuantityHistory;
@@ -53,6 +55,8 @@ public class InventoryServiceImpl implements InventoryService {
 
     private final RedisRepository redisRepository;
 
+    private final PendingOrderCacheRepository pendingOrderCacheRepository;
+
     private final RedissonClient redissonClient;
 
     private final ProcessedPaymentEventRepository processedPaymentEventRepository;
@@ -63,6 +67,7 @@ public class InventoryServiceImpl implements InventoryService {
                                 SlaveProductQuantityHistoryRepo slaveProductQuantityHistoryRepo,
                                 ApplicationEventPublisher applicationEventPublisher,
                                 RedisRepository redisRepository,
+                                PendingOrderCacheRepository pendingOrderCacheRepository,
                                 RedissonClient redissonClient,
                                 ProcessedPaymentEventRepository processedPaymentEventRepository) {
         this.masterInventoryProductRepository = masterInventoryProductRepository;
@@ -71,6 +76,7 @@ public class InventoryServiceImpl implements InventoryService {
         this.slaveProductQuantityHistoryRepo = slaveProductQuantityHistoryRepo;
         this.applicationEventPublisher = applicationEventPublisher;
         this.redisRepository = redisRepository;
+        this.pendingOrderCacheRepository = pendingOrderCacheRepository;
         this.redissonClient = redissonClient;
         this.processedPaymentEventRepository = processedPaymentEventRepository;
     }
@@ -158,7 +164,7 @@ public class InventoryServiceImpl implements InventoryService {
 
         // Idempotency check: Skip if already processed
         // If this returns false, the record is ALREADY saved by isEventAlreadyProcessed()
-        if (isEventAlreadyProcessed(orderId, "PAYMENT_SUCCESS")) {
+        if (isEventAlreadyProcessed(orderId, PaymentEventType.PAYMENT_SUCCESS)) {
             log.warn("(handleSuccessPayment) Order {} already processed, skipping", orderId);
             return;
         }
@@ -175,7 +181,7 @@ public class InventoryServiceImpl implements InventoryService {
     private void processInventoryUpdate(String orderId) {
         log.info("(processInventoryUpdate) Processing inventory update for order: {}", orderId);
 
-        Optional<Map<String, Long>> productQuantityFromOrderOptional = redisRepository.getProductQuantitiesForOrder(orderId);
+        Optional<Map<String, Long>> productQuantityFromOrderOptional = pendingOrderCacheRepository.getProductQuantitiesForOrder(orderId);
         if (productQuantityFromOrderOptional.isEmpty()) {
             log.warn("(processInventoryUpdate) orderId: {} is invalid or already processed", orderId);
             return;
@@ -223,7 +229,7 @@ public class InventoryServiceImpl implements InventoryService {
             }
 
             // 4. Remove order from pending orders (cleanup)
-            redisRepository.removeFromPendingOrders(orderId);
+            pendingOrderCacheRepository.removeFromPendingOrders(orderId);
             log.info("(processInventoryUpdate) Successfully processed inventory and cleaned up order: {}", orderId);
 
         } catch (Exception e) {
@@ -287,7 +293,7 @@ public class InventoryServiceImpl implements InventoryService {
      * @param eventType Event type (PAYMENT_SUCCESS)
      * @return true if event was already processed, false otherwise (and saves the record)
      */
-    private boolean isEventAlreadyProcessed(String orderId, String eventType) {
+    private boolean isEventAlreadyProcessed(String orderId, PaymentEventType eventType) {
         log.debug("(isEventAlreadyProcessed) Checking if event {} for order {} was already processed",
                 eventType, orderId);
 
