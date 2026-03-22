@@ -49,5 +49,6 @@ class SagaTimeoutSchedulerTest {
         scheduler.checkExpiredSagas();
 
         verify(orchestrationService, never()).compensate(any(), any());
+        verify(lock, never()).unlock();
     }
 }
