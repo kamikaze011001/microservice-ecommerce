@@ -20,7 +20,7 @@ public class SagaInstance {
     @Id
     private String id;
 
-    @Column(name = "order_id", nullable = false, unique = true)
+    @Column(name = "order_id", nullable = false)
     private String orderId;
 
     @Enumerated(EnumType.STRING)
@@ -28,7 +28,7 @@ public class SagaInstance {
     private SagaState state;
 
     @Version
-    private int version;
+    private Integer version;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
