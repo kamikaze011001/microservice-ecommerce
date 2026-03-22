@@ -121,17 +121,22 @@ public class SagaOrchestrationServiceImpl implements SagaOrchestrationService {
 
         PaymentSuccess avro = PaymentSuccess.newBuilder().setOrderId(orderId).build();
         boolean orderSent = sendWithRetry(topic("order-service.order.success-status"), avro);
-        boolean inventorySent = sendWithRetry(topic("inventory-service.inventory-product.update-quantity"), avro);
-
-        if (orderSent && inventorySent) {
-            saga.setState(SagaState.COMPLETED);
-        } else {
-            log.error("(handleSuccess) Failed to notify all services for orderId: {} — compensating", orderId);
-            saga.setState(SagaState.COMPENSATING);
-            sendWithRetry(topic("order-service.order.failed-status"), buildPaymentFailed(orderId));
-            saga.setState(SagaState.COMPENSATED);
+        if (!orderSent) {
+            log.error("(handleSuccess) Failed to notify order-service for orderId: {} — compensating", orderId);
+            compensate(saga, topic("order-service.order.failed-status"));
+            return;
         }
+
+        boolean inventorySent = sendWithRetry(topic("inventory-service.inventory-product.update-quantity"), avro);
+        if (!inventorySent) {
+            log.error("(handleSuccess) Failed to notify inventory-service for orderId: {} — compensating", orderId);
+            compensate(saga, topic("order-service.order.failed-status"));
+            return;
+        }
+
+        saga.setState(SagaState.COMPLETED);
         repo.save(saga);
+        log.info("(handleSuccess) Saga COMPLETED for orderId: {}", orderId);
     }
 
     private boolean sendWithRetry(String topicName, Object message) {
