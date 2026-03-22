@@ -91,6 +91,14 @@ public class MongoEventListener {
             Object id = ((Map<?, ?>) data).get("orderId");
             return id != null ? id.toString() : null;
         }
+        if (data instanceof String str) {
+            try {
+                return mapper.readTree(str).path("orderId").asText(null);
+            } catch (Exception e) {
+                log.warn("(extractOrderId) Failed to parse orderId from String data: {}", str, e);
+                return null;
+            }
+        }
         return null;
     }
 }

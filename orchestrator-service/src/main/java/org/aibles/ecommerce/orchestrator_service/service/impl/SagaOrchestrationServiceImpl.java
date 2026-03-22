@@ -165,6 +165,9 @@ public class SagaOrchestrationServiceImpl implements SagaOrchestrationService {
                 Object id = ((Map<?, ?>) data).get("orderId");
                 return id != null ? id.toString() : null;
             }
+            if (data instanceof String str) {
+                return objectMapper.readTree(str).path("orderId").asText(null);
+            }
             String json = objectMapper.writeValueAsString(data);
             return objectMapper.readTree(json).path("orderId").asText(null);
         } catch (Exception e) {
