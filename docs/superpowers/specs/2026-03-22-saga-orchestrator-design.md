@@ -16,62 +16,71 @@ A true Saga Orchestrator owns the state machine for distributed transactions and
 
 ## System Context: Three Flows
 
-The orchestrator handles three distinct event flows. Only Flow 1 requires stateful orchestration.
-
 | Flow | Trigger | Type | Change Needed |
 |---|---|---|---|
-| 1. Order-Payment Saga | `Order.Created` | Stateful — needs SagaInstance | Yes — new orchestration logic |
+| 1. Order-Payment Saga | `Order.Created` | Stateful — needs SagaInstance | Yes |
 | 2. Product Catalog Sync | `Product.Updated` | Stateless routing | No change |
 | 3. Inventory Quantity Sync | `Product.Quantity.Updated` | Stateless routing | No change |
 
-**Key insight:** Instead of dedicated Kafka reply topics, the orchestrator uses the existing MongoDB CDC pipeline as its reply bus. When payment-service saves a payment event to MongoDB, the CDC connector publishes it to Kafka, and the orchestrator reads it as the "reply." Correlation is by `orderId` — the orchestrator looks up the `SagaInstance` by `orderId` from the CDC event payload.
+**CDC as reply bus:** Instead of dedicated Kafka reply topics, the orchestrator uses the existing MongoDB CDC pipeline. When downstream services write events to MongoDB, the CDC connector publishes them to Kafka and the orchestrator reads them as replies. Correlation is by `orderId` extracted from the CDC event payload. This is valid Saga Orchestration — the orchestrator still owns the state machine; only the transport mechanism differs.
 
-This is still a valid Saga Orchestration pattern. The distinction is who owns the state machine (the orchestrator does), not the transport mechanism used for replies.
+**CDC event schema:** The MongoDB Kafka Connector watches the `ecommerce_inventory` database, `event` collection (topic: `ecommerce_db.ecommerce_inventory.event`). Every service — including order-service — writes its `MongoSavedEvent` to this same collection via `MongoSavedEventListener`. Each document has the shape `{id, name, data}` (matching `EventDTO`). The `data` field contains `orderId` for payment events. Order.Created will use the same mechanism: `MongoSavedEvent("Order.Created", {orderId})` → persisted to `ecommerce_inventory.event` → CDC → orchestrator. **No new infrastructure required.**
 
 ---
 
 ## Flow 1: Order-Payment Saga
 
-### Prerequisites (unchanged, pre-saga)
+### Prerequisites (pre-saga, unchanged)
 Before the saga starts, `order-service` already:
-1. Validates inventory synchronously via gRPC call to `inventory-service`
+1. Validates inventory synchronously via gRPC to `inventory-service`
 2. Atomically reserves inventory in Redis via Lua script
-3. Saves the order to MySQL with status `PROCESSING`
+3. Saves order to MySQL with status `PROCESSING`
 
-The saga begins **after** inventory is already reserved.
+The saga begins **after** inventory is reserved.
+
+---
 
 ### State Machine
 
 ```
 STARTED
-  └─► [orchestrator sends command to payment-service topic]
+  └─► [send command to payment-service topic]
       └─► AWAITING_PAYMENT
             ├─► Payment.Success  ──► CONFIRMING
-            │                          └─► [notify order + inventory services]
-            │                              └─► COMPLETED
+            │                          ├─► [confirm succeeds] ──► COMPLETED
+            │                          └─► [confirm fails]    ──► COMPENSATING
+            │                                                        └─► COMPENSATED
             ├─► Payment.Failed   ──► COMPENSATING
-            │                          └─► [notify order-service]
-            │                              └─► COMPENSATED
-            └─► Payment.Canceled ──► COMPENSATING
-                                       └─► [notify order-service]
-                                           └─► COMPENSATED
+            │                          └─► COMPENSATED
+            ├─► Payment.Canceled ──► COMPENSATING
+            │                          └─► COMPENSATED
+            └─► [timeout]        ──► COMPENSATING
+                                       └─► COMPENSATED
 ```
 
 **Terminal states:** `COMPLETED`, `COMPENSATED`, `FAILED`
 
+`FAILED` is reached when compensation itself cannot be completed after exhausting retries (e.g., the compensation Kafka publish fails repeatedly). A saga in `FAILED` requires manual intervention and alerting.
+
+**Timeout / late reply:** A saga timed out and moved to `COMPENSATING` will discard any late-arriving `Payment.Success` CDC event via the terminal-state idempotency check. If a payment was actually captured before the timeout, this creates an unrecoverable payment without a matched order. Mitigation: the `expiresAt` TTL (30 minutes) is deliberately generous to minimize this window; the payment-service PayPal order also expires, limiting the capture window. A dead-letter alert should be raised for any saga that is timed out while already COMPENSATED when a Payment.Success arrives.
+
+---
+
 ### Compensation Detail
 
-**On Payment.Success:**
-1. Send to `order-service.order.success-status` → order status → `COMPLETED`
-2. Send to `inventory-service.inventory-product.update-quantity` → deduct stock, release Redis reservation
+**On Payment.Success → CONFIRMING:**
+1. Send `PaymentSuccess{orderId}` Avro to `order-service.order.success-status` → order status → `COMPLETED`
+2. Send `PaymentSuccess{orderId}` Avro to `inventory-service.inventory-product.update-quantity` → deduct stock, release Redis reservation
 
-**On Payment.Failed / Payment.Canceled:**
+Both messages use the same `PaymentSuccess` Avro type and same Kafka topics as the current system — confirming inventory-service and order-service require **no internal changes** on the success path.
+
+**On Payment.Failed / Payment.Canceled / Timeout → COMPENSATING:**
 1. Send to `order-service.order.failed-status` or `order-service.order.canceled-status`
-2. `order-service` already handles Redis reservation release internally in `handleFailedOrder()` / `handleCanceledOrder()`
+2. `order-service` internally releases Redis reservation in `handleFailedOrder()` / `handleCanceledOrder()`
 
-No extra compensation step needed for inventory on failure — `order-service` owns that responsibility.
+No separate inventory compensation step needed on failure — `order-service` owns the Redis release.
 
-**Idempotency:** Before processing any CDC reply, `SagaOrchestrationService` checks if the saga is already in a terminal state. If yes, log and skip — prevents double-compensation from duplicate CDC events.
+**Compensation reliability:** Kafka publishing is at-least-once. Downstream services (`order-service`, `inventory-service`) use the existing `ProcessedPaymentEvent` unique compound index `(orderId, eventType)` for deduplication — idempotent consumers. The orchestrator retries the compensation Kafka publish on failure up to a configurable max (default 3); after exhausting retries, the saga transitions to `FAILED`.
 
 ---
 
@@ -81,19 +90,21 @@ Stored in MySQL (master). One row per order.
 
 ```sql
 CREATE TABLE saga_instance (
-    id          VARCHAR(36) PRIMARY KEY,
-    order_id    VARCHAR(36) NOT NULL UNIQUE,
-    state       ENUM('STARTED','AWAITING_PAYMENT','CONFIRMING','COMPENSATING',
-                     'COMPLETED','COMPENSATED','FAILED') NOT NULL,
-    created_at  DATETIME NOT NULL,
-    updated_at  DATETIME NOT NULL,
-    expires_at  DATETIME NOT NULL
+    id            VARCHAR(36) PRIMARY KEY,
+    order_id      VARCHAR(36) NOT NULL UNIQUE,
+    state         ENUM('STARTED','AWAITING_PAYMENT','CONFIRMING','COMPENSATING',
+                       'COMPLETED','COMPENSATED','FAILED') NOT NULL,
+    version       INT NOT NULL DEFAULT 0, -- optimistic locking
+    created_at    DATETIME NOT NULL,
+    updated_at    DATETIME NOT NULL,
+    expires_at    DATETIME NOT NULL       -- createdAt + 30 minutes
 );
 ```
 
-- `orderId` is unique — one saga per order, used for CDC correlation
-- `expiresAt` = `createdAt + 30 minutes` — used by timeout scheduler
-- No `failureReason` field — the order's own status record is the source of truth for failure details
+- `orderId` unique — one saga per order, used for CDC correlation
+- No `paymentId` column — the `PaymentSuccess` CDC event only carries `orderId` (confirmed: `PaymentSuccess` Avro schema has a single field). The PayPal capture ID is in the MySQL `payment.capture_id` column, queryable if a refund is ever needed.
+- `version` — JPA `@Version` field for optimistic locking; prevents race conditions when concurrent CDC events or the timeout scheduler attempt to transition the same saga simultaneously
+- No `failureReason` field — deliberate design decision; the order's own status record is the source of truth for failure details
 
 ---
 
@@ -103,45 +114,49 @@ CREATE TABLE saga_instance (
 
 | Component | Role |
 |---|---|
-| `SagaInstance` | JPA entity for the state machine row |
-| `SagaInstanceRepository` | Spring Data JPA repository |
-| `SagaOrchestrationService` | Core logic — creates sagas, drives transitions, sends Kafka commands |
-| `SagaTimeoutScheduler` | `@Scheduled` — finds expired `AWAITING_PAYMENT` sagas, triggers compensation |
+| `SagaInstance` | JPA entity; includes `@Version` for optimistic locking |
+| `SagaInstanceRepository` | Spring Data JPA repo; includes `findByOrderId` and `findExpiredSagas` queries |
+| `SagaOrchestrationService` | Core logic — `startSaga(orderId)`, `handlePaymentReply(event)`, `compensate(sagaId)` |
+| `SagaTimeoutScheduler` | `@Scheduled` — detects expired `AWAITING_PAYMENT` sagas, triggers compensation |
 
 ### Modified Components
 
 | Component | Change |
 |---|---|
-| `MongoEventListener` | Route `Order.Created` events to `SagaOrchestrationService.startSaga()`. Route `Payment.*` events to `SagaOrchestrationService.handleReply()` |
-| `EventListenerHandler` | Remove `handlePaymentSuccess`, `handlePaymentFailed`, `handlePaymentCanceled` (moved to `SagaOrchestrationService`). Keep `handleProductQuantityUpdated` and `handleProductUpdate` |
-| `EcommerceEvent` (common-dto) | Add `ORDER_CREATED("Order.Created", OrderCreatedEvent::new)` |
-| `order-service` `OrderServiceImpl` | After Redis reservation succeeds, publish `MongoSavedEvent("Order.Created")` with `orderId` in payload |
+| `MongoEventListener` | Route `Order.Created` → `SagaOrchestrationService.startSaga()`. Route `Payment.*` → `SagaOrchestrationService.handlePaymentReply()` |
+| `EventListenerHandler` | Remove `handlePaymentSuccess`, `handlePaymentFailed`, `handlePaymentCanceled`. Keep `handleProductQuantityUpdated` and `handleProductUpdate` (Flows 2 & 3) |
+| `EcommerceEvent` (common-dto) | Add `ORDER_CREATED("Order.Created", OrderCreatedEvent::new)`. This is a shared module — only the orchestrator-service and order-service consume/produce this event; no other service is affected |
+| `order-service` `OrderServiceImpl` | After Redis reservation succeeds (`create()` method), publish `MongoSavedEvent("Order.Created")` with payload `{orderId}`. No other changes |
 
 ### Unchanged
-- Flows 2 & 3 routing in `EventListenerHandler`
-- `order-service` Kafka listeners for success/failed/canceled
+- Flows 2 & 3 in `EventListenerHandler`
+- `order-service` Kafka listeners (success/failed/canceled)
 - `inventory-service`, `product-service`, `payment-service` internal logic
+
+---
+
+## Concurrency & Safety
+
+**Optimistic locking:** `SagaInstance` uses `@Version` (JPA optimistic locking). If two threads attempt to transition the same saga simultaneously (e.g., a CDC event and a timeout firing at the same instant), one will get an `OptimisticLockException` and retry or discard.
+
+**Idempotency at orchestrator level:** Before any state transition, `SagaOrchestrationService` checks if the saga is already in a terminal state (`COMPLETED`, `COMPENSATED`, `FAILED`). This check and the subsequent state update are performed within a single `@Transactional` boundary to prevent TOCTOU races.
+
+**Distributed lock for scheduler:** `SagaTimeoutScheduler` acquires a Redisson distributed lock (already available in the project) before querying and processing expired sagas. This prevents multiple orchestrator-service instances from double-compensating the same saga on timeout.
+
+**Unknown orderId:** If a CDC event arrives with an `orderId` that has no matching `SagaInstance`, `SagaOrchestrationService` logs a warning and discards the event. This handles pre-migration orders and replayed CDC events from before the saga was introduced.
+
+**Duplicate Order.Created (startSaga idempotency):** Kafka delivers at-least-once. If `Order.Created` is delivered twice for the same `orderId`, the second `startSaga` call will hit the `order_id UNIQUE` constraint. `SagaOrchestrationService.startSaga()` catches `DataIntegrityViolationException`, logs a warning, and returns — the existing `SagaInstance` is used. The first delivery wins.
+
+**Crash recovery:** If the orchestrator crashes after publishing a Kafka command but before updating `SagaInstance` state, the state machine remains in the previous state. On CDC reply arrival (or timeout), it will attempt the transition again — which is safe given idempotent downstream consumers. There is no full transactional outbox in this design; the risk window is small (in-memory JVM crash between two fast operations). This is an accepted trade-off; a full outbox pattern is a future improvement.
 
 ---
 
 ## Timeout Handling
 
-`SagaTimeoutScheduler` runs every 1 minute:
-```
-SELECT * FROM saga_instance
-WHERE state = 'AWAITING_PAYMENT' AND expires_at < NOW()
-```
-For each expired saga → treat as `Payment.Canceled` → drive to `COMPENSATING` → `COMPENSATED`.
-
----
-
-## What Does NOT Change
-
-The following existing services need **no internal changes** to their business logic:
-- `inventory-service` — already handles compensation in payment success path
-- `payment-service` — already publishes MongoDB events on all payment outcomes
-- `product-service` — unchanged
-- `order-service` listeners — unchanged; only `OrderServiceImpl.create()` gets one new `MongoSavedEvent` publish call
+`SagaTimeoutScheduler` runs every 1 minute (configurable via `application.saga.timeout-check-interval`):
+1. Acquire Redisson distributed lock
+2. Query: `SELECT * FROM saga_instance WHERE state = 'AWAITING_PAYMENT' AND expires_at < NOW()`
+3. For each result: call `SagaOrchestrationService.compensate()` → `COMPENSATING` → `COMPENSATED`
 
 ---
 
@@ -149,18 +164,18 @@ The following existing services need **no internal changes** to their business l
 
 ```
 common-dto/
-  src/.../event/EcommerceEvent.java          — add ORDER_CREATED
-  src/.../event/OrderCreatedEvent.java        — new event class
+  src/.../event/EcommerceEvent.java             — add ORDER_CREATED enum constant
+  src/.../event/OrderCreatedEvent.java           — new event class (orderId payload)
 
 order-service/
-  src/.../service/impl/OrderServiceImpl.java  — publish Order.Created after reservation
+  src/.../service/impl/OrderServiceImpl.java     — publish Order.Created after reservation in create()
 
 orchestrator-service/
-  src/.../entity/SagaInstance.java            — new JPA entity
+  src/.../entity/SagaInstance.java               — new JPA entity (@Version, paymentId)
   src/.../repository/SagaInstanceRepository.java — new
-  src/.../service/SagaOrchestrationService.java  — new
-  src/.../scheduler/SagaTimeoutScheduler.java    — new
-  src/.../listener/MongoEventListener.java    — route Order.Created + Payment.*
-  src/.../eventhandler/EventListenerHandler.java — remove 3 payment handlers
-  src/main/resources/application.yml         — add saga timeout config
+  src/.../service/SagaOrchestrationService.java  — new (startSaga, handlePaymentReply, compensate)
+  src/.../scheduler/SagaTimeoutScheduler.java    — new (distributed lock, 1-min interval)
+  src/.../listener/MongoEventListener.java       — route Order.Created + Payment.* to orchestration service
+  src/.../eventhandler/EventListenerHandler.java — remove 3 payment handler methods
+  src/main/resources/application.yml            — add saga.timeout-check-interval, saga.compensation-max-retries
 ```
