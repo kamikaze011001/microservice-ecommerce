@@ -81,6 +81,18 @@ class SagaOrchestrationServiceImplTest {
     }
 
     @Test
+    void handlePaymentReply_canceled_transitionsToCompensated() {
+        SagaInstance saga = existingSaga("order-7", SagaState.AWAITING_PAYMENT);
+        when(repo.findByOrderId("order-7")).thenReturn(Optional.of(saga));
+
+        PaymentCanceledEvent event = new PaymentCanceledEvent(this, Map.of("orderId", "order-7"));
+        service.handlePaymentReply(event);
+
+        assertThat(saga.getState()).isEqualTo(SagaState.COMPENSATED);
+        verify(kafkaTemplate, times(1)).send(anyString(), any()); // order canceled
+    }
+
+    @Test
     void handlePaymentReply_alreadyTerminal_isDiscarded() {
         SagaInstance saga = existingSaga("order-4", SagaState.COMPLETED);
         when(repo.findByOrderId("order-4")).thenReturn(Optional.of(saga));
