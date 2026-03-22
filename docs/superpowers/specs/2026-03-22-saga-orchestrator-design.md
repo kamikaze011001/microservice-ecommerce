@@ -114,7 +114,7 @@ CREATE TABLE saga_instance (
 
 | Component | Role |
 |---|---|
-| `SagaInstance` | JPA entity; includes `@Version` for optimistic locking |
+| `SagaInstance` | JPA entity; includes `@Version` for optimistic locking (no paymentId) |
 | `SagaInstanceRepository` | Spring Data JPA repo; includes `findByOrderId` and `findExpiredSagas` queries |
 | `SagaOrchestrationService` | Core logic — `startSaga(orderId)`, `handlePaymentReply(event)`, `compensate(sagaId)` |
 | `SagaTimeoutScheduler` | `@Scheduled` — detects expired `AWAITING_PAYMENT` sagas, triggers compensation |
