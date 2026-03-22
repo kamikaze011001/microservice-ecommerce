@@ -19,6 +19,7 @@ import org.aibles.order_service.service.impl.OrderServiceImpl;
 import org.aibles.order_service.service.impl.ShoppingCartServiceImpl;
 import org.redisson.api.RedissonClient;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
@@ -50,13 +51,15 @@ public class OrderServiceConfiguration {
                                      MasterOrderRepo masterOrderRepo,
                                      MasterOrderItemRepo masterOrderItemRepo,
                                      RedissonClient redissonClient,
-                                     ProcessedPaymentEventRepository processedPaymentEventRepository) {
+                                     ProcessedPaymentEventRepository processedPaymentEventRepository,
+                                     ApplicationEventPublisher eventPublisher) {
         return new OrderServiceImpl(inventoryGrpcClientService,
                 redisRepository,
                 pendingOrderCacheRepository,
                 masterOrderRepo,
                 masterOrderItemRepo,
                 redissonClient,
-                processedPaymentEventRepository);
+                processedPaymentEventRepository,
+                eventPublisher);
     }
 }

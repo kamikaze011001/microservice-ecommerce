@@ -5,9 +5,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.aibles.ecommerce.common_dto.event.MongoSavedEvent;
 import org.aibles.order_service.entity.Event;
 import org.aibles.order_service.repository.EventRepository;
-import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 @Component
 @Slf4j
@@ -16,7 +17,7 @@ public class MongoSavedEventListener {
 
     private final EventRepository eventRepository;
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Async
     public void handle(final MongoSavedEvent event) {
         log.info("(handle)event : {}", event);

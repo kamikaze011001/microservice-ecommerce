@@ -1,6 +1,9 @@
 package org.aibles.order_service.service.impl;
 
 import lombok.extern.slf4j.Slf4j;
+import org.aibles.ecommerce.common_dto.avro_kafka.OrderCreated;
+import org.aibles.ecommerce.common_dto.event.EcommerceEvent;
+import org.aibles.ecommerce.common_dto.event.MongoSavedEvent;
 import org.aibles.ecommerce.common_dto.exception.InternalErrorException;
 import org.aibles.ecommerce.common_dto.request.InventoryProductIdsRequest;
 import org.aibles.ecommerce.common_dto.response.InventoryProductIdsResponse;
@@ -25,6 +28,7 @@ import org.aibles.order_service.repository.master.MasterOrderRepo;
 import org.aibles.order_service.service.OrderService;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,6 +55,7 @@ public class OrderServiceImpl implements OrderService {
     private final MasterOrderItemRepo masterOrderItemRepo;
     private final RedissonClient redissonClient;
     private final ProcessedPaymentEventRepository processedPaymentEventRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public OrderServiceImpl(InventoryGrpcClientService inventoryGrpcClientService,
                             RedisRepository redisRepository,
@@ -58,7 +63,8 @@ public class OrderServiceImpl implements OrderService {
                             MasterOrderRepo masterOrderRepo,
                             MasterOrderItemRepo masterOrderItemRepo,
                             RedissonClient redissonClient,
-                            ProcessedPaymentEventRepository processedPaymentEventRepository) {
+                            ProcessedPaymentEventRepository processedPaymentEventRepository,
+                            ApplicationEventPublisher eventPublisher) {
         this.inventoryGrpcClientService = inventoryGrpcClientService;
         this.redisRepository = redisRepository;
         this.pendingOrderCacheRepository = pendingOrderCacheRepository;
@@ -66,6 +72,7 @@ public class OrderServiceImpl implements OrderService {
         this.masterOrderItemRepo = masterOrderItemRepo;
         this.redissonClient = redissonClient;
         this.processedPaymentEventRepository = processedPaymentEventRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -131,6 +138,16 @@ public class OrderServiceImpl implements OrderService {
 
             // Create order and persist metadata to cache
             Order order = persistOrderAndMetadata(userId, request, reservation);
+
+            // Publish Order.Created for Saga Orchestrator
+            OrderCreated orderCreated = OrderCreated.newBuilder()
+                    .setOrderId(order.getId())
+                    .build();
+            eventPublisher.publishEvent(new MongoSavedEvent(
+                    this,
+                    EcommerceEvent.ORDER_CREATED.getValue(),
+                    orderCreated
+            ));
 
             return order.getId();
 
