@@ -44,61 +44,6 @@ public class EventListenerHandler {
     }
 
     @EventListener
-    private void handlePaymentSuccess(PaymentSuccessEvent event) {
-        log.info("handle payment success event : {}", event.getData());
-
-        PaymentSuccess converted = convertEventData(
-                event.getData().toString(),
-                PaymentSuccess.class,
-                PaymentSuccess.SCHEMA$,
-                "payment success event"
-        );
-
-        if (converted != null) {
-            publishToTopics(converted, List.of(
-                    "order-service.order.success-status",
-                    "inventory-service.inventory-product.update-quantity"
-            ));
-        }
-    }
-
-    @EventListener
-    private void handlePaymentFailed(PaymentFailedEvent event) {
-        log.info("handle payment failed event : {}", event.getData());
-
-        PaymentFailed converted = convertEventData(
-                event.getData().toString(),
-                PaymentFailed.class,
-                PaymentFailed.SCHEMA$,
-                "payment failed event"
-        );
-
-        if (converted != null) {
-            publishToTopics(converted, Collections.singletonList(
-                    "order-service.order.failed-status"
-            ));
-        }
-    }
-
-    @EventListener
-    private void handlePaymentCanceled(PaymentCanceledEvent event) {
-        log.info("handle payment canceled event : {}", event.getData());
-
-        PaymentCanceled converted = convertEventData(
-                event.getData().toString(),
-                PaymentCanceled.class,
-                PaymentCanceled.SCHEMA$,
-                "payment canceled event"
-        );
-
-        if (converted != null) {
-            publishToTopics(converted, Collections.singletonList(
-                    "order-service.order.canceled-status"
-            ));
-        }
-    }
-
-    @EventListener
     private void handleProductUpdate(ProductUpdateEvent event) {
         log.info("handle product update event : {}", event.getData());
         ProductUpdate converted = convertEventData(
