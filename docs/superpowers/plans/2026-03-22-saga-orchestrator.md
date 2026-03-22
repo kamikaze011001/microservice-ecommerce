@@ -606,10 +606,10 @@ class SagaOrchestrationServiceImplTest {
     }
 
     @Test
-    void handlePaymentReply_success_transitionsToCompleted() throws Exception {
+    void handlePaymentReply_success_transitionsToCompleted() {
         SagaInstance saga = existingSaga("order-2", SagaState.AWAITING_PAYMENT);
         when(repo.findByOrderId("order-2")).thenReturn(Optional.of(saga));
-        when(objectMapper.writeValueAsString(any())).thenReturn("{\"orderId\":\"order-2\"}");
+        // event data is a Map — extractOrderId takes the instanceof Map path, objectMapper not called
 
         PaymentSuccessEvent event = new PaymentSuccessEvent(this, Map.of("orderId", "order-2"));
         service.handlePaymentReply(event);
@@ -619,10 +619,9 @@ class SagaOrchestrationServiceImplTest {
     }
 
     @Test
-    void handlePaymentReply_failed_transitionsToCompensated() throws Exception {
+    void handlePaymentReply_failed_transitionsToCompensated() {
         SagaInstance saga = existingSaga("order-3", SagaState.AWAITING_PAYMENT);
         when(repo.findByOrderId("order-3")).thenReturn(Optional.of(saga));
-        when(objectMapper.writeValueAsString(any())).thenReturn("{\"orderId\":\"order-3\"}");
 
         PaymentFailedEvent event = new PaymentFailedEvent(this, Map.of("orderId", "order-3"));
         service.handlePaymentReply(event);
@@ -653,9 +652,8 @@ class SagaOrchestrationServiceImplTest {
     }
 
     @Test
-    void compensate_sendsToOrderServiceAndTransitionsToCompensated() throws Exception {
+    void compensate_sendsToOrderServiceAndTransitionsToCompensated() {
         SagaInstance saga = existingSaga("order-5", SagaState.AWAITING_PAYMENT);
-        when(objectMapper.writeValueAsString(any())).thenReturn("{\"orderId\":\"order-5\"}");
 
         service.compensate(saga, "order-service.order.canceled-status");
 
