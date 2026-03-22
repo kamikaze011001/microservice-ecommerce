@@ -14,7 +14,8 @@ public enum EcommerceEvent {
     PAYMENT_SUCCESS("Payment.Success", PaymentSuccessEvent::new),
     PAYMENT_FAILED("Payment.Failed", PaymentFailedEvent::new),
     PAYMENT_CANCELED("Payment.Canceled", PaymentCanceledEvent::new),
-    PRODUCT_UPDATE("Product.Updated", ProductUpdateEvent::new);
+    PRODUCT_UPDATE("Product.Updated", ProductUpdateEvent::new),
+    ORDER_CREATED("Order.Created", OrderCreatedEvent::new);
 
     private final String value;
     private final BiFunction<Object, Object, BaseEvent> eventFactory;
