@@ -25,6 +25,9 @@ spring:
       properties:
         specific.avro.reader: false
       auto-offset-reset: latest
+  jpa:
+    hibernate:
+      ddl-auto: update
 application:
   kafka:
     group-id:
@@ -37,3 +40,7 @@ application:
       order-service.order.failed-status: order-service.order.failed-status
       order-service.order.canceled-status: order-service.order.canceled-status
       inventory-service.product.update: inventory-service.product.update
+  saga:
+    timeout-check-interval: 60000    # milliseconds
+    compensation-max-retries: 3
+    saga-ttl-minutes: 30
