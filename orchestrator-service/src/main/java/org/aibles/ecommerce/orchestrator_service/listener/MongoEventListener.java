@@ -67,9 +67,11 @@ public class MongoEventListener {
         // Route Order.Created to saga orchestrator
         if (EcommerceEvent.ORDER_CREATED.getValue().equals(eventName)) {
             String orderId = extractOrderId(eventDTO.getData());
-            if (orderId != null) {
-                sagaOrchestrationService.startSaga(orderId);
+            if (orderId == null) {
+                log.warn("(handleChangeStream) Could not extract orderId from Order.Created data: {} — skipping", eventDTO.getData());
+                return;
             }
+            sagaOrchestrationService.startSaga(orderId);
             return;
         }
 
