@@ -19,6 +19,7 @@ This is a microservice-based e-commerce platform built with Spring Boot and Java
 
 ### Core Modules (in `/core`)
 - **common-dto**: Shared DTOs, events, exceptions, and common request/response models
+- **core-order-cache**: Order caching utilities
 - **core-routing-db**: Master-slave database routing configuration
 - **core-redis**: Redis configuration and utilities
 - **core-email**: Email service with Thymeleaf templates
@@ -40,6 +41,33 @@ This is a microservice-based e-commerce platform built with Spring Boot and Java
 
 ## Common Development Commands
 
+### One-Time Setup (First Run)
+```bash
+# 1. Configure environment
+cp docker/.env.example docker/.env  # then fill in passwords + PayPal credentials
+
+# 2. Start all infrastructure
+./start-infrastructure.sh
+
+# 3. Initialize & configure Vault (first time only)
+./init-vault.sh
+
+# 4. Create Kafka topics
+./init-kafka-topics.sh
+
+# 5. Install MongoDB Kafka Connector (CDC pipeline)
+./install-mongodb-kafka-connector.sh
+
+# 6. Build all Maven modules in dependency order
+./install-modules.sh
+```
+
+### After Docker Restart (Vault Re-seals Automatically)
+```bash
+./start-infrastructure.sh   # restart containers
+./init-vault.sh unseal      # re-unseal Vault — services will fail to start without this
+```
+
 ### Building and Running Services
 ```bash
 # Build all services (run from service directory)
@@ -57,28 +85,33 @@ mvn clean package
 
 ### Infrastructure Management
 ```bash
-# Start MySQL master-slave cluster
+# Start all infrastructure at once
+./start-infrastructure.sh
+
+# Or start individual services
 docker compose -f docker/mysql.yml up -d
-
-# Start Kafka
 docker compose -f docker/kafka.yml up -d
-
-# Start MongoDB
 docker compose -f docker/mongodb.yml up -d
-
-# Start Redis
 docker compose -f docker/redis.yml up -d
-
-# Start Vault
 docker compose -f docker/vault.yml up -d
 ```
 
 ### Development Workflow
-1. Start required infrastructure services with Docker Compose
-2. Configure Vault with necessary secrets
-3. Start Eureka Server first
-4. Start other services (they will register with Eureka)
-5. Access Swagger UI via Gateway at `/swagger-ui.html`
+1. Follow One-Time Setup above (first run only)
+2. Start Eureka Server first: `cd eureka-server && mvn spring-boot:run`
+3. Start auth + gateway, then business services
+4. **inventory-service must start before order-service** (gRPC dependency)
+5. Swagger UI: `http://localhost:8080/swagger-ui.html`
+
+### Service Ports
+| Service | Port |
+|---|---|
+| Gateway (entry point) | 8080 |
+| Eureka Dashboard | 8761 |
+| Vault UI | 8200 |
+| Kafka Connect REST | 8083 |
+| MySQL Master | 3306 |
+| MySQL Slave1/Slave2 | 3307/3308 |
 
 ## Database Architecture
 
@@ -123,6 +156,8 @@ Services use `@EnableRoutingDatasource` annotation with separate configurations:
 - **Caching**: Redis for session data and temporary storage
 
 ## Development Notes
+- **Maven build order matters**: core modules must be installed before services — use `./install-modules.sh`
+- **Vault secrets required at startup**: each service fetches config from Vault on boot; if Vault is sealed, services crash on startup
 - All services use Spring Boot 3.3.6 with consistent dependency versions
 - Lombok is used extensively for reducing boilerplate
 - Custom validation annotations (`@ValidEmail`, `@ValidPassword`)
