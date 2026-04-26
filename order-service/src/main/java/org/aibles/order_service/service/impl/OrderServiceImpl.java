@@ -5,9 +5,11 @@ import org.aibles.ecommerce.common_dto.avro_kafka.OrderCreated;
 import org.aibles.ecommerce.common_dto.event.EcommerceEvent;
 import org.aibles.ecommerce.common_dto.event.MongoSavedEvent;
 import org.aibles.ecommerce.common_dto.exception.InternalErrorException;
+import org.aibles.ecommerce.common_dto.exception.NotFoundException;
 import org.aibles.ecommerce.common_dto.request.InventoryProductIdsRequest;
 import org.aibles.ecommerce.common_dto.response.InventoryProductIdsResponse;
 import org.aibles.ecommerce.common_dto.response.InventoryProductResponse;
+import org.aibles.ecommerce.common_dto.response.PagingResponse;
 import org.aibles.ecommerce.core_order_cache.constant.OrderCacheConstant;
 import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheRepository;
 import org.aibles.ecommerce.core_redis.constant.RedisConstant;
@@ -18,6 +20,9 @@ import org.aibles.order_service.constant.PaymentEventType;
 import org.aibles.order_service.dto.request.OrderItemRequest;
 import org.aibles.order_service.dto.request.OrderRequest;
 import org.aibles.order_service.dto.response.OrderCreatedResponse;
+import org.aibles.order_service.dto.response.OrderDetailResponse;
+import org.aibles.order_service.dto.response.OrderItemResponse;
+import org.aibles.order_service.dto.response.OrderSummaryResponse;
 import org.aibles.order_service.entity.Order;
 import org.aibles.order_service.entity.OrderItem;
 import org.aibles.order_service.exception.InvalidProductQuantityException;
@@ -25,11 +30,15 @@ import org.aibles.order_service.entity.ProcessedPaymentEvent;
 import org.aibles.order_service.repository.ProcessedPaymentEventRepository;
 import org.aibles.order_service.repository.master.MasterOrderItemRepo;
 import org.aibles.order_service.repository.master.MasterOrderRepo;
+import org.aibles.order_service.repository.slave.SlaveOrderItemRepo;
+import org.aibles.order_service.repository.slave.SlaveOrderRepo;
 import org.aibles.order_service.service.OrderService;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -56,6 +65,8 @@ public class OrderServiceImpl implements OrderService {
     private final RedissonClient redissonClient;
     private final ProcessedPaymentEventRepository processedPaymentEventRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final SlaveOrderRepo slaveOrderRepo;
+    private final SlaveOrderItemRepo slaveOrderItemRepo;
 
     public OrderServiceImpl(InventoryGrpcClientService inventoryGrpcClientService,
                             RedisRepository redisRepository,
@@ -64,7 +75,9 @@ public class OrderServiceImpl implements OrderService {
                             MasterOrderItemRepo masterOrderItemRepo,
                             RedissonClient redissonClient,
                             ProcessedPaymentEventRepository processedPaymentEventRepository,
-                            ApplicationEventPublisher eventPublisher) {
+                            ApplicationEventPublisher eventPublisher,
+                            SlaveOrderRepo slaveOrderRepo,
+                            SlaveOrderItemRepo slaveOrderItemRepo) {
         this.inventoryGrpcClientService = inventoryGrpcClientService;
         this.redisRepository = redisRepository;
         this.pendingOrderCacheRepository = pendingOrderCacheRepository;
@@ -73,6 +86,8 @@ public class OrderServiceImpl implements OrderService {
         this.redissonClient = redissonClient;
         this.processedPaymentEventRepository = processedPaymentEventRepository;
         this.eventPublisher = eventPublisher;
+        this.slaveOrderRepo = slaveOrderRepo;
+        this.slaveOrderItemRepo = slaveOrderItemRepo;
     }
 
     @Override
@@ -568,5 +583,33 @@ public class OrderServiceImpl implements OrderService {
                     eventType, orderId);
             return true;
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PagingResponse list(String userId, int page, int size) {
+        log.info("(list) userId: {}, page: {}, size: {}", userId, page, size);
+        PageRequest pageRequest = PageRequest.of(page - 1, size);
+        Page<Order> ordersByPage = slaveOrderRepo.findAllByUserId(userId, pageRequest);
+        List<Order> orders = ordersByPage.toList();
+        List<OrderSummaryResponse> orderSummaryResponses = orders.stream().map(OrderSummaryResponse::from).toList();
+        return PagingResponse.builder()
+                .size(size)
+                .page(page)
+                .total(ordersByPage.getTotalElements())
+                .data(orderSummaryResponses)
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OrderDetailResponse get(String userId, String orderId) {
+        log.info("(get) userId: {}, orderId: {}", userId, orderId);
+        Order order = slaveOrderRepo.findByIdAndUserId(orderId, userId).orElseThrow(NotFoundException::new);
+
+        List<OrderItem> orderItems = slaveOrderItemRepo.findAllByOrderId(orderId);
+
+        List<OrderItemResponse> orderItemResponses = orderItems.stream().map(OrderItemResponse::from).toList();
+        return OrderDetailResponse.from(order, orderItemResponses);
     }
 }

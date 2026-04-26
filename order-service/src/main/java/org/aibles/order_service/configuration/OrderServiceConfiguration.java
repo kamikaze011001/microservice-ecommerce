@@ -12,6 +12,8 @@ import org.aibles.order_service.repository.master.MasterOrderItemRepo;
 import org.aibles.order_service.repository.master.MasterOrderRepo;
 import org.aibles.order_service.repository.master.MasterShoppingCartItemRepo;
 import org.aibles.order_service.repository.master.MasterShoppingCartRepo;
+import org.aibles.order_service.repository.slave.SlaveOrderItemRepo;
+import org.aibles.order_service.repository.slave.SlaveOrderRepo;
 import org.aibles.order_service.repository.slave.SlaveShoppingCartRepo;
 import org.aibles.order_service.service.OrderService;
 import org.aibles.order_service.service.ShoppingCartService;
@@ -52,7 +54,9 @@ public class OrderServiceConfiguration {
                                      MasterOrderItemRepo masterOrderItemRepo,
                                      RedissonClient redissonClient,
                                      ProcessedPaymentEventRepository processedPaymentEventRepository,
-                                     ApplicationEventPublisher eventPublisher) {
+                                     ApplicationEventPublisher eventPublisher,
+                                     SlaveOrderRepo slaveOrderRepo,
+                                     SlaveOrderItemRepo slaveOrderItemRepo) {
         return new OrderServiceImpl(inventoryGrpcClientService,
                 redisRepository,
                 pendingOrderCacheRepository,
@@ -60,6 +64,8 @@ public class OrderServiceConfiguration {
                 masterOrderItemRepo,
                 redissonClient,
                 processedPaymentEventRepository,
-                eventPublisher);
+                eventPublisher,
+                slaveOrderRepo,
+                slaveOrderItemRepo);
     }
 }
