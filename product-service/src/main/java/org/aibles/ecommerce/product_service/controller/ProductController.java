@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -42,8 +43,10 @@ public class ProductController {
 
     @GetMapping
     @ResponseStatus(HttpStatus.OK)
-    public BaseResponse list(final PagingRequest pagingRequest) {
-        PagingResponse response = productService.list(pagingRequest.getPage(), pagingRequest.getSize());
+    public BaseResponse list(final PagingRequest pagingRequest,
+                             @RequestParam(required = false) String keyword,
+                             @RequestParam(required = false) String category) {
+        PagingResponse response = productService.list(pagingRequest.getPage(), pagingRequest.getSize(), keyword, category);
         return BaseResponse.ok(response);
     }
 

@@ -6,7 +6,7 @@ import java.util.List;
 
 public interface ProductRepositoryCustom {
 
-    List<Product> list(Integer page, Integer size);
+    List<Product> list(Integer page, Integer size, String keyword, String category);
 
-    long total();
+    long total(String category, String keyword);
 }

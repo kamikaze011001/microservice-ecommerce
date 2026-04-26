@@ -29,6 +29,8 @@ public class ProductResponse {
 
     private long quantity;
 
+    private String category;
+
     public static ProductResponse from(final Product product, final long quantity) {
         return ProductResponse.builder()
                 .id(product.getId())
@@ -36,6 +38,7 @@ public class ProductResponse {
                 .price(product.getPrice())
                 .quantity(quantity)
                 .attributes(product.getAttributes())
+                .category(product.getCategory())
                 .build();
     }
 }

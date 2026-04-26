@@ -12,5 +12,7 @@ public interface ProductService {
 
     void update(String id, ProductRequest productRequest);
 
-    PagingResponse list(Integer page, Integer size);
+    PagingResponse list(Integer page, Integer size, String keyword, String category);
+
+    void delete(String id);
 }

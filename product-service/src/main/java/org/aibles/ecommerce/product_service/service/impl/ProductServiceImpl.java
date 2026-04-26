@@ -71,6 +71,7 @@ public class ProductServiceImpl implements ProductService {
         product.setName(productRequest.getName());
         product.setPrice(productRequest.getPrice());
         product.setAttributes(productRequest.getAttributes());
+        product.setCategory(productRequest.getCategory());
         ProductUpdate productUpdate = ProductUpdate.newBuilder()
                 .setId(product.getId())
                 .setName(product.getName())
@@ -86,10 +87,10 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagingResponse list(Integer page, Integer size) {
-        log.info("(list)page: {}, size: {}", page, size);
-        page = page - 1;
-        List<Product> products = productRepository.list(page, size);
+    public PagingResponse list(Integer page, Integer size, String keyword, String category) {
+        log.info("(list) page: {}, size: {}, keyword: {}, category: {}", page, size, keyword, category);
+        int zeroBasedPage = page - 1;
+        List<Product> products = productRepository.list(zeroBasedPage, size, keyword, category);
         List<ProductResponse> productResponses = products.stream().map(product -> {
                     Long quantitySum = productQuantityHistoryRepo.getQuantitySumByProductId(product.getId());
                     return ProductResponse.from(product,
@@ -97,12 +98,18 @@ public class ProductServiceImpl implements ProductService {
                     );
                 }
         ).toList();
-        long total = productRepository.total();
+        long total = productRepository.total(category, keyword);
         return PagingResponse.builder()
                 .page(page)
                 .size(size)
                 .total(total)
                 .data(productResponses)
                 .build();
+    }
+
+    @Override
+    public void delete(String id) {
+        // Implemented in Plan 4
+        throw new UnsupportedOperationException("delete not yet implemented");
     }
 }

@@ -29,11 +29,14 @@ public class ProductRequest {
     @Size(min = 1)
     private Map<String, Object> attributes;
 
+    private String category;
+
     public static Product to(final ProductRequest productRequest) {
         return Product.builder()
                 .name(productRequest.name)
                 .price(productRequest.price)
                 .attributes(productRequest.attributes)
+                .category(productRequest.category)
                 .build();
     }
 }
