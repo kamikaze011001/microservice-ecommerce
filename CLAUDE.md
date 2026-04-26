@@ -109,7 +109,7 @@ docker compose -f docker/vault.yml up -d
 | Gateway (entry point) | 8080 |
 | Eureka Dashboard | 8761 |
 | Vault UI | 8200 |
-| Kafka Connect REST | 8083 |
+| Kafka Connect REST | 8093 |
 | MySQL Master | 3306 |
 | MySQL Slave1/Slave2 | 3307/3308 |
 
@@ -142,18 +142,47 @@ Services use `@EnableRoutingDatasource` annotation with separate configurations:
 4. Event publishing for success/failure scenarios
 5. Distributed transaction management via orchestrator
 
-## Security Architecture
-- JWT-based authentication with RS256 signing
-- Role-based access control with User/Admin roles
-- OAuth2 authorization server implementation
-- Vault integration for secure configuration management
-- Request filtering through Gateway with authentication
+## Security & Communication
+- **Auth**: JWT (RS256) issued by `authorization-server`; gateway validates and injects `X-User-Id`.
+- **External**: REST through gateway. **Internal**: gRPC (see `grpc-common` protos).
+- **Async**: Kafka with Avro + Confluent Schema Registry. **Cache**: Redis.
 
-## Service Communication
-- **External**: REST APIs through Spring Cloud Gateway
-- **Internal**: gRPC for high-performance service-to-service calls
-- **Async**: Kafka events for decoupled communication
-- **Caching**: Redis for session data and temporary storage
+## Code Conventions (non-obvious)
+
+### Gateway routing — no StripPrefix
+Each service sets `server.servlet.context-path: /<service-name>` in its `application.yml`.
+Gateway routes use `Path=/<service-name>/**` → `lb://<SERVICE-NAME>` (uppercase, no
+`StripPrefix` filter). Controllers use bare paths like `/v1/orders` — the context path
+handles the prefix. Don't add `StripPrefix` and don't repeat the service name in `@RequestMapping`.
+
+### User identity
+Gateway extracts `userId` from the JWT and forwards it as the `X-User-Id` header.
+Controllers read it via `@RequestHeader("X-User-Id") String userId`. Don't parse JWTs
+in business services.
+
+### Bean wiring
+Service implementations are NOT annotated with `@Component`/`@Service`. They are
+constructed manually in `@Configuration` classes (e.g. `OrderServiceConfiguration`).
+When adding a constructor parameter, update the corresponding `@Bean` method.
+
+### Repository layout
+JPA-using services split repositories into `repository/master/` (writes) and
+`repository/slave/` (reads). The routing datasource picks the connection based on
+which package the bean lives in.
+
+### Response & paging shapes (from `common-dto`)
+- All controllers return `BaseResponse` via static factories: `BaseResponse.ok(data)`,
+  `.created(data)`, `.notFound(data)`, etc. Don't construct `BaseResponse` directly.
+- `PagingRequest`: `page` is **1-indexed** (min 1), `size` defaults to 10. Convert to
+  0-indexed (`page - 1`) before passing to Spring Data / MongoTemplate.
+
+### Saga trigger
+The order Saga is triggered by MongoDB CDC events (Mongo → Kafka Connect → orchestrator),
+not by a direct call from order-service. See `install-mongodb-kafka-connector.sh`.
+
+### Tests in CI without infra
+Spring Boot `contextLoads` tests are guarded so they pass without Kafka/Vault/MySQL
+available (see orchestrator-service for the pattern). Mirror this when adding new services.
 
 ## Development Notes
 - **Maven build order matters**: core modules must be installed before services — use `./install-modules.sh`
