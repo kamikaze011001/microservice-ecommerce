@@ -26,6 +26,10 @@ spring:
           uri: lb://PAYMENT-SERVICE
           predicates:
             - Path=/payment-service/**
+        - id: bff-service
+          uri: lb://BFF-SERVICE
+          predicates:
+            - Path=/bff-service/**
     vault:
       uri: http://localhost:8200
       token: ${VAULT_TOKEN}
@@ -50,6 +54,8 @@ springdoc:
         url: /order-service/v3/api-docs
       - name: payment-service
         url: /payment-service/v3/api-docs
+      - name: bff-service
+        url: /bff-service/v3/api-docs
     enabled: true
     path: /swagger-ui.html
 eureka:

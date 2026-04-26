@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: bff-service
+  cloud:
+    vault:
+      uri: http://localhost:8200
+      token: ${VAULT_TOKEN}
+      fail-fast: true
+      kv:
+        enabled: true
+        backend: secret
+        default-context: ecommerce
+        application-name: bff-service
+  config:
+    import: optional:vault://
+server:
+  servlet:
+    context-path: /bff-service

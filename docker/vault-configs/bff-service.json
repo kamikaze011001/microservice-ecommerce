@@ -1,0 +1,7 @@
+{
+  "server.port": "8087",
+  "eureka.client.service-url.defaultZone": "http://localhost:8761/eureka/",
+  "eureka.instance.prefer-ip-address": "true",
+  "inventory.grpc.host": "localhost",
+  "inventory.grpc.port": "9090"
+}
