@@ -42,7 +42,7 @@ services:
       kafka:
         condition: service_healthy
     ports:
-      - "8081:8081"
+      - "8091:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: kafka-schema-registry
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'PLAINTEXT://kafka:29092'
@@ -56,7 +56,7 @@ services:
   kafka-connect:
     image: confluentinc/cp-kafka-connect:7.7.1
     ports:
-      - "8083:8083"
+      - "8093:8083"
     depends_on:
       kafka-schema-registry:
         condition: service_healthy

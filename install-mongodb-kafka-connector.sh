@@ -19,7 +19,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-KAFKA_CONNECT_URL="${KAFKA_CONNECT_URL:-http://localhost:8083}"
+KAFKA_CONNECT_URL="${KAFKA_CONNECT_URL:-http://localhost:8093}"
 CONNECTOR_NAME="${CONNECTOR_NAME:-mongodb-source-connector}"
 CONNECTOR_PLUGIN_DIR="./docker/connectors-plugin"
 MONGODB_CONNECTOR_VERSION="1.13.1"
@@ -305,7 +305,7 @@ Options:
   --help             Show this help message
 
 Environment Variables:
-  KAFKA_CONNECT_URL   Kafka Connect REST API URL (default: http://localhost:8083)
+  KAFKA_CONNECT_URL   Kafka Connect REST API URL (default: http://localhost:8093)
   CONNECTOR_NAME      Name of the connector (default: mongodb-source-connector)
   MONGO_HOST          MongoDB host (default: ecommerce-mongodb)
   MONGO_PORT          MongoDB port (default: 27017)
@@ -328,7 +328,7 @@ Troubleshooting:
      docker compose -f docker/kafka.yml logs -f kafka-connect
 
   3. Verify Schema Registry is running:
-     curl http://localhost:8081/subjects
+     curl http://localhost:8091/subjects
 EOF
 }
 
