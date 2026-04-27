@@ -10,6 +10,8 @@ import org.aibles.ecommerce.common_dto.exception.NotFoundException;
 import org.aibles.ecommerce.common_dto.request.InventoryProductIdsRequest;
 import org.aibles.ecommerce.common_dto.response.InventoryProductIdsResponse;
 import org.aibles.ecommerce.common_dto.response.InventoryProductResponse;
+import org.aibles.ecommerce.common_dto.response.PagingResponse;
+import org.aibles.ecommerce.inventory_service.dto.response.InventoryProductListResponse;
 import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheRepository;
 import org.aibles.ecommerce.core_redis.constant.RedisConstant;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
@@ -27,6 +29,8 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -155,6 +159,44 @@ public class InventoryServiceImpl implements InventoryService {
                 EcommerceEvent.PRODUCT_QUANTITY_UPDATED.getValue(),
                 eventData);
         applicationEventPublisher.publishEvent(mongoSavedEvent);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PagingResponse listAll(int page, int size) {
+        log.info("(listAll) page: {}, size: {}", page, size);
+
+        Page<InventoryProduct> inventoryProductPage = slaveInventoryProductRepository
+                .findAll(PageRequest.of(page - 1, size));
+
+        List<InventoryProduct> inventoryProducts = inventoryProductPage.getContent();
+
+        List<String> productIds = inventoryProducts.stream().map(InventoryProduct::getId).toList();
+
+        List<ProductQuantitySummary> productQuantitySummaries = slaveProductQuantityHistoryRepo
+                .sumQuantitiesByProductIds(productIds);
+
+        Map<String, Long> quantityMap = new HashMap<>();
+
+        productQuantitySummaries.forEach(productQuantitySummary -> {
+            quantityMap.putIfAbsent(productQuantitySummary.getProductId(), productQuantitySummary.getTotalQuantity());
+        });
+
+        List<InventoryProductListResponse> inventoryProductListResponses = inventoryProducts.stream().map(
+                inventoryProduct -> InventoryProductListResponse.builder()
+                        .id(inventoryProduct.getId())
+                        .name(inventoryProduct.getName())
+                        .price(inventoryProduct.getPrice())
+                        .quantity(quantityMap.getOrDefault(inventoryProduct.getId(), 0L))
+                        .build()
+        ).toList();
+
+        return PagingResponse.builder()
+                .size(size)
+                .page(page)
+                .total(inventoryProductPage.getTotalElements())
+                .data(inventoryProductListResponses)
+                .build();
     }
 
     @Override

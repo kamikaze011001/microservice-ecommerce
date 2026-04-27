@@ -2,7 +2,9 @@ package org.aibles.ecommerce.inventory_service.controller;
 
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.aibles.ecommerce.common_dto.request.PagingRequest;
 import org.aibles.ecommerce.common_dto.response.BaseResponse;
+import org.aibles.ecommerce.common_dto.response.PagingResponse;
 import org.aibles.ecommerce.inventory_service.dto.request.InventoryProductUpdateRequest;
 import org.aibles.ecommerce.inventory_service.service.InventoryService;
 import org.springframework.web.bind.annotation.*;
@@ -23,5 +25,12 @@ public class InventoryController {
         log.info("(update) request: {}", request);
         inventoryService.update(id, request.getQuantity(), request.getIsAdd());
         return BaseResponse.ok();
+    }
+
+    @GetMapping
+    public BaseResponse listAll(final PagingRequest pagingRequest) {
+        log.info("(listAll) page: {}, size: {}", pagingRequest.getPage(), pagingRequest.getSize());
+        PagingResponse response = inventoryService.listAll(pagingRequest.getPage(), pagingRequest.getSize());
+        return BaseResponse.ok(response);
     }
 }

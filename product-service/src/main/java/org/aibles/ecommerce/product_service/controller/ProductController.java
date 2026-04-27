@@ -7,6 +7,7 @@ import org.aibles.ecommerce.product_service.dto.request.ProductRequest;
 import org.aibles.ecommerce.product_service.dto.response.ProductResponse;
 import org.aibles.ecommerce.product_service.service.ProductService;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -54,6 +55,13 @@ public class ProductController {
     @ResponseStatus(HttpStatus.OK)
     public BaseResponse update(@PathVariable String id, @RequestBody ProductRequest request) {
         productService.update(id, request);
+        return BaseResponse.ok();
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.OK)
+    public BaseResponse delete(@PathVariable String id) {
+        productService.delete(id);
         return BaseResponse.ok();
     }
 }

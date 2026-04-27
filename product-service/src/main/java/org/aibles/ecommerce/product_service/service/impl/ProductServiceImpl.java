@@ -108,8 +108,10 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
     public void delete(String id) {
-        // Implemented in Plan 4
-        throw new UnsupportedOperationException("delete not yet implemented");
+        log.info("(delete) id: {}", id);
+        productRepository.findById(id).orElseThrow(NotFoundException::new);
+        productRepository.deleteById(id);
     }
 }
