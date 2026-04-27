@@ -15,15 +15,19 @@ echo "========================================="
 echo ""
 
 # Configuration
-VAULT_ADDR="http://localhost:8200"
-VAULT_INIT_FILE="vault-keys.json"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$REPO_ROOT"
+
+VAULT_ADDR="${VAULT_ADDR:-http://localhost:8200}"
+VAULT_INIT_FILE="$REPO_ROOT/vault-keys.json"
 
 # Function to check if Vault is running
 check_vault_running() {
     if ! curl -s "$VAULT_ADDR/v1/sys/health" > /dev/null; then
         echo -e "${RED}❌ Vault is not running at $VAULT_ADDR${NC}"
         echo "Please start Vault first:"
-        echo "  ./start-infrastructure.sh"
+        echo "  make infra-up"
         exit 1
     fi
     echo -e "${GREEN}✅ Vault is running${NC}"
@@ -34,7 +38,7 @@ check_vault_sealed() {
     status=$(curl -s "$VAULT_ADDR/v1/sys/seal-status")
     if echo "$status" | grep -q '"sealed":true'; then
         echo -e "${YELLOW}🔒 Vault is sealed. Attempting to unseal...${NC}"
-        ./init-vault.sh unseal
+        bash "$SCRIPT_DIR/unseal.sh"
         echo ""
     else
         echo -e "${GREEN}🔓 Vault is unsealed${NC}"
@@ -46,7 +50,7 @@ get_root_token() {
     if [ ! -f "$VAULT_INIT_FILE" ]; then
         echo -e "${RED}❌ Vault keys file not found: $VAULT_INIT_FILE${NC}"
         echo "Please initialize Vault first:"
-        echo "  ./init-vault.sh"
+        echo "  make vault-init"
         exit 1
     fi
     
@@ -68,7 +72,7 @@ set_vault_env() {
     echo "export VAULT_TOKEN=\"$token\""
     echo ""
     echo -e "${YELLOW}💡 To set these in your current session, run:${NC}"
-    echo -e "${BLUE}source <(./vault-login.sh env)${NC}"
+    echo -e "${BLUE}source <(scripts/vault/login.sh env)${NC}"
 }
 
 # Function to open browser
@@ -123,8 +127,6 @@ test_token() {
 
 # Main execution
 main() {
-    cd "$(dirname "$0")"
-    
     check_vault_running
     check_vault_sealed
     
@@ -197,9 +199,9 @@ case "${1:-login}" in
         echo "  ui     - Open Vault UI in browser"
         echo ""
         echo "Examples:"
-        echo "  ./vault-login.sh              # Full login process"
-        echo "  source <(./vault-login.sh env) # Set env vars"
-        echo "  ./vault-login.sh ui           # Open browser"
+        echo "  scripts/vault/login.sh              # Full login process"
+        echo "  source <(scripts/vault/login.sh env) # Set env vars"
+        echo "  scripts/vault/login.sh ui           # Open browser"
         exit 1
         ;;
 esac

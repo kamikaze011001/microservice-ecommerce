@@ -81,13 +81,15 @@ infra-status:
 # Vault
 # ============================================================================
 
-.PHONY: vault-init vault-unseal vault-import
+.PHONY: vault-init vault-unseal vault-import vault-login
 vault-init:
 	@bash scripts/vault/init.sh
 vault-unseal:
 	@bash scripts/vault/unseal.sh
 vault-import:
 	@bash scripts/vault/import-secrets.sh
+vault-login:
+	@bash scripts/vault/login.sh
 
 # ============================================================================
 # Kafka
