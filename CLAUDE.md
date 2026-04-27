@@ -44,29 +44,36 @@ This is a microservice-based e-commerce platform built with Spring Boot and Java
 ### One-Time Setup (First Run)
 ```bash
 # 1. Configure environment
-cp docker/.env.example docker/.env  # then fill in passwords + PayPal credentials
+cp docker/.env.example docker/.env  # fill in passwords + PayPal credentials
 
-# 2. Start all infrastructure
-./start-infrastructure.sh
+# 2. Bootstrap everything (infra → vault → kafka → maven → seed data)
+make bootstrap
 
-# 3. Initialize & configure Vault (first time only)
-./init-vault.sh
-
-# 4. Create Kafka topics
-./init-kafka-topics.sh
-
-# 5. Install MongoDB Kafka Connector (CDC pipeline)
-./install-mongodb-kafka-connector.sh
-
-# 6. Build all Maven modules in dependency order
-./install-modules.sh
+# 3. Start the services
+make up
 ```
 
-### After Docker Restart (Vault Re-seals Automatically)
+`make bootstrap` is idempotent and seeds MySQL (`ecommerce_dev`) plus
+MongoDB collections `api_role` and `product` from `docker/*.{sql,json}`.
+
+### Daily Loop (after Docker restart)
 ```bash
-./start-infrastructure.sh   # restart containers
-./init-vault.sh unseal      # re-unseal Vault — services will fail to start without this
+make up      # starts infra, auto-unseals vault, starts services
+make down    # stops everything (preserves data)
+make status  # health table for every service
+make logs svc=order-service
 ```
+
+`make up` always re-runs vault unseal — no more "vault sealed" crashes
+after Docker restarts.
+
+### Adding a New Service
+Add one line to `scripts/services.list`:
+```
+my-service  1234  -  3
+```
+The drift guard in `scripts/services/start.sh` will refuse to start until
+every `*-service` / `gateway` / `eureka-server` directory is registered.
 
 ### Building and Running Services
 ```bash
@@ -85,23 +92,16 @@ mvn clean package
 
 ### Infrastructure Management
 ```bash
-# Start all infrastructure at once
-./start-infrastructure.sh
-
-# Or start individual services
-docker compose -f docker/mysql.yml up -d
-docker compose -f docker/kafka.yml up -d
-docker compose -f docker/mongodb.yml up -d
-docker compose -f docker/redis.yml up -d
-docker compose -f docker/vault.yml up -d
+make infra-up      # start docker compose stacks
+make infra-down    # stop them (keeps volumes)
+make infra-status  # ps table per stack
 ```
 
 ### Development Workflow
-1. Follow One-Time Setup above (first run only)
-2. Start Eureka Server first: `cd eureka-server && mvn spring-boot:run`
-3. Start auth + gateway, then business services
-4. **inventory-service must start before order-service** (gRPC dependency)
-5. Swagger UI: `http://localhost:8080/swagger-ui.html`
+1. First run: `make bootstrap` (see One-Time Setup above)
+2. Daily: `make up` brings everything up in tier order (eureka → auth+gateway → inventory → product/order/payment/orchestrator/bff)
+3. Tier order is enforced by `scripts/services/start.sh` reading `scripts/services.list`. inventory-service blocks until both HTTP (6969) and gRPC (9090) are listening before order-service starts.
+4. Swagger UI: `http://localhost:8080/swagger-ui.html`
 
 ### Service Ports
 | Service | Port |
@@ -178,14 +178,14 @@ which package the bean lives in.
 
 ### Saga trigger
 The order Saga is triggered by MongoDB CDC events (Mongo → Kafka Connect → orchestrator),
-not by a direct call from order-service. See `install-mongodb-kafka-connector.sh`.
+not by a direct call from order-service. See `scripts/kafka/mongo-connector.sh`.
 
 ### Tests in CI without infra
 Spring Boot `contextLoads` tests are guarded so they pass without Kafka/Vault/MySQL
 available (see orchestrator-service for the pattern). Mirror this when adding new services.
 
 ## Development Notes
-- **Maven build order matters**: core modules must be installed before services — use `./install-modules.sh`
+- **Maven build order matters**: core modules must be installed before services — use `make build` (wraps `scripts/maven/install-modules.sh`)
 - **Vault secrets required at startup**: each service fetches config from Vault on boot; if Vault is sealed, services crash on startup
 - All services use Spring Boot 3.3.6 with consistent dependency versions
 - Lombok is used extensively for reducing boilerplate
