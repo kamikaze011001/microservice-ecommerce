@@ -1,14 +1,14 @@
 #!/bin/bash
-# Parse scripts/services.env. Source, don't execute.
-# After sourcing services.env, $SERVICES holds an array of "name port grpc tier" strings.
+# Parse scripts/services.list. Source, don't execute.
+# After sourcing services.list, $SERVICES holds an array of "name port grpc tier" strings.
 # This file exposes helpers for iterating that array.
 
-REGISTRY_FILE="$REPO_ROOT/scripts/services.env"
+REGISTRY_FILE="$REPO_ROOT/scripts/services.list"
 
 # Load $SERVICES from the registry file.
 load_registry() {
     if [ ! -f "$REGISTRY_FILE" ]; then
-        log_err "scripts/services.env not found"
+        log_err "scripts/services.list not found"
         return 1
     fi
     # shellcheck disable=SC1090
@@ -49,7 +49,7 @@ check_drift() {
         local name
         name=$(basename "$dir")
         if ! echo "$registered" | grep -qx "$name"; then
-            log_err "Drift: directory '$name' exists but is not in scripts/services.env"
+            log_err "Drift: directory '$name' exists but is not in scripts/services.list"
             drift_found=1
         fi
     done

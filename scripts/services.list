@@ -1,0 +1,13 @@
+# scripts/services.list — single source of truth for service list.
+# Format:  name  http_port  grpc_port  tier
+SERVICES=(
+  "eureka-server         8761  -     0"
+  "authorization-server  6666  -     1"
+  "gateway               6868  -     1"
+  "inventory-service     6969  9090  2"
+  "product-service       7777  -     3"
+  "order-service         9696  -     3"
+  "payment-service       8484  -     3"
+  "orchestrator-service  9999  -     3"
+  "bff-service           8087  -     3"
+)
