@@ -12,6 +12,8 @@ services:
     volumes:
       - ecommerce_data:/data/db
       - ./temp-keyfile.key:/tmp/temp-keyfile.key
+      - ./api_role.json:/seed/api_role.json:ro
+      - ./product.json:/seed/product.json:ro
     entrypoint:
       - bash
       - -c
