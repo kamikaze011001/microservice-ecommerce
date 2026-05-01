@@ -32,4 +32,7 @@ public class User {
 
     @Column
     private String address;
+
+    @Column(name = "avatar_url", length = 512)
+    private String avatarUrl;
 }

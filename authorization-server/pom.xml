@@ -63,6 +63,11 @@
 		</dependency>
 		<dependency>
 			<groupId>org.aibles.ecommerce</groupId>
+			<artifactId>core-s3</artifactId>
+			<version>0.0.1</version>
+		</dependency>
+		<dependency>
+			<groupId>org.aibles.ecommerce</groupId>
 			<artifactId>core-redis</artifactId>
 			<version>0.0.1</version>
 		</dependency>

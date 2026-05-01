@@ -51,7 +51,7 @@ UNLOCK TABLES;
 
 LOCK TABLES `user` WRITE;
 /*!40000 ALTER TABLE `user` DISABLE KEYS */;
-INSERT INTO `user` VALUES ('311c4ba5-5239-4a99-8ddc-13f68308d306',NULL,'anhson7931@gmail.com',NULL,NULL),('980033d6-e318-41a1-9ce3-597b955717ef','Ha Noi','anhson713@gmail.com','FEMALE','Son Anh');
+INSERT INTO `user` (id, address, email, gender, name, avatar_url) VALUES ('311c4ba5-5239-4a99-8ddc-13f68308d306',NULL,'anhson7931@gmail.com',NULL,NULL,NULL),('980033d6-e318-41a1-9ce3-597b955717ef','Ha Noi','anhson713@gmail.com','FEMALE','Son Anh',NULL);
 /*!40000 ALTER TABLE `user` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
