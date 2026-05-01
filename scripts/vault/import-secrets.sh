@@ -39,6 +39,7 @@ load_config() {
 
 CFG_DIR="$REPO_ROOT/docker/vault-configs"
 load_config "$CFG_DIR/ecommerce-common.json"        "ecommerce"
+load_config "$CFG_DIR/core-s3.json"                 "core-s3"
 load_config "$CFG_DIR/authorization-server.json"    "authorization-server"
 load_config "$CFG_DIR/gateway.json"                 "gateway"
 load_config "$CFG_DIR/product-service.json"         "product-service"
