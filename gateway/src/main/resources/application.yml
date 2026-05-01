@@ -62,6 +62,26 @@ eureka:
   client:
     fetch-registry: true
 
+application:
+  gateway:
+    cors:
+      allowed-origins:
+        - http://localhost:3000        # Vite/CRA dev
+        - http://localhost:5173        # Vite default
+      allowed-methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      allowed-headers:
+        - "*"
+      exposed-headers:
+        - Authorization
+      allow-credentials: true
+      max-age: 3600
+
 management:
   server:
     port: 9091
