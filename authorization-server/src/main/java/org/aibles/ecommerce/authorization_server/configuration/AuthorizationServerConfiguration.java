@@ -20,6 +20,9 @@ import org.aibles.ecommerce.core_exception_api.configuration.EnableCoreException
 import org.aibles.ecommerce.core_redis.configuration.EnableCoreRedis;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.ecommerce.core_routing_db.configuration.EnableDatasourceRouting;
+import org.aibles.ecommerce.core_s3.EnableCoreS3;
+import org.aibles.ecommerce.core_s3.S3Properties;
+import org.aibles.ecommerce.core_s3.S3StorageService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -31,6 +34,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 @EnableDatasourceRouting
 @EnableCoreEmail
 @EnableCoreExceptionApi
+@EnableCoreS3
 @Configuration
 @EnableJpaAuditing
 public class AuthorizationServerConfiguration {
@@ -80,6 +84,14 @@ public class AuthorizationServerConfiguration {
     @Bean
     public JWTService jwtService(JWKSet jwkSet) {
         return new JWTServiceImpl(jwkSet, accessTokenLifetime, refreshTokenLifetime);
+    }
+
+    @Bean
+    public UserAvatarService userAvatarService(MasterUserRepository masterUserRepository,
+                                               SlaveUserRepository slaveUserRepository,
+                                               S3StorageService storage,
+                                               S3Properties props) {
+        return new UserAvatarServiceImpl(masterUserRepository, slaveUserRepository, storage, props);
     }
 
     @Bean
