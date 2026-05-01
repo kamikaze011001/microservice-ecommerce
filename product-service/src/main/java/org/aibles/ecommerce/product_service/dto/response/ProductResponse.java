@@ -31,6 +31,8 @@ public class ProductResponse {
 
     private String category;
 
+    private String imageUrl;
+
     public static ProductResponse from(final Product product, final long quantity) {
         return ProductResponse.builder()
                 .id(product.getId())
@@ -39,6 +41,7 @@ public class ProductResponse {
                 .quantity(quantity)
                 .attributes(product.getAttributes())
                 .category(product.getCategory())
+                .imageUrl(product.getImageUrl())
                 .build();
     }
 }

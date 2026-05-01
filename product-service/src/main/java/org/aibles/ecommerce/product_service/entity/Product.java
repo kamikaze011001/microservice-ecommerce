@@ -28,4 +28,6 @@ public class Product {
 
     @Indexed
     private String category;
+
+    private String imageUrl;
 }

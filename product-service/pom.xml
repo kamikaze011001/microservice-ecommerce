@@ -54,6 +54,11 @@
 			<version>0.0.1</version>
 		</dependency>
 		<dependency>
+			<groupId>org.aibles.ecommerce</groupId>
+			<artifactId>core-s3</artifactId>
+			<version>0.0.1</version>
+		</dependency>
+		<dependency>
 			<groupId>io.confluent</groupId>
 			<artifactId>kafka-avro-serializer</artifactId>
 			<version>7.7.1</version>

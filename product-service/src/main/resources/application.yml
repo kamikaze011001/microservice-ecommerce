@@ -11,6 +11,7 @@ spring:
         backend: secret
         default-context: ecommerce
         application-name: product-service
+        additional-contexts: core-s3
   config:
     import: optional:vault://
   kafka:
