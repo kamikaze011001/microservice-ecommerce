@@ -87,6 +87,12 @@
     "method": ["GET"]
   },
   {
+    "_id": {"$oid": "67f00100000000000000bf01"},
+    "path": "/bff-service/v1/products/**",
+    "roles": ["PERMIT_ALL"],
+    "method": ["GET"]
+  },
+  {
     "_id": {"$oid": "67a6e1f744ff8d44e59559c0"},
     "path": "/product-service/v1/products**",
     "roles": ["ADMIN"],
