@@ -26,6 +26,7 @@ This is a microservice-based e-commerce platform built with Spring Boot and Java
 - **core-exception-api**: Global exception handling
 - **core-jwt-util**: JWT token utilities
 - **core-paypal**: PayPal integration utilities
+- **core-s3**: S3-compatible object storage (presigned uploads, MinIO local / AWS S3 prod)
 - **grpc-common**: Protocol buffer definitions and gRPC service contracts
 
 ### Key Technologies
@@ -112,6 +113,8 @@ make infra-status  # ps table per stack
 | Kafka Connect REST | 8093 |
 | MySQL Master | 3306 |
 | MySQL Slave1/Slave2 | 3307/3308 |
+| MinIO S3 API | 9000 |
+| MinIO Console | 9001 |
 
 ## Database Architecture
 
@@ -183,6 +186,26 @@ not by a direct call from order-service. See `scripts/kafka/mongo-connector.sh`.
 ### Tests in CI without infra
 Spring Boot `contextLoads` tests are guarded so they pass without Kafka/Vault/MySQL
 available (see orchestrator-service for the pattern). Mirror this when adding new services.
+
+### Image storage
+Product images and user avatars use S3-compatible storage via the `core-s3`
+shared module. Clients upload directly to S3 with a presigned URL — the JVM
+never touches the bytes. Two-step flow:
+1. `POST /v1/products/{id}/image/presign` (or `.../users/self/avatar/presign`)
+   returns `{ uploadUrl, objectKey, expiresAt }`. The signed URL embeds
+   Content-Type and a 5MB content-length-range as conditions.
+2. Client `PUT`s the bytes to `uploadUrl` with the matching `Content-Type`
+   header.
+3. Client calls `PUT /v1/products/{id}/image` (or `.../users/self/avatar`)
+   with `{ objectKey }`. Server HEAD-checks the object, validates the key
+   prefix, and stores the public URL.
+
+Object keys: `products/{productId}/{uuid}.{ext}` and
+`avatars/{userId}/{uuid}.{ext}`. Both prefixes have anonymous-read enabled,
+so the stored URL is just `{public-base-url}/{key}` — clients fetch
+directly. Vault path `secret/core-s3` holds the bucket, endpoint, and
+credentials; switching from MinIO to AWS S3 is a Vault-only change (flip
+`endpoint`, `path-style`, and creds).
 
 ## Development Notes
 - **Maven build order matters**: core modules must be installed before services — use `make build` (wraps `scripts/maven/install-modules.sh`)
