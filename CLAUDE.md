@@ -158,6 +158,20 @@ Gateway routes use `Path=/<service-name>/**` → `lb://<SERVICE-NAME>` (uppercas
 `StripPrefix` filter). Controllers use bare paths like `/v1/orders` — the context path
 handles the prefix. Don't add `StripPrefix` and don't repeat the service name in `@RequestMapping`.
 
+`GET /product-service/v1/products/**` and `GET /bff-service/v1/products/**` are
+`PERMIT_ALL` (storefront browse + detail work without login). All other routes
+require authentication; admin routes require the `ADMIN` role. Auth rules live in
+`docker/api_role.json` and are loaded into MongoDB by `make seed-data`.
+
+### Gateway CORS
+The gateway publishes a single `CorsConfigurationSource` covering all routes.
+Allowed origins, methods, headers, and credentials live under
+`application.gateway.cors.*` in `gateway/src/main/resources/application.yml`
+(overridable via Vault for prod). Defaults are `http://localhost:3000` and
+`http://localhost:5173` with `allow-credentials=true`.
+
+Per-service CORS would be redundant — all browser traffic enters via the gateway.
+
 ### User identity
 Gateway extracts `userId` from the JWT and forwards it as the `X-User-Id` header.
 Controllers read it via `@RequestHeader("X-User-Id") String userId`. Don't parse JWTs
@@ -206,6 +220,30 @@ so the stored URL is just `{public-base-url}/{key}` — clients fetch
 directly. Vault path `secret/core-s3` holds the bucket, endpoint, and
 credentials; switching from MinIO to AWS S3 is a Vault-only change (flip
 `endpoint`, `path-style`, and creds).
+
+### Observability
+Every JVM service exposes Spring Boot Actuator on a separate management port
+(`9091`) so it's never reachable through the gateway. Three endpoints matter:
+
+- `/actuator/health/liveness` — k8s liveness probe target
+- `/actuator/health/readiness` — k8s readiness probe target (gates traffic
+  during startup until the service's external deps are reachable)
+- `/actuator/prometheus` — Micrometer Prometheus scrape endpoint, tagged with
+  `application=<service-name>`
+
+Per-service `readiness.include` reflects each service's actual deps (e.g.
+`readinessState,db,redis,mail` for authorization-server; `readinessState` only
+for gateway / eureka-server / bff-service). Adding `db` to a service that has
+no datasource will fail readiness — match the existing values.
+
+Local-dev caveat: when nine services run on the same host via `make up`, they
+all try to bind `9091` and only one wins. Smoke-test actuator one service at a
+time, or assign distinct management ports per service. In k8s every pod has
+its own loopback so 9091 is fine across the cluster.
+
+The gateway intentionally does not route `/actuator/**`. The management port
+is internal-only — protect it at the network level (k8s NetworkPolicy, AWS SG)
+when deploying.
 
 ## Development Notes
 - **Maven build order matters**: core modules must be installed before services — use `make build` (wraps `scripts/maven/install-modules.sh`)
