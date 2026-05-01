@@ -1,0 +1,19 @@
+spring:
+  cloud:
+    vault:
+      enabled: false
+      kv:
+        enabled: false
+      fail-fast: false
+  config:
+    import: optional:vault://
+  autoconfigure:
+    exclude:
+      - org.springframework.cloud.vault.config.VaultAutoConfiguration
+      - org.springframework.cloud.vault.config.VaultReactiveAutoConfiguration
+application:
+  access-token:
+    life-time: 900000
+  refresh-token:
+    life-time: 86400000
+  authentication-key-id: test-key
