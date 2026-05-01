@@ -1,0 +1,13 @@
+spring:
+  cloud:
+    vault:
+      enabled: false
+      kv:
+        enabled: false
+      fail-fast: false
+  config:
+    import: optional:vault://
+  autoconfigure:
+    exclude:
+      - org.springframework.cloud.vault.config.VaultAutoConfiguration
+      - org.springframework.cloud.vault.config.VaultReactiveAutoConfiguration
