@@ -2,12 +2,15 @@ package org.aibles.order_service.service;
 
 import org.aibles.ecommerce.common_dto.response.PagingResponse;
 import org.aibles.order_service.dto.request.OrderRequest;
+import org.aibles.order_service.dto.response.OrderCancelResponse;
 import org.aibles.order_service.dto.response.OrderCreatedResponse;
 import org.aibles.order_service.dto.response.OrderDetailResponse;
 
 public interface OrderService {
 
     OrderCreatedResponse create(String userId, OrderRequest request);
+
+    OrderCancelResponse cancel(String userId, String orderId);
 
     void handleCanceledOrder(String orderId);
 

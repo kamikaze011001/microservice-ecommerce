@@ -4,8 +4,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.aibles.ecommerce.common_dto.avro_kafka.OrderCreated;
 import org.aibles.ecommerce.common_dto.event.EcommerceEvent;
 import org.aibles.ecommerce.common_dto.event.MongoSavedEvent;
+import org.aibles.ecommerce.common_dto.exception.ForbiddenException;
 import org.aibles.ecommerce.common_dto.exception.InternalErrorException;
 import org.aibles.ecommerce.common_dto.exception.NotFoundException;
+import org.aibles.ecommerce.common_dto.exception.OrderAlreadyCanceledException;
+import org.aibles.ecommerce.common_dto.exception.OrderNotCancellableException;
+import org.aibles.ecommerce.common_dto.avro_kafka.PaymentCanceled;
+import org.aibles.order_service.dto.response.OrderCancelResponse;
 import org.aibles.ecommerce.common_dto.request.InventoryProductIdsRequest;
 import org.aibles.ecommerce.common_dto.response.InventoryProductIdsResponse;
 import org.aibles.ecommerce.common_dto.response.InventoryProductResponse;
@@ -611,5 +616,33 @@ public class OrderServiceImpl implements OrderService {
 
         List<OrderItemResponse> orderItemResponses = orderItems.stream().map(OrderItemResponse::from).toList();
         return OrderDetailResponse.from(order, orderItemResponses);
+    }
+
+    @Override
+    public OrderCancelResponse cancel(String userId, String orderId) {
+        log.info("(cancel)orderId: {}", orderId);
+        Order order = slaveOrderRepo.findById(orderId).orElseThrow(NotFoundException::new);
+
+        if (!userId.equals(order.getUserId())) {
+            log.warn("(cancel)order : {} is not belong to user", orderId);
+            throw new ForbiddenException();
+        }
+
+        if (order.getStatus().equals(OrderStatus.CANCELED)) {
+            log.warn("(cancel)order : {} canceled already", orderId);
+            throw new OrderAlreadyCanceledException();
+        }
+
+        if (!order.getStatus().equals(OrderStatus.PROCESSING)) {
+            log.warn("(cancel)order: {} can not be canceled", orderId);
+            throw new OrderNotCancellableException();
+        }
+
+        PaymentCanceled paymentCanceled = PaymentCanceled.newBuilder().setOrderId(orderId).build();
+
+        eventPublisher.publishEvent(new MongoSavedEvent(
+                this, EcommerceEvent.PAYMENT_CANCELED.getValue(), paymentCanceled));
+
+        return OrderCancelResponse.builder().orderId(orderId).status(OrderStatus.CANCELED).build();
     }
 }
