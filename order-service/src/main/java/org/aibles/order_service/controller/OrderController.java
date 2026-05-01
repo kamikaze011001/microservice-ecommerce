@@ -6,6 +6,7 @@ import org.aibles.ecommerce.common_dto.request.PagingRequest;
 import org.aibles.ecommerce.common_dto.response.BaseResponse;
 import org.aibles.ecommerce.common_dto.response.PagingResponse;
 import org.aibles.order_service.dto.request.OrderRequest;
+import org.aibles.order_service.dto.response.OrderCancelResponse;
 import org.aibles.order_service.dto.response.OrderDetailResponse;
 import org.aibles.order_service.dto.response.OrderSummaryResponse;
 import org.aibles.order_service.service.OrderService;
@@ -43,5 +44,13 @@ public class OrderController {
     public BaseResponse get(@RequestHeader("X-User-Id") String userId, @PathVariable String orderId) {
         OrderDetailResponse orderDetailResponse = orderService.get(userId, orderId);
         return BaseResponse.ok(orderDetailResponse);
+    }
+
+    @PatchMapping("/{orderId}:cancel")
+    @ResponseStatus(HttpStatus.OK)
+    public BaseResponse cancel(@RequestHeader("X-User-Id") String userId,
+                               @PathVariable String orderId) {
+        log.info("(cancel) user={} order={}", userId, orderId);
+        return BaseResponse.ok(orderService.cancel(userId, orderId));
     }
 }
