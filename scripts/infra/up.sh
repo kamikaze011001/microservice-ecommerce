@@ -38,5 +38,6 @@ start_compose "redis.yml"   "Redis"
 start_compose "mongodb.yml" "MongoDB"
 start_compose "kafka.yml"   "Kafka ecosystem"
 start_compose "vault.yml"   "Vault"
+start_compose "minio.yml"   "MinIO"
 
 log_ok "Infrastructure up"
