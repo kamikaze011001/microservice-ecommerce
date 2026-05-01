@@ -78,17 +78,15 @@ Add an explicit `CorsConfigurationSource` reactive bean (gateway is reactive —
 
 ### Problem
 
-`GET /v1/products` (list) and `GET /v1/products/{id}` (detail) currently require `AUTHORIZED` per the gateway's `api_role` Mongo seed. Visitors cannot browse the storefront without logging in. The BFF aggregation `GET /bff-service/v1/products/{productId}` has the same constraint.
+**Current state:** `api_role.json` already has `GET /product-service/v1/products/**` mapped to `PERMIT_ALL`, so the two product GETs are already public per the seed. The genuinely missing piece is `GET /bff-service/v1/products/{productId}`, which has no `api_role` entry. The BFF detail route currently falls through to the default-deny behavior of the `AuthorizationFilter`.
 
 ### Design
 
-Flip these three paths to `PERMIT_ALL` in the gateway's `api_role` collection.
+Add a single `PERMIT_ALL` entry for `GET /bff-service/v1/products/**` to `docker/api_role.json` and re-seed Mongo so the live `api_role` collection picks it up.
 
 | Path | Method | New role |
 |---|---|---|
-| `/product-service/v1/products` | GET | `PERMIT_ALL` |
-| `/product-service/v1/products/{id}` | GET | `PERMIT_ALL` |
-| `/bff-service/v1/products/{productId}` | GET | `PERMIT_ALL` |
+| `/bff-service/v1/products/**` | GET | `PERMIT_ALL` |
 
 Everything else stays login-walled. Specifically:
 - All product write ops (POST/PUT/DELETE on `/v1/products/**`) stay `ADMIN`.
@@ -97,7 +95,8 @@ Everything else stays login-walled. Specifically:
 
 ### Files Changed
 
-- `docker/api_role.json` — update three matching documents from `AUTHORIZED` to `PERMIT_ALL`.
+- `docker/api_role.json` — add one new document for the bff product-detail GET path.
+- Operational step (not a code change): re-seed the live `api_role` collection (`make seed-data` or its replacement, after the JSON change).
 
 ### Acceptance
 
@@ -108,8 +107,7 @@ Everything else stays login-walled. Specifically:
 
 ### Caveats
 
-- Code-side: `ProductController.getById` and `list` may today read `X-User-Id` from headers via `@RequestHeader`. After this change, that header may be absent. Audit the two controller methods. If `X-User-Id` is currently used, make it optional (`required = false`) and remove any usage that would NPE on null.
-- BFF: `BffController.getProductDetail` likely also relies on `X-User-Id` (e.g. for personalized inventory views). Apply the same fix.
+- `ProductController.list` and `getById`, and `BffController.getProductDetail`, do not currently read `X-User-Id` (verified). No controller-side change is required.
 
 ---
 
@@ -133,10 +131,11 @@ Response: BaseResponse.ok({ orderId, status: "CANCELED" })
 
 **Authorization rule:** the order must belong to the caller. Compare `order.userId == X-User-Id`. Mismatch → `403 Forbidden`.
 
-**State guard:** only `OrderStatus.PENDING` is cancellable.
+**State guard:** only `OrderStatus.PROCESSING` is cancellable.
 - `COMPLETED` → `409 Conflict`, code `ORDER_NOT_CANCELLABLE`, message "Order already completed".
 - `CANCELED` → `409 Conflict`, code `ORDER_ALREADY_CANCELED`, message "Order is already canceled".
 - `FAILED` → `409 Conflict`, code `ORDER_NOT_CANCELLABLE`, message "Order failed and cannot be canceled".
+- `REFUNDED` → `409 Conflict`, code `ORDER_NOT_CANCELLABLE`, message "Order already refunded".
 
 **Mechanism:** route through the saga rather than directly flipping the status field.
 
@@ -153,11 +152,11 @@ The saga's existing `handleCanceledOrder` flow then:
 **Why route through the saga:**
 Direct status mutation works for the happy path but bypasses inventory release. Three different cancellation triggers (user-initiated, PayPal cancel, saga timeout) should converge on one tested code path. This avoids the "order canceled, stock still reserved" divergence and is the lesson worth learning.
 
-### Open Question (resolve at implementation time)
+### Resolved: Reuse Existing Cancel Topic
 
-Whether to publish a dedicated `Order.UserCanceled` event or reuse whatever cancel event the existing saga consumes (likely `Payment.Canceled` or similar). The implementation-plan step should:
-1. Inspect the saga's existing cancel-input topic and consumer.
-2. If reusing it requires faking a payment context, add a new dedicated topic instead. If the existing topic is generic enough, reuse it.
+The existing topic is `order-service.order.canceled-status` carrying a `PaymentCanceled` Avro payload (single field: `orderId`). Both the saga's timeout scheduler and the PayPal IPN-cancel path publish to this topic; `OrderServiceListener.handleOrderCanceled` consumes it and calls `OrderServiceImpl.handleCanceledOrder`, which already does the dedup (`ProcessedPaymentEvent`) + status flip + inventory rollback.
+
+For user-initiated cancel, `order-service` will self-publish a `PaymentCanceled` to the same topic. The existing listener+handler chain runs unchanged. The naming of `PaymentCanceled` is slightly misleading (it covers any cancellation, not just payment-driven) but reusing it avoids new schema, new topic, new consumer, and new dedup logic. A future rename is possible but not in scope here.
 
 ### Files Changed
 
