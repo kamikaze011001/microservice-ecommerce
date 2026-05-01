@@ -41,6 +41,11 @@ public class S3Config {
         return b.build();
     }
 
+    @Bean
+    public S3StorageService s3StorageService(S3Client client, S3Presigner presigner, S3Properties props) {
+        return new S3StorageServiceImpl(client, presigner, props);
+    }
+
     private static AwsCredentialsProvider credentials(S3Properties props) {
         return StaticCredentialsProvider.create(
             AwsBasicCredentials.create(props.getAccessKey(), props.getSecretKey()));
