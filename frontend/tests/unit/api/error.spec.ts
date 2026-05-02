@@ -28,4 +28,14 @@ describe('classify', () => {
   it('returns network for status 0 (fetch threw)', () => {
     expect(classify(new ApiError(0, '', 'fetch failed'))).toBe('network');
   });
+
+  it('classifies HTTP 400 with "not activated" message as not-activated', () => {
+    const err = new ApiError(400, 'Bad Request', 'Your account is not activated');
+    expect(classify(err)).toBe('not-activated');
+  });
+
+  it('still classifies other HTTP 400s as validation', () => {
+    const err = new ApiError(400, 'Bad Request', 'Email is required');
+    expect(classify(err)).toBe('validation');
+  });
 });
