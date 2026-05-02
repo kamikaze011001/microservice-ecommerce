@@ -29,3 +29,15 @@ export const registerSchema = z
     message: 'Passwords do not match',
   });
 export type RegisterInput = z.infer<typeof registerSchema>;
+
+export const activateSchema = z.object({
+  email: emailSchema,
+  otp: z.string().regex(/^\d{4,8}$/, 'Enter the code from your email'),
+});
+export type ActivateInput = z.infer<typeof activateSchema>;
+
+export const resendOtpSchema = z.object({
+  type: z.literal('REGISTER'),
+  email: emailSchema,
+});
+export type ResendOtpInput = z.infer<typeof resendOtpSchema>;
