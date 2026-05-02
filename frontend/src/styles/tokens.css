@@ -60,12 +60,12 @@
  * (e.g. bg-paper, text-spot). Keep keys aligned with the variables above.
  */
 @theme {
-  --color-paper: #f4efe6;
-  --color-paper-shade: #e8dfd0;
-  --color-ink: #1c1c1c;
-  --color-muted-ink: #6b6256;
-  --color-spot: #ff4f1c;
-  --color-stamp-red: #c4302b;
+  --color-paper: var(--paper);
+  --color-paper-shade: var(--paper-shade);
+  --color-ink: var(--ink);
+  --color-muted-ink: var(--muted-ink);
+  --color-spot: var(--spot);
+  --color-stamp-red: var(--stamp-red);
 
   --font-display: 'Bricolage Grotesque', 'Cabinet Grotesk', system-ui, sans-serif;
   --font-body: 'Cabinet Grotesk', system-ui, sans-serif;
