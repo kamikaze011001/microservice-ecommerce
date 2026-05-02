@@ -79,13 +79,13 @@
 
 ### Definition of Done
 
-- [ ] All 10 primitives exist in `src/components/primitives/`
-- [ ] `/_design` renders every primitive + variant; no console errors
-- [ ] ≥ 2 component tests per primitive (happy + variant/state) — ≥ 20 tests total, all green
-- [ ] Misregistration-on-hover demoed and verified visually on `/_design`
-- [ ] `BButton :active` translate animation verified
-- [ ] Keyboard navigation verified on `BDialog` (Esc closes, focus trap) and `BSelect` (arrow keys)
-- [ ] Color contrast verified for `BButton variant="spot"` ink-on-orange text (target: AA, ≥ 4.5:1)
+- [x] All 10 primitives exist in `src/components/primitives/`
+- [x] `/_design` renders every primitive + variant; no console errors
+- [x] ≥ 2 component tests per primitive (happy + variant/state) — ≥ 20 tests total, all green
+- [x] Misregistration-on-hover demoed and verified visually on `/_design`
+- [x] `BButton :active` translate animation verified
+- [x] Keyboard navigation verified on `BDialog` (Esc closes, focus trap) and `BSelect` (arrow keys)
+- [x] Color contrast verified for `BButton variant="spot"` ink-on-orange text (target: AA, ≥ 4.5:1)
 
 ---
 
