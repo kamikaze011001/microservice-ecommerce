@@ -1,18 +1,18 @@
 {
-  "_comment": "LOCAL DEV ONLY. Slave URLs point at master:3306 because local replication is fragile and unrelated to app-layer testing. Production Vault keeps real slave hosts/ports.",
+  "_comment": "Slaves point at the real read replicas on :3307 / :3308. Replication health verified via SHOW REPLICA STATUS (Auto_Position=1, Seconds_Behind_Source=0).",
   "spring.datasource.master.url": "jdbc:mysql://localhost:3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
   "spring.datasource.master.username": "root",
   "spring.datasource.master.password": "ecommerce_master",
   "spring.datasource.master.driver-class-name": "com.mysql.cj.jdbc.Driver",
 
-  "spring.datasource.slave1.url": "jdbc:mysql://localhost:3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
+  "spring.datasource.slave1.url": "jdbc:mysql://localhost:3307/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
   "spring.datasource.slave1.username": "root",
-  "spring.datasource.slave1.password": "ecommerce_master",
+  "spring.datasource.slave1.password": "ecommerce_slave1",
   "spring.datasource.slave1.driver-class-name": "com.mysql.cj.jdbc.Driver",
 
-  "spring.datasource.slave2.url": "jdbc:mysql://localhost:3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
+  "spring.datasource.slave2.url": "jdbc:mysql://localhost:3308/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
   "spring.datasource.slave2.username": "root",
-  "spring.datasource.slave2.password": "ecommerce_master",
+  "spring.datasource.slave2.password": "ecommerce_slave2",
   "spring.datasource.slave2.driver-class-name": "com.mysql.cj.jdbc.Driver",
 
   "spring.data.redis.host": "localhost",
