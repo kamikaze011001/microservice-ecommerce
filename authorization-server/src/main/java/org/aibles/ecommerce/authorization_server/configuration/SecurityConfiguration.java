@@ -35,7 +35,15 @@ public class SecurityConfiguration {
                                         "/v3/api-docs/**",
                                         "/.well-known/jwks.json",
                                         "/v1/auth**",
-                                        "/v1/auth/**")
+                                        "/v1/auth/**",
+                                        "/v1/auth:register",
+                                        "/v1/auth:login",
+                                        "/v1/auth:refresh-token",
+                                        "/v1/auth:activate",
+                                        "/v1/auth:resend-otp",
+                                        "/v1/auth:forgot-password",
+                                        "/v1/auth:verify-forgot-pass-otp",
+                                        "/v1/auth:reset-password")
                                 .permitAll()
                                 .requestMatchers(
                                         "/v1/users**", "/v1/users/**"

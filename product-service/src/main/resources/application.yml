@@ -10,8 +10,7 @@ spring:
         enabled: true
         backend: secret
         default-context: ecommerce
-        application-name: product-service
-        additional-contexts: core-s3
+        application-name: product-service,core-s3
   config:
     import: optional:vault://
   kafka:
@@ -38,7 +37,7 @@ server:
     context-path: /product-service
 management:
   server:
-    port: 9091
+    port: 17777
   endpoints:
     web:
       exposure:
@@ -53,7 +52,7 @@ management:
         liveness:
           include: livenessState
         readiness:
-          include: readinessState,db,redis
+          include: readinessState,mongo
   metrics:
     tags:
       application: ${spring.application.name}

@@ -38,7 +38,7 @@ application:
       inventory-service.inventory-product.update-quantity: inventory-service.inventory-product.update-quantity
 management:
   server:
-    port: 9091
+    port: 16969
   endpoints:
     web:
       exposure:

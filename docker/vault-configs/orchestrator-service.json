@@ -1,5 +1,9 @@
 {
   "server.port": "9999",
+  "spring.datasource.url": "jdbc:mysql://localhost:3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
+  "spring.datasource.username": "root",
+  "spring.datasource.password": "ecommerce_master",
+  "spring.datasource.driver-class-name": "com.mysql.cj.jdbc.Driver",
   "application.kafka.topics.mongo.event": "ecommerce_db.ecommerce_inventory.event",
   "application.kafka.topics.product-service.product.update-quantity": "product-service.product.update-quantity",
   "application.kafka.topics.order-service.order.success-status": "order-service.order.success-status",

@@ -13,7 +13,7 @@ spring:
         application-name: authorization-server
         additional-contexts: core-s3
   config:
-    import: optional:vault://
+    import: "vault://secret/ecommerce,vault://secret/authorization-server,vault://secret/core-s3"
   mail:
     properties:
       mail:
@@ -28,7 +28,7 @@ server:
     context-path: /authorization-server
 management:
   server:
-    port: 9091
+    port: 19091
   endpoints:
     web:
       exposure:

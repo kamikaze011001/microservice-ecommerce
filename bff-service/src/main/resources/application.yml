@@ -18,7 +18,7 @@ server:
     context-path: /bff-service
 management:
   server:
-    port: 9091
+    port: 18087
   endpoints:
     web:
       exposure:

@@ -42,7 +42,7 @@ application:
     cancel-path: /payment-service/v1/paypal:cancel
 management:
   server:
-    port: 9091
+    port: 18484
   endpoints:
     web:
       exposure:

@@ -42,7 +42,7 @@ application:
 
 management:
   server:
-    port: 9091
+    port: 19696
   endpoints:
     web:
       exposure:

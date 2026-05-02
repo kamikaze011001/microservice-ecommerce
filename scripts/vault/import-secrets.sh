@@ -47,5 +47,6 @@ load_config "$CFG_DIR/inventory-service.json"       "inventory-service"
 load_config "$CFG_DIR/order-service.json"           "order-service"
 load_config "$CFG_DIR/payment-service.json"         "payment-service"
 load_config "$CFG_DIR/orchestrator-service.json"    "orchestrator-service"
+load_config "$CFG_DIR/bff-service.json"             "bff-service"
 
 log_ok "Vault secrets imported"

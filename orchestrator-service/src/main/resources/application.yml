@@ -46,7 +46,7 @@ application:
     saga-ttl-minutes: 30
 management:
   server:
-    port: 9091
+    port: 19999
   endpoints:
     web:
       exposure:
