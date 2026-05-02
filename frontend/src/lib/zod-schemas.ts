@@ -1,0 +1,31 @@
+import { z } from 'zod';
+
+export const emailSchema = z.string().email('Enter a valid email');
+
+// Mirrors backend @ValidPassword:
+// ^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()])[A-Za-z\d!@#$%^&*()]{6,}$
+export const passwordSchema = z
+  .string()
+  .regex(
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()])[A-Za-z\d!@#$%^&*()]{6,}$/,
+    'Min 6 chars with upper, lower, number, and special (!@#$%^&*())',
+  );
+
+export const loginSchema = z.object({
+  username: z.string().min(1, 'Required'),
+  password: z.string().min(1, 'Required'),
+});
+export type LoginInput = z.infer<typeof loginSchema>;
+
+export const registerSchema = z
+  .object({
+    username: z.string().min(1, 'Required'),
+    email: emailSchema,
+    password: passwordSchema,
+    confirmPassword: z.string(),
+  })
+  .refine((d) => d.password === d.confirmPassword, {
+    path: ['confirmPassword'],
+    message: 'Passwords do not match',
+  });
+export type RegisterInput = z.infer<typeof registerSchema>;
