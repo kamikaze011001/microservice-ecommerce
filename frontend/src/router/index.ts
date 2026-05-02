@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import HomePlaceholder from '@/pages/HomePlaceholder.vue';
+import HomePage from '@/pages/HomePage.vue';
 import DesignShowcase from '@/pages/DesignShowcase.vue';
 import LoginPage from '@/pages/LoginPage.vue';
 import RegisterPage from '@/pages/RegisterPage.vue';
@@ -10,7 +10,7 @@ import { useAuthStore } from '@/stores/auth';
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', component: HomePlaceholder },
+    { path: '/', component: HomePage },
     { path: '/_design', component: DesignShowcase },
     { path: '/login', component: LoginPage, meta: { guestOnly: true } },
     { path: '/register', component: RegisterPage, meta: { guestOnly: true } },
