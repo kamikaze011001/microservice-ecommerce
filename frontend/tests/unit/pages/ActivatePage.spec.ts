@@ -70,4 +70,26 @@ describe('ActivatePage', () => {
     await flushPromises();
     expect(btn).not.toBeDisabled();
   });
+
+  it('shows inline error and clears OTP on wrong code', async () => {
+    activateMutateAsync.mockRejectedValueOnce(
+      Object.assign(new Error('Invalid OTP'), { status: 400 }),
+    );
+    mount();
+    await user.type(screen.getByLabelText(/code/i), '999999');
+    await user.click(screen.getByRole('button', { name: /^activate$/i }));
+    vi.advanceTimersByTime(10);
+    await flushPromises();
+    await waitFor(() => expect(screen.getByText(/invalid otp/i)).toBeInTheDocument());
+    expect((screen.getByLabelText(/code/i) as HTMLInputElement).value).toBe('');
+  });
+
+  it('cold-start: no ?email=, email field is editable', async () => {
+    await router.push('/activate');
+    await router.isReady();
+    mount();
+    const emailInput = screen.getByLabelText(/email/i) as HTMLInputElement;
+    expect(emailInput.readOnly).toBe(false);
+    expect(emailInput.value).toBe('');
+  });
 });
