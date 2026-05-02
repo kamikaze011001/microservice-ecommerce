@@ -20,20 +20,41 @@ Vitest unit suite.
 | ≥ 5 page tests                                                          | `LoginPage.spec.ts` (3) + `RegisterPage.spec.ts` (3) = 6 page tests; full suite 21 files / 70 tests green.                                                                 |
 | Typecheck / lint clean                                                  | `pnpm typecheck` 0 errors; `pnpm lint` 0 errors (10 pre-existing Phase 2 warnings, untouched).                                                                             |
 
-## Deferred — backend dependent
+## Activation flow added (2026-05-02)
+
+Backend gates login on activation, so the original "register → auto-login → /"
+DoD path no longer applies. Replaced with an explicit activation step:
+
+| Change                                                              | Code location                                               |
+| ------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `useRegisterMutation` no longer auto-logs-in                        | `src/api/queries/auth.ts`                                   |
+| `/activate` page (email-prefilled OTP entry, 30s resend countdown)  | `src/pages/ActivatePage.vue`, `src/router/index.ts`         |
+| RegisterPage redirects to `/activate?email=…` post-success          | `src/pages/RegisterPage.vue`                                |
+| LoginPage shows inline "Activate it →" on `not-activated` API error | `src/pages/LoginPage.vue`, classifier in `src/api/error.ts` |
+
+Unit coverage: `ActivatePage.spec.ts` (4 cases — happy, wrong-OTP, resend
+countdown, cold-start), `RegisterPage.spec.ts` redirect + footer link,
+`LoginPage.spec.ts` activate-hint, `error.spec.ts` classifier branch.
+Full suite 22 files / 78 tests green.
+
+## Deferred — pending MailHog setup
+
+Live E2E (register → email OTP → activate → login → `/`) is deferred until
+a local SMTP catcher is wired into `docker/docker-compose-*.yml` and Vault's
+`secret/ecommerce` SMTP host points at it. Tracked separately from this PR.
 
 The local Spring stack is sealed: `authorization-server` failed to come up
 (Atomikos MySQL pool exhausted) and `gateway` is consequently unreachable.
 The bullets below need a live backend and will be re-verified once the stack
 recovers. Code paths for each are implemented and unit-tested.
 
-| DoD bullet                                                                          | Why deferred                                                                                                                                       | Code location                                                 |
-| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `pnpm api:gen` produces non-empty `src/api/schema.d.ts` from gateway `/v3/api-docs` | Gateway down. Plan's documented fallback used: placeholder `paths = Record<string, never>`.                                                        | `frontend/scripts/api-gen.sh`, `frontend/src/api/schema.d.ts` |
-| E2E: register fresh user → auto-login → land on `/` → user shown in nav             | Auth endpoints not reachable. Auto-login chain implemented in `useRegisterMutation`; nav binding via `data-testid="nav-user"` covered by `AppNav`. | `src/api/queries/auth.ts`, `src/components/layout/AppNav.vue` |
-| E2E: log out → guest nav → `/cart` redirects to `/login?next=/cart`                 | Guest-side already verified above; the "log out from authenticated session" leg requires real login.                                               | `src/stores/auth.ts:logout()`, router guard                   |
-| Force 401 → auto-redirect to `/login?next=…`                                        | No real 401 source. Interceptor implemented in middleware: clears auth store + `router.replace({ path: '/login', query: { next } })`.              | `src/api/client.ts`                                           |
-| Server-side wrong-password → inline error (live)                                    | Unit test covers the mapping; live request blocked.                                                                                                | `src/pages/LoginPage.vue` `onSubmit` catch block              |
+| DoD bullet                                                                          | Why deferred                                                                                                                          | Code location                                                                               |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `pnpm api:gen` produces non-empty `src/api/schema.d.ts` from gateway `/v3/api-docs` | Gateway down. Plan's documented fallback used: placeholder `paths = Record<string, never>`.                                           | `frontend/scripts/api-gen.sh`, `frontend/src/api/schema.d.ts`                               |
+| E2E: register → activate (OTP) → login → land on `/` → user shown in nav            | Needs JVM stack + MailHog. Activate flow implemented + unit-tested; nav binding via `data-testid="nav-user"` covered by `AppNav`.     | `src/pages/ActivatePage.vue`, `src/api/queries/auth.ts`, `src/components/layout/AppNav.vue` |
+| E2E: log out → guest nav → `/cart` redirects to `/login?next=/cart`                 | Guest-side already verified above; the "log out from authenticated session" leg requires real login.                                  | `src/stores/auth.ts:logout()`, router guard                                                 |
+| Force 401 → auto-redirect to `/login?next=…`                                        | No real 401 source. Interceptor implemented in middleware: clears auth store + `router.replace({ path: '/login', query: { next } })`. | `src/api/client.ts`                                                                         |
+| Server-side wrong-password → inline error (live)                                    | Unit test covers the mapping; live request blocked.                                                                                   | `src/pages/LoginPage.vue` `onSubmit` catch block                                            |
 
 ## Reproduction
 
