@@ -1,12 +1,12 @@
 <script setup lang="ts">
 const buildVersion = '0.0.0';
-const buildDate = new Date().toISOString().slice(0, 10);
+const renderDate = new Date().toISOString().slice(0, 10);
 </script>
 
 <template>
   <main class="page">
     <header class="masthead">
-      <span class="numeral">01</span>
+      <span class="numeral" aria-hidden="true">01</span>
       <p class="kicker">Issue Nº01 — Storefront</p>
     </header>
 
@@ -21,7 +21,7 @@ const buildDate = new Date().toISOString().slice(0, 10);
 
     <footer class="colophon">
       <span>v{{ buildVersion }}</span>
-      <span>{{ buildDate }}</span>
+      <span>{{ renderDate }}</span>
       <span>aibles ecommerce</span>
     </footer>
   </main>
