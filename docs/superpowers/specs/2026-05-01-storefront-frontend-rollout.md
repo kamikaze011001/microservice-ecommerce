@@ -105,14 +105,14 @@
 
 ### Definition of Done
 
-- [ ] `pnpm api:gen` produces a non-empty `src/api/schema.d.ts` with no TS errors
-- [ ] End-to-end: register a fresh user → auto-login → land on `/` → user shown in nav
-- [ ] End-to-end: log out → nav reflects guest state → `/cart` redirects to `/login?next=/cart`
-- [ ] Multi-tab logout: open 2 tabs, logout in tab A, tab B's next API call kicks to `/login`
-- [ ] Force a 401 (mess with token in DevTools) → auto-redirect to `/login?next=…`
-- [ ] Form validation: invalid email shows inline error in `--stamp-red`; password rules match backend `@ValidPassword`
-- [ ] Server error (e.g., wrong password) maps to inline form error, not a toast
-- [ ] ≥ 5 page tests (login happy, login wrong-pass, register happy, register password-rules, route guard redirect)
+- [ ] `pnpm api:gen` produces a non-empty `src/api/schema.d.ts` with no TS errors *(deferred: backend down — placeholder per plan fallback; see `frontend/docs/phase-3-verification.md`)*
+- [ ] End-to-end: register a fresh user → auto-login → land on `/` → user shown in nav *(deferred: backend down)*
+- [ ] End-to-end: log out → nav reflects guest state → `/cart` redirects to `/login?next=/cart` *(guest leg verified; login leg deferred: backend down)*
+- [x] Multi-tab logout: open 2 tabs, logout in tab A, tab B's next API call kicks to `/login`
+- [ ] Force a 401 (mess with token in DevTools) → auto-redirect to `/login?next=…` *(deferred: backend down — interceptor implemented in `src/api/client.ts`)*
+- [x] Form validation: invalid email shows inline error in `--stamp-red`; password rules match backend `@ValidPassword`
+- [x] Server error (e.g., wrong password) maps to inline form error, not a toast
+- [x] ≥ 5 page tests (login happy, login wrong-pass, register happy, register password-rules, route guard redirect)
 
 ---
 

@@ -145,6 +145,16 @@
     "roles": ["PERMIT_ALL"]
   },
   {
+    "_id": {"$oid": "67bdd5f4159bec37d09bb6b0"},
+    "path": "/bff-service/v3/api-docs/**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
+    "_id": {"$oid": "67bdd5f4159bec37d09bb6b1"},
+    "path": "/bff-service/v3/api-docs**",
+    "roles": ["PERMIT_ALL"]
+  },
+  {
     "_id": {"$oid": "67bdd5f4159bec37d09bb6a4"},
     "path": "/payment-service/v1/payments/**",
     "roles": ["AUTHORIZED"],

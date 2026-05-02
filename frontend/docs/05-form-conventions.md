@@ -16,12 +16,13 @@ import { z } from 'zod';
 
 // ─── Atoms (reused across forms + responses) ───
 export const emailSchema = z.string().email('Enter a valid email');
+// Mirrors backend @ValidPassword regex
 export const passwordSchema = z
   .string()
-  .min(8, 'Min 8 chars')
-  .regex(/[A-Z]/, 'One uppercase')
-  .regex(/[a-z]/, 'One lowercase')
-  .regex(/\d/, 'One number');
+  .regex(
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()])[A-Za-z\d!@#$%^&*()]{6,}$/,
+    'Min 6 chars with upper, lower, number, and special (!@#$%^&*())',
+  );
 
 // ─── Composites ───
 export const loginSchema = z.object({
