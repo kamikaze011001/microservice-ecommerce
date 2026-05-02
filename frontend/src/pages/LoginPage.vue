@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { isRef, computed } from 'vue';
+import { isRef, computed, ref } from 'vue';
 import { useForm } from 'vee-validate';
 import { toTypedSchema } from '@vee-validate/zod';
 import { useRoute, useRouter } from 'vue-router';
 import { loginSchema } from '@/lib/zod-schemas';
 import { useLoginMutation } from '@/api/queries/auth';
 import { BButton, BInput } from '@/components/primitives';
+import { ApiError, classify } from '@/api/error';
 
 const route = useRoute();
 const router = useRouter();
@@ -43,11 +44,18 @@ function safeNext(raw: unknown): string {
   return raw.startsWith('/') ? raw : '/';
 }
 
+const notActivated = ref(false);
+
 const onSubmit = handleSubmit(async (values) => {
+  notActivated.value = false;
   try {
     await login(values);
     await router.push(safeNext(route.query.next));
   } catch (err) {
+    if (err instanceof ApiError && classify(err) === 'not-activated') {
+      notActivated.value = true;
+      return;
+    }
     const e = err as { code?: string; message?: string };
     if (e?.code === 'INVALID_CREDENTIALS') {
       setErrors({ password: 'Wrong email or password' });
@@ -81,6 +89,10 @@ const onSubmit = handleSubmit(async (values) => {
         {{ pending ? 'STAMPING…' : 'LOG IN' }}
       </BButton>
       <p class="login__alt">No account? <RouterLink to="/register">REGISTER</RouterLink></p>
+      <p v-if="notActivated" class="login__alt">
+        Account not activated.
+        <RouterLink to="/activate">Activate it →</RouterLink>
+      </p>
     </form>
   </main>
 </template>

@@ -6,6 +6,7 @@ import { setActivePinia, createPinia } from 'pinia';
 import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
 import { router } from '@/router';
 import LoginPage from '@/pages/LoginPage.vue';
+import { ApiError } from '@/api/error';
 
 const loginMutateAsync = vi.fn();
 
@@ -80,5 +81,21 @@ describe('LoginPage', () => {
     vi.advanceTimersByTime(10);
     await flushPromises();
     expect(loginMutateAsync).toHaveBeenCalled();
+  });
+
+  it('shows inline activate link when login fails with "not activated"', async () => {
+    loginMutateAsync.mockRejectedValueOnce(
+      new ApiError(400, 'Bad Request', 'Your account is not activated'),
+    );
+    mount();
+    await user.type(screen.getByLabelText(/username/i), 'son');
+    await user.type(screen.getByLabelText(/password/i), 'Aa1!aa');
+    await user.click(screen.getByRole('button', { name: /log in/i }));
+    vi.advanceTimersByTime(10);
+    await flushPromises();
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: /activate it/i });
+      expect(link.getAttribute('href')).toBe('/activate');
+    });
   });
 });
