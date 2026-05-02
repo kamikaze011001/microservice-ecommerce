@@ -1,0 +1,17 @@
+@import 'tailwindcss';
+
+/* Tokens get imported in Task 6 (after tokens.css is created). */
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Cabinet Grotesk', system-ui, sans-serif;
+  background: #f4efe6;
+  color: #1c1c1c;
+  -webkit-font-smoothing: antialiased;
+}
