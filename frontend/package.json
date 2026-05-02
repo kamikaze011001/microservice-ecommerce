@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "vue-tsc --noEmit",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -31,6 +31,7 @@
     "eslint-plugin-vue": "^9.28.0",
     "globals": "^15.9.0",
     "happy-dom": "^15.7.4",
+    "lint-staged": "^15.2.10",
     "postcss": "^8.4.45",
     "prettier": "^3.3.3",
     "tailwindcss": "^4.0.0",
@@ -43,5 +44,13 @@
   "engines": {
     "node": ">=20",
     "pnpm": ">=9"
+  },
+  "lint-staged": {
+    "*.{ts,vue}": [
+      "eslint --fix"
+    ],
+    "*.{ts,vue,css,md,json}": [
+      "prettier --write"
+    ]
   }
 }
