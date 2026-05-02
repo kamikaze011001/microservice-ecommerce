@@ -55,7 +55,7 @@ const confirmPassword = computed({
 const onSubmit = handleSubmit(async (values) => {
   try {
     await doRegister(values);
-    await router.push('/');
+    await router.push({ path: '/activate', query: { email: values.email } });
   } catch (err) {
     const e = err as { code?: string; message?: string };
     if (e?.code === 'EMAIL_TAKEN') {
@@ -106,6 +106,10 @@ const onSubmit = handleSubmit(async (values) => {
       </BButton>
       <p class="register__alt">
         Already have an account? <RouterLink to="/login">LOG IN</RouterLink>
+      </p>
+      <p class="register__alt">
+        Already registered?
+        <RouterLink to="/activate">Activate your account →</RouterLink>
       </p>
     </form>
   </main>
