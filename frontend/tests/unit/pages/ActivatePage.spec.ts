@@ -55,4 +55,19 @@ describe('ActivatePage', () => {
     );
     await waitFor(() => expect(router.currentRoute.value.path).toBe('/login'));
   });
+
+  it('resend triggers mutation, disables button for 30s', async () => {
+    resendMutateAsync.mockResolvedValueOnce(undefined);
+    mount();
+    const btn = screen.getByRole('button', { name: /resend code/i });
+    await user.click(btn);
+    vi.advanceTimersByTime(10);
+    await flushPromises();
+    expect(resendMutateAsync).toHaveBeenCalledWith({ type: 'REGISTER', email: 'son@example.com' });
+    expect(btn).toBeDisabled();
+    expect(btn.textContent ?? '').toMatch(/30/);
+    vi.advanceTimersByTime(30_000);
+    await flushPromises();
+    expect(btn).not.toBeDisabled();
+  });
 });

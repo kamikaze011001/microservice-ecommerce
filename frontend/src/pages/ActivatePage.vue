@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { useForm } from 'vee-validate';
 import { toTypedSchema } from '@vee-validate/zod';
 import { useRoute, useRouter } from 'vue-router';
@@ -52,13 +52,34 @@ const onSubmit = handleSubmit(async (values) => {
   }
 });
 
+const resendCooldown = ref(0);
+let resendTimer: ReturnType<typeof setInterval> | null = null;
+
+function startCooldown() {
+  resendCooldown.value = 30;
+  if (resendTimer) clearInterval(resendTimer);
+  resendTimer = setInterval(() => {
+    resendCooldown.value -= 1;
+    if (resendCooldown.value <= 0 && resendTimer) {
+      clearInterval(resendTimer);
+      resendTimer = null;
+    }
+  }, 1000);
+}
+
+onBeforeUnmount(() => {
+  if (resendTimer) clearInterval(resendTimer);
+});
+
 async function onResend() {
+  if (resendCooldown.value > 0) return;
   if (!email.value) {
     setErrors({ email: 'Enter your email first' });
     return;
   }
   try {
     await resend.mutateAsync({ type: 'REGISTER', email: email.value });
+    startCooldown();
   } catch (err) {
     const e = err as { message?: string };
     setErrors({ otp: e?.message ?? 'Resend failed' });
@@ -89,7 +110,9 @@ async function onResend() {
       <BButton type="submit" variant="spot" :disabled="pending">
         {{ pending ? 'ACTIVATING…' : 'ACTIVATE' }}
       </BButton>
-      <BButton type="button" variant="ghost" @click="onResend">RESEND CODE</BButton>
+      <BButton type="button" variant="ghost" :disabled="resendCooldown > 0" @click="onResend">
+        {{ resendCooldown > 0 ? `RESEND IN ${resendCooldown}s` : 'RESEND CODE' }}
+      </BButton>
     </form>
   </main>
 </template>
