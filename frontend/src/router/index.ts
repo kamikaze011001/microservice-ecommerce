@@ -4,6 +4,7 @@ import DesignShowcase from '@/pages/DesignShowcase.vue';
 import LoginPage from '@/pages/LoginPage.vue';
 import RegisterPage from '@/pages/RegisterPage.vue';
 import CartPlaceholder from '@/pages/CartPlaceholder.vue';
+import ActivatePage from '@/pages/ActivatePage.vue';
 import { useAuthStore } from '@/stores/auth';
 
 export const router = createRouter({
@@ -13,6 +14,7 @@ export const router = createRouter({
     { path: '/_design', component: DesignShowcase },
     { path: '/login', component: LoginPage, meta: { guestOnly: true } },
     { path: '/register', component: RegisterPage, meta: { guestOnly: true } },
+    { path: '/activate', component: ActivatePage, meta: { guestOnly: true } },
     { path: '/cart', component: CartPlaceholder, meta: { requiresAuth: true } },
   ],
 });
