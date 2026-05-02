@@ -56,13 +56,13 @@
 
 ### Definition of Done (measurable)
 
-- [ ] `pnpm install && pnpm typecheck && pnpm lint && pnpm test` all exit 0 on a clean clone
-- [ ] `pnpm dev` starts Vite, browser shows the "Issue Nº01" placeholder page using `--paper`, `--ink`, `--spot` tokens and the Bricolage display font
-- [ ] All 10 documentation files exist and are non-empty (each section filled, not stubs)
-- [ ] ≥ 7 ADRs committed under `frontend/docs/adr/` (framework, server-state, client-state, API client, forms, styling, routing)
+- [x] `pnpm install && pnpm typecheck && pnpm lint && pnpm test` all exit 0 on a clean clone
+- [x] `pnpm dev` starts Vite, browser shows the "Issue Nº01" placeholder page using `--paper`, `--ink`, `--spot` tokens and the Bricolage display font
+- [x] All 10 documentation files exist and are non-empty (each section filled, not stubs)
+- [x] ≥ 7 ADRs committed under `frontend/docs/adr/` (framework, server-state, client-state, API client, forms, styling, routing)
 - [ ] CI workflow runs and is green on the foundation PR
-- [ ] Pre-commit hook blocks a deliberate lint error in a staged file
-- [ ] Lighthouse run on placeholder page shows no console errors and no 404s
+- [x] Pre-commit hook blocks a deliberate lint error in a staged file
+- [x] Lighthouse run on placeholder page shows no console errors and no 404s
 
 ---
 

@@ -5,3 +5,5 @@ docker/.env
 vault-keys.json
 *.lck
 target
+.claude.local.md
+node_modules/

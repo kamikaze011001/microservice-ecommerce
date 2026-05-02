@@ -1,0 +1,11 @@
+{
+  "name": "microservice-ecommerce-root",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.5"
+  }
+}
