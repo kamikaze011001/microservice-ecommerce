@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/vue';
+import userEvent from '@testing-library/user-event';
+import { flushPromises } from '@vue/test-utils';
 import { setActivePinia, createPinia } from 'pinia';
 import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
 import { router } from '@/router';
@@ -86,5 +88,63 @@ describe('HomePage', () => {
     });
     mount();
     expect(screen.getByText(/stamping/i)).toBeInTheDocument();
+  });
+});
+
+describe('HomePage search', () => {
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+
+  it('debounces typing — 5 fast keystrokes produce 1 keyword change', async () => {
+    let capturedGetter: (() => { keyword?: string }) | null = null;
+    useProductListQuery.mockImplementation((paramsArg: () => { keyword?: string }) => {
+      capturedGetter = paramsArg;
+      return {
+        data: { value: makePage(0) },
+        isLoading: { value: false },
+        isFetching: { value: false },
+        isError: { value: false },
+        error: { value: null },
+      };
+    });
+    mount();
+    expect(capturedGetter).not.toBeNull();
+    const input = screen.getByLabelText(/search/i);
+    await user.type(input, 'shoes');
+    vi.advanceTimersByTime(399);
+    await flushPromises();
+    expect(capturedGetter!().keyword ?? '').toBe('');
+    vi.advanceTimersByTime(1);
+    await flushPromises();
+    expect(capturedGetter!().keyword ?? '').toBe('shoes');
+  });
+
+  it('writes ?q= to URL after debounce', async () => {
+    useProductListQuery.mockReturnValue({
+      data: { value: makePage(0) },
+      isLoading: { value: false },
+      isFetching: { value: false },
+      isError: { value: false },
+      error: { value: null },
+    });
+    mount();
+    await user.type(screen.getByLabelText(/search/i), 'lamp');
+    vi.advanceTimersByTime(400);
+    await flushPromises();
+    expect(router.currentRoute.value.query.q).toBe('lamp');
+  });
+
+  it('hydrates input from ?q= on direct navigation', async () => {
+    useProductListQuery.mockReturnValue({
+      data: { value: makePage(0) },
+      isLoading: { value: false },
+      isFetching: { value: false },
+      isError: { value: false },
+      error: { value: null },
+    });
+    await router.push('/?q=stool');
+    await router.isReady();
+    mount();
+    expect((screen.getByLabelText(/search/i) as HTMLInputElement).value).toBe('stool');
+    expect(screen.getByText(/no matches for/i)).toBeInTheDocument();
   });
 });

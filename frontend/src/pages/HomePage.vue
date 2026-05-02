@@ -1,18 +1,55 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useProductListQuery } from '@/api/queries/products';
+import { useDebouncedRef } from '@/composables/useDebouncedRef';
 import ProductCard from '@/components/ProductCard.vue';
-import { BStamp } from '@/components/primitives';
+import { BInput, BStamp, BButton } from '@/components/primitives';
 
-const params = computed(() => ({ page: 1, size: 12 }));
-const query = useProductListQuery(params);
+const route = useRoute();
+const router = useRouter();
+
+const initialQ = typeof route.query.q === 'string' ? route.query.q : '';
+const inputValue = ref(initialQ);
+const debouncedKeyword = useDebouncedRef<string>(initialQ, 400);
+
+watch(inputValue, (v) => {
+  debouncedKeyword.value = v;
+});
+
+watch(
+  () => route.query.q,
+  (q) => {
+    const next = typeof q === 'string' ? q : '';
+    if (next !== inputValue.value) inputValue.value = next;
+  },
+);
+
+watch(debouncedKeyword, (k) => {
+  const current = typeof route.query.q === 'string' ? route.query.q : '';
+  if (k === current) return;
+  router.replace({ query: { ...route.query, q: k || undefined, page: undefined } });
+});
+
+const query = useProductListQuery(() => ({
+  page: 1,
+  size: 12,
+  keyword: debouncedKeyword.value || undefined,
+}));
 
 const items = computed(() => query.data.value?.data ?? []);
 const total = computed(() => query.data.value?.total ?? 0);
 const isFirstLoad = computed(() => query.isLoading.value && !query.data.value);
-const isEmpty = computed(() => !isFirstLoad.value && total.value === 0);
+const hasKeyword = computed(() => (debouncedKeyword.value ?? '').trim() !== '');
+const isEmptyCatalog = computed(() => !isFirstLoad.value && total.value === 0 && !hasKeyword.value);
+const isEmptySearch = computed(() => !isFirstLoad.value && total.value === 0 && hasKeyword.value);
 const heroItems = computed(() => items.value.slice(0, 3));
 const gridItems = computed(() => items.value);
+
+function clearSearch() {
+  inputValue.value = '';
+  router.replace({ query: { ...route.query, q: undefined, page: undefined } });
+}
 </script>
 
 <template>
@@ -31,10 +68,18 @@ const gridItems = computed(() => items.value);
       </ul>
     </section>
 
+    <section class="home__search">
+      <BInput v-model="inputValue" label="Search" placeholder="SEARCH THE ISSUE" />
+    </section>
+
     <section class="home__grid-wrap" aria-label="Catalog">
       <p v-if="isFirstLoad" class="home__placeholder">STAMPING…</p>
-      <div v-else-if="isEmpty" class="home__empty">
-        <BStamp tone="ink" size="lg" :rotate="-4"> ISSUE Nº01 / COMING SOON </BStamp>
+      <div v-else-if="isEmptyCatalog" class="home__empty">
+        <BStamp tone="ink" size="lg" :rotate="-4">ISSUE Nº01 / COMING SOON</BStamp>
+      </div>
+      <div v-else-if="isEmptySearch" class="home__empty">
+        <p class="home__nomatch">NO MATCHES FOR "{{ debouncedKeyword }}"</p>
+        <BButton variant="ghost" @click="clearSearch">CLEAR SEARCH</BButton>
       </div>
       <ul v-else class="home__grid">
         <li v-for="item in gridItems" :key="item.id" class="home__grid-item">
@@ -124,5 +169,15 @@ const gridItems = computed(() => items.value);
   display: flex;
   justify-content: center;
   padding: var(--space-8);
+}
+.home__search {
+  max-width: 32rem;
+}
+.home__nomatch {
+  font-family: var(--font-display);
+  font-size: var(--type-h2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 var(--space-4);
 }
 </style>
