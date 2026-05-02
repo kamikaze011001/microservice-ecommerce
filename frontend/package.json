@@ -12,7 +12,8 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "api:gen": "./scripts/api-gen.sh"
   },
   "dependencies": {
     "pinia": "^2.2",
