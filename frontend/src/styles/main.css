@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './fonts.css';
 
 /* Tokens get imported in Task 6 (after tokens.css is created). */
 
