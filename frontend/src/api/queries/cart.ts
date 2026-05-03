@@ -37,7 +37,7 @@ const CART_KEY = ['cart'] as const;
 export function useCartQuery() {
   return useQuery({
     queryKey: CART_KEY,
-    queryFn: () => apiFetch<CartResponse>('/order-service/v1/shopping-carts', { method: 'GET' }),
+    queryFn: () => apiFetch<CartResponse>('/bff-service/v1/cart', { method: 'GET' }),
     staleTime: 0,
   });
 }
@@ -46,7 +46,7 @@ export function useAddToCartMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: AddToCartInput) =>
-      apiFetch<void>('/order-service/v1/shopping-carts:add-item', {
+      apiFetch<void>('/bff-service/v1/cart:add-item', {
         method: 'POST',
         body: JSON.stringify(input),
       }),
@@ -58,7 +58,7 @@ export function useUpdateCartItemMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: UpdateCartItemInput) =>
-      apiFetch<void>('/order-service/v1/shopping-carts:update-item', {
+      apiFetch<void>('/bff-service/v1/cart:update-item', {
         method: 'PATCH',
         body: JSON.stringify(input),
       }),
@@ -89,7 +89,7 @@ export function useRemoveCartItemMutation() {
   return useMutation({
     mutationFn: (input: RemoveCartItemInput) =>
       apiFetch<void>(
-        `/order-service/v1/shopping-carts:delete-item?itemId=${encodeURIComponent(input.shopping_cart_item_id)}`,
+        `/bff-service/v1/cart:delete-item?itemId=${encodeURIComponent(input.shopping_cart_item_id)}`,
         { method: 'DELETE' },
       ),
     onMutate: async (input) => {
