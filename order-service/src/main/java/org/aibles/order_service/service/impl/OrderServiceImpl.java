@@ -613,7 +613,12 @@ public class OrderServiceImpl implements OrderService {
         PageRequest pageRequest = PageRequest.of(page - 1, size);
         Page<Order> ordersByPage = slaveOrderRepo.findAllByUserId(userId, pageRequest);
         List<Order> orders = ordersByPage.toList();
-        List<OrderSummaryResponse> orderSummaryResponses = orders.stream().map(OrderSummaryResponse::from).toList();
+        List<OrderSummaryResponse> orderSummaryResponses = orders.stream()
+                .map(order -> {
+                    List<OrderItem> items = slaveOrderItemRepo.findAllByOrderId(order.getId());
+                    return OrderSummaryResponse.from(order, items);
+                })
+                .toList();
         return PagingResponse.builder()
                 .size(size)
                 .page(page)

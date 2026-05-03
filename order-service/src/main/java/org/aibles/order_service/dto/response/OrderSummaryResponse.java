@@ -7,8 +7,11 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.aibles.order_service.entity.Order;
+import org.aibles.order_service.entity.OrderItem;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -23,8 +26,17 @@ public class OrderSummaryResponse {
     private String phoneNumber;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private BigDecimal totalAmount;
+    private int itemCount;
+    private String firstItemImageUrl;
 
-    public static OrderSummaryResponse from(Order order) {
+    public static OrderSummaryResponse from(Order order, List<OrderItem> items) {
+        BigDecimal total = items.stream()
+                .map(i -> BigDecimal.valueOf(i.getPrice()).multiply(BigDecimal.valueOf(i.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        int count = items.size();
+        String firstImage = items.isEmpty() ? null : items.get(0).getImageUrl();
+
         return OrderSummaryResponse.builder()
                 .id(order.getId())
                 .status(order.getStatus().name())
@@ -32,6 +44,9 @@ public class OrderSummaryResponse {
                 .phoneNumber(order.getPhoneNumber())
                 .createdAt(order.getCreatedAt())
                 .updatedAt(order.getUpdatedAt())
+                .totalAmount(total)
+                .itemCount(count)
+                .firstItemImageUrl(firstImage)
                 .build();
     }
 }
