@@ -21,4 +21,7 @@ log_info "Uploading product images to MinIO..."
 log_info "Seeding MongoDB product..."
 "$SCRIPT_DIR/mongo-products.sh"
 
+log_info "Seeding MongoDB productQuantityHistory..."
+"$SCRIPT_DIR/mongo-product-quantity.sh"
+
 log_ok "All seed data imported"

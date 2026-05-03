@@ -7,7 +7,6 @@
     "name": "Cotton Crewneck Tee",
     "price": 25,
     "category": "apparel",
-    "quantity": 30,
     "attributes": {
       "color": "White",
       "material": "cotton",
@@ -18,7 +17,7 @@
         "XL"
       ]
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000001/cotton-crewneck-tee.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000001/cotton-crewneck-tee.jpg"
   },
   {
     "_id": {
@@ -28,7 +27,6 @@
     "name": "Heavyweight Hoodie",
     "price": 65,
     "category": "apparel",
-    "quantity": 18,
     "attributes": {
       "color": "Black",
       "material": "fleece",
@@ -39,7 +37,7 @@
         "XL"
       ]
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000002/heavyweight-hoodie.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000002/heavyweight-hoodie.jpg"
   },
   {
     "_id": {
@@ -49,7 +47,6 @@
     "name": "Linen Button-Up",
     "price": 55,
     "category": "apparel",
-    "quantity": 12,
     "attributes": {
       "color": "Sand",
       "material": "linen",
@@ -59,7 +56,7 @@
         "L"
       ]
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000003/linen-button-up.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000003/linen-button-up.jpg"
   },
   {
     "_id": {
@@ -69,7 +66,6 @@
     "name": "Denim Jacket",
     "price": 90,
     "category": "apparel",
-    "quantity": 0,
     "attributes": {
       "color": "Indigo",
       "material": "denim",
@@ -79,7 +75,7 @@
         "XL"
       ]
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000004/denim-jacket.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000004/denim-jacket.jpg"
   },
   {
     "_id": {
@@ -89,7 +85,6 @@
     "name": "Wool Overcoat",
     "price": 220,
     "category": "apparel",
-    "quantity": 8,
     "attributes": {
       "color": "Camel",
       "material": "wool",
@@ -99,7 +94,7 @@
         "XL"
       ]
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000005/wool-overcoat.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000005/wool-overcoat.jpg"
   },
   {
     "_id": {
@@ -109,7 +104,6 @@
     "name": "Raw Denim Jeans",
     "price": 110,
     "category": "apparel",
-    "quantity": 25,
     "attributes": {
       "color": "Indigo",
       "material": "denim",
@@ -120,7 +114,7 @@
         "36"
       ]
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000006/raw-denim-jeans.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000006/raw-denim-jeans.jpg"
   },
   {
     "_id": {
@@ -130,7 +124,6 @@
     "name": "Flannel Shirt",
     "price": 48,
     "category": "apparel",
-    "quantity": 22,
     "attributes": {
       "color": "Red",
       "material": "cotton",
@@ -141,7 +134,7 @@
         "XL"
       ]
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000007/flannel-shirt.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000007/flannel-shirt.jpg"
   },
   {
     "_id": {
@@ -151,7 +144,6 @@
     "name": "Cashmere Sweater",
     "price": 180,
     "category": "apparel",
-    "quantity": 2,
     "attributes": {
       "color": "Cream",
       "material": "cashmere",
@@ -161,7 +153,7 @@
         "L"
       ]
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000008/cashmere-sweater.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000008/cashmere-sweater.jpg"
   },
   {
     "_id": {
@@ -171,7 +163,6 @@
     "name": "Utility Pants",
     "price": 75,
     "category": "apparel",
-    "quantity": 35,
     "attributes": {
       "color": "Olive",
       "material": "cotton",
@@ -182,7 +173,7 @@
         "36"
       ]
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000009/utility-pants.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000009/utility-pants.jpg"
   },
   {
     "_id": {
@@ -192,7 +183,6 @@
     "name": "Graphic Tee",
     "price": 30,
     "category": "apparel",
-    "quantity": 40,
     "attributes": {
       "color": "Black",
       "material": "cotton",
@@ -203,7 +193,7 @@
         "XL"
       ]
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000a/graphic-tee.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000a/graphic-tee.jpg"
   },
   {
     "_id": {
@@ -213,7 +203,6 @@
     "name": "Canvas Low-Tops",
     "price": 50,
     "category": "footwear",
-    "quantity": 28,
     "attributes": {
       "color": "White",
       "size": [
@@ -224,7 +213,7 @@
       ],
       "gender": "UNISEX"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000b/canvas-low-tops.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000b/canvas-low-tops.jpg"
   },
   {
     "_id": {
@@ -234,7 +223,6 @@
     "name": "Leather Derbies",
     "price": 185,
     "category": "footwear",
-    "quantity": 14,
     "attributes": {
       "color": "Brown",
       "size": [
@@ -245,7 +233,7 @@
       ],
       "gender": "MALE"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000c/leather-derbies.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000c/leather-derbies.jpg"
   },
   {
     "_id": {
@@ -255,7 +243,6 @@
     "name": "Trail Runners",
     "price": 135,
     "category": "footwear",
-    "quantity": 22,
     "attributes": {
       "color": "Grey",
       "size": [
@@ -266,7 +253,7 @@
       ],
       "gender": "UNISEX"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000d/trail-runners.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000d/trail-runners.jpg"
   },
   {
     "_id": {
@@ -276,7 +263,6 @@
     "name": "Chelsea Boots",
     "price": 210,
     "category": "footwear",
-    "quantity": 10,
     "attributes": {
       "color": "Black",
       "size": [
@@ -287,7 +273,7 @@
       ],
       "gender": "UNISEX"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000e/chelsea-boots.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000e/chelsea-boots.jpg"
   },
   {
     "_id": {
@@ -297,7 +283,6 @@
     "name": "Court Sneakers",
     "price": 90,
     "category": "footwear",
-    "quantity": 0,
     "attributes": {
       "color": "White",
       "size": [
@@ -308,7 +293,7 @@
       ],
       "gender": "UNISEX"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000f/court-sneakers.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000f/court-sneakers.jpg"
   },
   {
     "_id": {
@@ -318,7 +303,6 @@
     "name": "Running Flats",
     "price": 115,
     "category": "footwear",
-    "quantity": 30,
     "attributes": {
       "color": "Pink",
       "size": [
@@ -329,7 +313,7 @@
       ],
       "gender": "FEMALE"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000010/running-flats.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000010/running-flats.jpg"
   },
   {
     "_id": {
@@ -339,7 +323,6 @@
     "name": "Work Boots",
     "price": 245,
     "category": "footwear",
-    "quantity": 6,
     "attributes": {
       "color": "Tan",
       "size": [
@@ -350,7 +333,7 @@
       ],
       "gender": "MALE"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000011/work-boots.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000011/work-boots.jpg"
   },
   {
     "_id": {
@@ -360,7 +343,6 @@
     "name": "Slip-On Loafers",
     "price": 140,
     "category": "footwear",
-    "quantity": 1,
     "attributes": {
       "color": "Navy",
       "size": [
@@ -370,7 +352,7 @@
       ],
       "gender": "UNISEX"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000012/slip-on-loafers.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000012/slip-on-loafers.jpg"
   },
   {
     "_id": {
@@ -380,7 +362,6 @@
     "name": "High-Tops",
     "price": 80,
     "category": "footwear",
-    "quantity": 18,
     "attributes": {
       "color": "Black",
       "size": [
@@ -391,7 +372,7 @@
       ],
       "gender": "UNISEX"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000013/high-tops.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000013/high-tops.jpg"
   },
   {
     "_id": {
@@ -401,7 +382,6 @@
     "name": "Retro Runners",
     "price": 125,
     "category": "footwear",
-    "quantity": 24,
     "attributes": {
       "color": "Cream",
       "size": [
@@ -412,7 +392,7 @@
       ],
       "gender": "UNISEX"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000014/retro-runners.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000014/retro-runners.jpg"
   },
   {
     "_id": {
@@ -422,12 +402,11 @@
     "name": "Canvas Tote",
     "price": 35,
     "category": "accessories",
-    "quantity": 50,
     "attributes": {
       "color": "Natural",
       "material": "canvas"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000015/canvas-tote.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000015/canvas-tote.jpg"
   },
   {
     "_id": {
@@ -437,12 +416,11 @@
     "name": "Leather Belt",
     "price": 65,
     "category": "accessories",
-    "quantity": 18,
     "attributes": {
       "color": "Brown",
       "material": "leather"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000016/leather-belt.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000016/leather-belt.jpg"
   },
   {
     "_id": {
@@ -452,12 +430,11 @@
     "name": "Wool Beanie",
     "price": 28,
     "category": "accessories",
-    "quantity": 32,
     "attributes": {
       "color": "Charcoal",
       "material": "wool"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000017/wool-beanie.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000017/wool-beanie.jpg"
   },
   {
     "_id": {
@@ -467,12 +444,11 @@
     "name": "Linen Scarf",
     "price": 42,
     "category": "accessories",
-    "quantity": 14,
     "attributes": {
       "color": "Stone",
       "material": "linen"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000018/linen-scarf.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000018/linen-scarf.jpg"
   },
   {
     "_id": {
@@ -482,12 +458,11 @@
     "name": "Card Wallet",
     "price": 55,
     "category": "accessories",
-    "quantity": 0,
     "attributes": {
       "color": "Black",
       "material": "leather"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c000000000000000000019/card-wallet.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000019/card-wallet.jpg"
   },
   {
     "_id": {
@@ -497,12 +472,11 @@
     "name": "Baseball Cap",
     "price": 32,
     "category": "accessories",
-    "quantity": 40,
     "attributes": {
       "color": "Navy",
       "material": "cotton"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001a/baseball-cap.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001a/baseball-cap.jpg"
   },
   {
     "_id": {
@@ -512,12 +486,11 @@
     "name": "Crossbody Bag",
     "price": 130,
     "category": "accessories",
-    "quantity": 10,
     "attributes": {
       "color": "Black",
       "material": "nylon"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001b/crossbody-bag.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001b/crossbody-bag.jpg"
   },
   {
     "_id": {
@@ -527,12 +500,11 @@
     "name": "Socks 3-Pack",
     "price": 18,
     "category": "accessories",
-    "quantity": 45,
     "attributes": {
       "color": "Mixed",
       "material": "cotton"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001c/socks-3pack.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001c/socks-3pack.jpg"
   },
   {
     "_id": {
@@ -542,12 +514,11 @@
     "name": "Ribbed Gloves",
     "price": 38,
     "category": "accessories",
-    "quantity": 16,
     "attributes": {
       "color": "Black",
       "material": "wool"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001d/ribbed-gloves.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001d/ribbed-gloves.jpg"
   },
   {
     "_id": {
@@ -557,11 +528,10 @@
     "name": "Messenger Bag",
     "price": 165,
     "category": "accessories",
-    "quantity": 8,
     "attributes": {
       "color": "Olive",
       "material": "canvas"
     },
-    "image_url": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001e/messenger-bag.jpg"
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001e/messenger-bag.jpg"
   }
 ]

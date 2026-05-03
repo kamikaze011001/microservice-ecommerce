@@ -14,6 +14,10 @@ source "$REPO_ROOT/scripts/lib/colors.sh"
 
 base_url=$(jq -r '.publicBaseUrl' "$MANIFEST")
 
+# Field names match Product entity (camelCase). Quantity is NOT on the
+# Product entity — it's summed from productQuantityHistory by the service
+# layer and exposed in ProductResponse via @JsonNaming(SnakeCase). See
+# scripts/seed/generate-quantity-history.sh for the quantity seed.
 jq --arg base "$base_url" '
   .products | map({
     "_id":        { "$oid": .productId },
@@ -21,9 +25,8 @@ jq --arg base "$base_url" '
     "name":       .name,
     "price":      .price,
     "category":   .category,
-    "quantity":   .quantity,
     "attributes": .attributes,
-    "image_url":  ($base + "/products/" + .productId + "/" + .slug + ".jpg")
+    "imageUrl":   ($base + "/products/" + .productId + "/" + .slug + ".jpg")
   })
 ' "$MANIFEST" > "$OUT"
 
