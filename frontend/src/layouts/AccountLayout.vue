@@ -77,4 +77,29 @@ import { RouterLink, RouterView } from 'vue-router';
   color: var(--ink);
   border-bottom-color: var(--spot);
 }
+
+@media (max-width: 47.99rem) {
+  .account {
+    padding: var(--space-6) var(--space-4);
+  }
+  .account__masthead {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+  .account__numeral {
+    font-size: 4rem;
+  }
+  .account__strip {
+    width: 100%;
+    justify-content: flex-start;
+    gap: var(--space-4);
+  }
+}
+
+@media (max-width: 29.99rem) {
+  .account__kicker {
+    display: none;
+  }
+}
 </style>
