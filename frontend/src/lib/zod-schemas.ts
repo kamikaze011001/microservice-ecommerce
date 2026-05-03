@@ -41,3 +41,14 @@ export const resendOtpSchema = z.object({
   email: emailSchema,
 });
 export type ResendOtpInput = z.infer<typeof resendOtpSchema>;
+
+export const addressSchema = z.object({
+  street: z.string().min(3, 'Street is required'),
+  city: z.string().min(2, 'City is required'),
+  state: z.string().min(2, 'State / region is required'),
+  postcode: z.string().regex(/^\S{3,10}$/, 'Postcode looks invalid'),
+  country: z.string().regex(/^[A-Z]{2}$/, 'Use ISO-2 country code (e.g. US)'),
+  phone: z.string().regex(/^\+?[0-9\s\-()]{7,20}$/, 'Phone looks invalid'),
+});
+
+export type AddressInput = z.infer<typeof addressSchema>;
