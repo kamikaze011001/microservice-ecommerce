@@ -16,20 +16,20 @@ import java.util.Map;
 @FeignClient(name = "order-service")
 public interface OrderFeignClient {
 
-    @GetMapping("/v1/orders/{orderId}")
+    @GetMapping("/order-service/v1/orders/{orderId}")
     BaseResponse getOrder(@RequestHeader("X-User-Id") String userId,
                           @PathVariable("orderId") String orderId);
 
-    @GetMapping("/v1/shopping-carts")
+    @GetMapping("/order-service/v1/shopping-carts")
     BaseResponse getCart(@RequestHeader("X-User-Id") String userId);
 
-    @PostMapping("/v1/shopping-carts:add-item")
+    @PostMapping("/order-service/v1/shopping-carts:add-item")
     BaseResponse addCartItem(@RequestHeader("X-User-Id") String userId,
                              @RequestBody Map<String, Object> body);
 
-    @PatchMapping("/v1/shopping-carts:update-item")
+    @PatchMapping("/order-service/v1/shopping-carts:update-item")
     BaseResponse updateCartItem(@RequestBody Map<String, Object> body);
 
-    @DeleteMapping("/v1/shopping-carts:delete-item")
+    @DeleteMapping("/order-service/v1/shopping-carts:delete-item")
     BaseResponse deleteCartItem(@RequestParam("itemId") String itemId);
 }

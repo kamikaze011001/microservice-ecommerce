@@ -11,9 +11,9 @@ import java.util.Set;
 @FeignClient(name = "product-service")
 public interface ProductFeignClient {
 
-    @GetMapping("/v1/products/{id}")
+    @GetMapping("/product-service/v1/products/{id}")
     BaseResponse getById(@PathVariable("id") String id);
 
-    @GetMapping("/v1/products")
+    @GetMapping("/product-service/v1/products")
     BaseResponse listByIds(@RequestParam("ids") Set<String> ids);
 }
