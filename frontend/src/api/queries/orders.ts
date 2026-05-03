@@ -80,6 +80,50 @@ export function useCancelOrderMutation() {
   });
 }
 
+export interface OrderDetailItem {
+  id: string;
+  product_id: string;
+  product_name: string | null;
+  image_url: string | null;
+  price: number;
+  quantity: number;
+}
+
+export interface OrderDetailView {
+  id: string;
+  status: string;
+  address: string;
+  phone_number: string;
+  created_at: string;
+  updated_at: string;
+  items: OrderDetailItem[];
+}
+
+export interface PaymentView {
+  status: string | null;
+  type: string | null;
+  captured_at?: string | null;
+}
+
+export interface OrderDetailBffData {
+  order: OrderDetailView;
+  payment: PaymentView | null;
+}
+
+export function useOrderDetailBffQuery(orderId: Ref<string>) {
+  return useQuery({
+    queryKey: computed(() => ['orders', 'detail', orderId.value] as const),
+    queryFn: () =>
+      apiFetch<OrderDetailBffData>(`/bff-service/v1/orders/${orderId.value}`, { method: 'GET' }),
+    enabled: computed(() => !!orderId.value),
+    retry: (failureCount, err) => {
+      const status = (err as { status?: number })?.status;
+      if (status === 404) return false;
+      return failureCount < 2;
+    },
+  });
+}
+
 interface OrderQueryOptions {
   polling?: boolean;
 }
