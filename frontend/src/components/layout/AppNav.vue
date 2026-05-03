@@ -13,7 +13,7 @@ const logout = useLogout();
 const router = useRouter();
 const route = useRoute();
 
-const profile = useProfileQuery();
+const profile = useProfileQuery({ enabled: isLoggedIn });
 const greeting = computed(() => {
   const name = profile.data.value?.name?.trim();
   return name ? `HI, ${name.toUpperCase()}` : '';

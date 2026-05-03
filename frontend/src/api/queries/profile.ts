@@ -1,3 +1,4 @@
+import type { MaybeRefOrGetter } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 import { apiFetch } from '@/api/client';
 
@@ -12,10 +13,11 @@ export interface ProfileData {
 
 const PROFILE_KEY = ['profile'] as const;
 
-export function useProfileQuery() {
+export function useProfileQuery(options?: { enabled?: MaybeRefOrGetter<boolean> }) {
   return useQuery({
     queryKey: PROFILE_KEY,
     queryFn: () => apiFetch<ProfileData>('/authorization-server/v1/users/self', { method: 'GET' }),
+    enabled: options?.enabled,
   });
 }
 
