@@ -5,6 +5,8 @@ import LoginPage from '@/pages/LoginPage.vue';
 import RegisterPage from '@/pages/RegisterPage.vue';
 import CartPlaceholder from '@/pages/CartPlaceholder.vue';
 import ActivatePage from '@/pages/ActivatePage.vue';
+import ProductDetailPage from '@/pages/ProductDetailPage.vue';
+import NotFoundPage from '@/pages/NotFoundPage.vue';
 import { useAuthStore } from '@/stores/auth';
 
 export const router = createRouter({
@@ -16,6 +18,8 @@ export const router = createRouter({
     { path: '/register', component: RegisterPage, meta: { guestOnly: true } },
     { path: '/activate', component: ActivatePage, meta: { guestOnly: true } },
     { path: '/cart', component: CartPlaceholder, meta: { requiresAuth: true } },
+    { path: '/products/:id', component: ProductDetailPage },
+    { path: '/:pathMatch(.*)*', component: NotFoundPage },
   ],
 });
 
