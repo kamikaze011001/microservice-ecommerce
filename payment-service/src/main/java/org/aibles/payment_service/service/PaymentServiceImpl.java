@@ -94,7 +94,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
-    public void handleSuccessPayment(String token) {
+    public String handleSuccessPayment(String token) {
         log.info("(handle paypal success)token: {}", token);
         String orderId;
         PaypalCaptureResponse paypalCaptureResponse;
@@ -106,10 +106,10 @@ public class PaymentServiceImpl implements PaymentService {
             log.error("(handleSuccessPayment)paypal failure for token: {}", token, e);
             Optional<Payment> paymentOptional = slavePaymentRepo.findByToken(token);
             if (paymentOptional.isEmpty()) {
-                return;
+                return null;
             }
             handleFailedPayment(paymentOptional.get().getOrderId());
-            return;
+            return paymentOptional.get().getOrderId();
         }
 
         log.info("(handle paypal success)orderId: {}", orderId);
@@ -118,17 +118,17 @@ public class PaymentServiceImpl implements PaymentService {
             log.error("(handleSuccessPayment)order is null from paypal service");
             Optional<Payment> paymentOptional = slavePaymentRepo.findByToken(token);
             if (paymentOptional.isEmpty()) {
-                return;
+                return null;
             }
             handleFailedPayment(paymentOptional.get().getOrderId());
-            return;
+            return paymentOptional.get().getOrderId();
         }
 
         Optional<Payment> paymentOptional = slavePaymentRepo.findByOrderId(orderId);
 
         if (paymentOptional.isEmpty()) {
             log.error("(handleSuccessPayment)payment not found for order: {}", orderId);
-            return;
+            return orderId;
         }
 
         Payment payment = paymentOptional.get();
@@ -145,11 +145,12 @@ public class PaymentServiceImpl implements PaymentService {
                 paymentSuccess
         );
         eventPublisher.publishEvent(mongoSavedEvent);
+        return orderId;
     }
 
     @Override
     @Transactional
-    public void handleCancelPayment(String token) {
+    public String handleCancelPayment(String token) {
         log.info("(handle paypal cancel)token: {}", token);
         String orderId;
         try {
@@ -159,20 +160,20 @@ public class PaymentServiceImpl implements PaymentService {
             log.error("(handleCancelPayment)paypal failure for token: {}", token, e);
             Optional<Payment> paymentOptional = slavePaymentRepo.findByToken(token);
             if (paymentOptional.isEmpty()) {
-                return;
+                return null;
             }
             handleFailedPayment(paymentOptional.get().getOrderId());
-            return;
+            return paymentOptional.get().getOrderId();
         }
 
         if (orderId == null) {
             log.error("(handleCancelPayment)order is null from paypal service");
             Optional<Payment> paymentOptional = slavePaymentRepo.findByToken(token);
             if (paymentOptional.isEmpty()) {
-                return;
+                return null;
             }
             handleFailedPayment(paymentOptional.get().getOrderId());
-            return;
+            return paymentOptional.get().getOrderId();
         }
 
         PaymentCanceled paymentCanceled = PaymentCanceled.newBuilder()
@@ -183,6 +184,7 @@ public class PaymentServiceImpl implements PaymentService {
                 this, EcommerceEvent.PAYMENT_CANCELED.getValue(), paymentCanceled);
 
         eventPublisher.publishEvent(mongoSavedEvent);
+        return orderId;
     }
 
     private void handleFailedPayment(String orderId) {

@@ -1,5 +1,6 @@
 {
   "server.port": "8484",
+  "application.frontend.base-url": "http://localhost:5173",
   "application.paypal.client-id": "your-paypal-client-id",
   "application.paypal.client-secret": "your-paypal-client-secret",
   "application.paypal.base-url": "https://api-m.sandbox.paypal.com",
