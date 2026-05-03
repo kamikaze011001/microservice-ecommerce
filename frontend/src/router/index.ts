@@ -4,6 +4,7 @@ import DesignShowcase from '@/pages/DesignShowcase.vue';
 import LoginPage from '@/pages/LoginPage.vue';
 import RegisterPage from '@/pages/RegisterPage.vue';
 import CartPage from '@/pages/CartPage.vue';
+import CheckoutPage from '@/pages/CheckoutPage.vue';
 import ActivatePage from '@/pages/ActivatePage.vue';
 import ProductDetailPage from '@/pages/ProductDetailPage.vue';
 import NotFoundPage from '@/pages/NotFoundPage.vue';
@@ -18,6 +19,7 @@ export const router = createRouter({
     { path: '/register', component: RegisterPage, meta: { guestOnly: true } },
     { path: '/activate', component: ActivatePage, meta: { guestOnly: true } },
     { path: '/cart', component: CartPage, meta: { requiresAuth: true } },
+    { path: '/checkout', component: CheckoutPage, meta: { requiresAuth: true } },
     { path: '/products/:id', component: ProductDetailPage },
     { path: '/:pathMatch(.*)*', component: NotFoundPage },
   ],
