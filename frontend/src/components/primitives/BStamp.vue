@@ -6,6 +6,7 @@ interface Props {
 }
 const props = withDefaults(defineProps<Props>(), {
   tone: 'red',
+  rotate: undefined,
   size: 'md',
 });
 </script>

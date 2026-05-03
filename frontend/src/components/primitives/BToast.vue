@@ -4,7 +4,7 @@ interface Props {
   title: string;
   body?: string;
 }
-const props = withDefaults(defineProps<Props>(), { tone: 'info' });
+const props = withDefaults(defineProps<Props>(), { tone: 'info', body: undefined });
 defineEmits<{ dismiss: [] }>();
 </script>
 

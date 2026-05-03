@@ -24,7 +24,11 @@ interface Props {
   error?: string;
   disabled?: boolean;
 }
-const props = withDefaults(defineProps<Props>(), { disabled: false });
+const props = withDefaults(defineProps<Props>(), {
+  placeholder: undefined,
+  error: undefined,
+  disabled: false,
+});
 defineEmits<{ 'update:modelValue': [value: string] }>();
 </script>
 

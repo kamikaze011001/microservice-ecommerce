@@ -7,6 +7,7 @@ interface Props {
   as?: string;
 }
 const props = withDefaults(defineProps<Props>(), {
+  rotate: undefined,
   hoverMisregister: false,
   as: 'article',
 });

@@ -3,7 +3,7 @@ interface Props {
   tone?: 'ink' | 'spot' | 'paper';
   rotate?: number;
 }
-const props = withDefaults(defineProps<Props>(), { tone: 'ink' });
+const props = withDefaults(defineProps<Props>(), { tone: 'ink', rotate: undefined });
 </script>
 
 <template>
