@@ -92,7 +92,12 @@ const hasOverStock = computed(() =>
 .cart {
   max-width: var(--container-max);
   margin: 0 auto;
-  padding: var(--space-6);
+  padding: var(--space-4);
+}
+@media (min-width: 48rem) {
+  .cart {
+    padding: var(--space-6);
+  }
 }
 .cart__header {
   display: flex;

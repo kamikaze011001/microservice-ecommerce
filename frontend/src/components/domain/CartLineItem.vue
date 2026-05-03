@@ -142,4 +142,35 @@ function inc() {
   cursor: pointer;
   color: var(--color-ink);
 }
+
+@media (max-width: 37.49rem) {
+  .line {
+    grid-template-columns: 80px 1fr auto;
+    grid-template-areas:
+      'img info remove'
+      'img qty qty'
+      'img subtotal subtotal';
+    column-gap: var(--space-3);
+    row-gap: var(--space-2);
+    align-items: start;
+  }
+  .line__media {
+    grid-area: img;
+  }
+  .line__info {
+    grid-area: info;
+  }
+  .line__qty {
+    grid-area: qty;
+    justify-self: start;
+  }
+  .line__subtotal {
+    grid-area: subtotal;
+    justify-self: start;
+  }
+  .line__remove {
+    grid-area: remove;
+    align-self: start;
+  }
+}
 </style>
