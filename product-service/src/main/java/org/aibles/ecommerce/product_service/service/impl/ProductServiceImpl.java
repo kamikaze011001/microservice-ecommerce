@@ -15,6 +15,7 @@ import org.aibles.ecommerce.product_service.service.ProductService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 
 @Slf4j
@@ -111,6 +112,18 @@ public class ProductServiceImpl implements ProductService {
                 .total(total)
                 .data(productResponses)
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProductResponse> listByIds(Collection<String> ids) {
+        log.info("(listByIds) ids: {}", ids);
+        if (ids == null || ids.isEmpty()) return List.of();
+        List<Product> products = productRepository.findAllByIdIn(ids);
+        return products.stream().map(product -> {
+            Long quantitySum = productQuantityHistoryRepo.getQuantitySumByProductId(product.getId());
+            return ProductResponse.from(product, quantitySum != null ? quantitySum : 0);
+        }).toList();
     }
 
     @Override
