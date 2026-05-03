@@ -148,3 +148,66 @@ describe('HomePage search', () => {
     expect(screen.getByText(/no matches for/i)).toBeInTheDocument();
   });
 });
+
+describe('HomePage pagination + states', () => {
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+
+  it('clicking page 2 writes ?page=2 to the URL', async () => {
+    useProductListQuery.mockReturnValue({
+      data: { value: { ...makePage(12), total: 36 } },
+      isLoading: { value: false },
+      isFetching: { value: false },
+      isError: { value: false },
+      error: { value: null },
+    });
+    mount();
+    await user.click(screen.getByRole('button', { name: '2' }));
+    await flushPromises();
+    expect(router.currentRoute.value.query.page).toBe('2');
+  });
+
+  it('hydrates page from ?page= on direct navigation', async () => {
+    useProductListQuery.mockImplementation((paramsArg: () => { page: number }) => {
+      const p = paramsArg();
+      return {
+        data: { value: { ...makePage(12), page: p.page, total: 36 } },
+        isLoading: { value: false },
+        isFetching: { value: false },
+        isError: { value: false },
+        error: { value: null },
+      };
+    });
+    await router.push('/?page=3');
+    await router.isReady();
+    mount();
+    expect(screen.getByRole('button', { name: '3', current: 'page' })).toBeInTheDocument();
+  });
+
+  it('shows FETCHING stamp during refetch (data present + isFetching=true)', () => {
+    useProductListQuery.mockReturnValue({
+      data: { value: makePage(3) },
+      isLoading: { value: false },
+      isFetching: { value: true },
+      isError: { value: false },
+      error: { value: null },
+    });
+    mount();
+    expect(screen.getByText(/fetching/i)).toBeInTheDocument();
+  });
+
+  it('shows OFFLINE banner with retry on network error', async () => {
+    const refetch = vi.fn();
+    useProductListQuery.mockReturnValue({
+      data: { value: undefined },
+      isLoading: { value: false },
+      isFetching: { value: false },
+      isError: { value: true },
+      error: { value: { name: 'ApiError', status: 0, message: 'fail' } },
+      refetch,
+    });
+    mount();
+    expect(screen.getByText(/offline/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /retry/i }));
+    expect(refetch).toHaveBeenCalled();
+  });
+});
