@@ -5,8 +5,11 @@ import AppNav from '@/components/layout/AppNav.vue';
 </script>
 
 <template>
+  <a href="#main" class="skip-link">Skip to content</a>
   <AppNav />
-  <RouterView />
+  <div id="main" tabindex="-1">
+    <RouterView />
+  </div>
   <ToastViewport />
 </template>
 
