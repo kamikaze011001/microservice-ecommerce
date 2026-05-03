@@ -53,6 +53,20 @@ describe('PaymentResultPage — success', () => {
     orderData.value = { orderId: 'o1', status: 'PAID' };
     await waitFor(() => expect(screen.getByText(/^PAID$/)).toBeInTheDocument());
   });
+
+  it('shows STILL PROCESSING after polling timeout (10s)', async () => {
+    vi.useFakeTimers();
+    useOrderQuery.mockReturnValue({
+      data: ref({ orderId: 'o1', status: 'PROCESSING' }),
+      isLoading: { value: false },
+      isError: { value: false },
+      error: { value: null },
+    });
+    await mount('/payment/success?orderId=o1');
+    expect(screen.getByText(/VERIFYING…/i)).toBeInTheDocument();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await waitFor(() => expect(screen.getByText(/STILL PROCESSING/i)).toBeInTheDocument());
+  });
 });
 
 describe('PaymentResultPage — cancel', () => {

@@ -20,22 +20,23 @@ const order = useOrderQuery(orderId, { polling: variant.value === 'success' });
 const cancelOrder = useCancelOrderMutation();
 const createPayment = useCreatePaymentMutation();
 
-const pollCount = ref(0);
-const errorBanner = ref<string | null>(null);
+const POLL_TIMEOUT_MS = MAX_POLLS * 1000; // 10s
+const timedOut = ref(false);
+let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
-watch(
-  () => order.data?.value?.status,
-  (status) => {
-    if (status && status !== 'PROCESSING') pollCount.value = MAX_POLLS;
-    else pollCount.value++;
-  },
-);
+if (variant.value === 'success') {
+  timeoutHandle = setTimeout(() => {
+    timedOut.value = true;
+  }, POLL_TIMEOUT_MS);
+}
+
+const errorBanner = ref<string | null>(null);
 
 const stampState = computed<'verifying' | 'paid' | 'still-processing' | 'canceled'>(() => {
   if (variant.value === 'cancel') return 'canceled';
   const status = order.data?.value?.status;
   if (status === 'PAID') return 'paid';
-  if (pollCount.value >= MAX_POLLS) return 'still-processing';
+  if (timedOut.value) return 'still-processing';
   return 'verifying';
 });
 
@@ -44,6 +45,7 @@ watch(stampState, (s) => {
 });
 
 onUnmounted(() => {
+  if (timeoutHandle) clearTimeout(timeoutHandle);
   if (stampState.value === 'paid') localStorage.removeItem(PENDING_KEY);
 });
 
