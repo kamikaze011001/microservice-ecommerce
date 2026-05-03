@@ -1,5 +1,5 @@
-import { computed, type MaybeRefOrGetter, toValue } from 'vue';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
+import { computed, type MaybeRefOrGetter, toValue, type Ref } from 'vue';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/vue-query';
 import { apiFetch } from '@/api/client';
 
 export interface OrderItemInput {
@@ -17,7 +17,38 @@ export interface CreateOrderResponse {
   orderId: string;
 }
 
-export type OrderStatus = 'PROCESSING' | 'PAID' | 'CANCELED' | 'FAILED';
+export type OrderStatus = 'PENDING' | 'PROCESSING' | 'PAID' | 'CANCELED' | 'FAILED';
+
+export interface OrderSummary {
+  id: string;
+  status: OrderStatus | string;
+  address: string;
+  phone_number: string;
+  created_at: string;
+  updated_at: string;
+  total_amount: number;
+  item_count: number;
+  first_item_image_url: string | null;
+}
+
+export interface OrdersListPage {
+  content: OrderSummary[];
+  page: number;
+  size: number;
+  total_elements: number;
+}
+
+export function useOrdersListQuery(params: { page: Ref<number>; size: number }) {
+  return useQuery({
+    queryKey: computed(() => ['orders', 'list', params.page.value, params.size] as const),
+    queryFn: () =>
+      apiFetch<OrdersListPage>(
+        `/order-service/v1/orders?page=${params.page.value}&size=${params.size}`,
+        { method: 'GET' },
+      ),
+    placeholderData: keepPreviousData,
+  });
+}
 
 export interface OrderResponse {
   orderId: string;

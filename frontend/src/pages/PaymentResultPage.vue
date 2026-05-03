@@ -32,12 +32,22 @@ if (variant.value === 'success') {
 
 const errorBanner = ref<string | null>(null);
 
+// UI state for branch logic / watch
 const stampState = computed<'verifying' | 'paid' | 'still-processing' | 'canceled'>(() => {
   if (variant.value === 'cancel') return 'canceled';
   const status = order.data?.value?.status;
   if (status === 'PAID') return 'paid';
   if (timedOut.value) return 'still-processing';
   return 'verifying';
+});
+
+// Map UI state → backend-style status string for OrderStatusStamp
+const stampStatus = computed(() => {
+  const s = stampState.value;
+  if (s === 'paid') return 'PAID';
+  if (s === 'canceled') return 'CANCELED';
+  if (s === 'still-processing') return 'PROCESSING';
+  return 'PENDING'; // verifying
 });
 
 watch(stampState, (s) => {
@@ -73,7 +83,7 @@ async function cancelPending() {
 
 <template>
   <main class="result">
-    <OrderStatusStamp :state="stampState" />
+    <OrderStatusStamp :status="stampStatus" />
 
     <p v-if="variant === 'success' && stampState === 'paid'" class="result__copy">
       Order #{{ orderId }} is locked in.

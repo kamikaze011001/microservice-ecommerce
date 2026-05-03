@@ -1,58 +1,28 @@
 <script setup lang="ts">
-defineProps<{
-  state: 'verifying' | 'paid' | 'still-processing' | 'canceled';
-}>();
+import { computed } from 'vue';
+import { BStamp } from '@/components/primitives';
+
+const props = defineProps<{ status: string }>();
+
+const LABEL: Record<string, string> = {
+  PENDING: 'PENDING',
+  PROCESSING: 'IN PRESS',
+  PAID: 'PAID',
+  CANCELED: 'VOIDED',
+  FAILED: 'MISFIRE',
+};
+const ROTATE: Record<string, number> = {
+  PENDING: -3,
+  PROCESSING: 4,
+  PAID: -2,
+  CANCELED: 6,
+  FAILED: -5,
+};
+
+const label = computed(() => LABEL[props.status] ?? props.status);
+const rotation = computed(() => ROTATE[props.status] ?? 0);
 </script>
 
 <template>
-  <div class="stamp" :class="`stamp--${state}`" role="status">
-    <span v-if="state === 'verifying'">VERIFYING…</span>
-    <span v-else-if="state === 'paid'">PAID</span>
-    <span v-else-if="state === 'still-processing'">STILL PROCESSING</span>
-    <span v-else>PAYMENT CANCELED</span>
-  </div>
+  <BStamp tone="spot" size="sm" :rotate="rotation">{{ label }}</BStamp>
 </template>
-
-<style scoped>
-.stamp {
-  display: inline-block;
-  padding: var(--space-3) var(--space-5);
-  border: 4px solid currentColor;
-  font-family: var(--font-display);
-  font-size: 2em;
-  letter-spacing: 0.05em;
-}
-.stamp--verifying {
-  color: var(--color-ink);
-  animation: pulse 1.2s ease-in-out infinite;
-}
-.stamp--paid {
-  color: var(--color-ink);
-  animation: stamp-in 200ms ease forwards;
-}
-.stamp--still-processing {
-  color: var(--color-ink);
-}
-.stamp--canceled {
-  color: var(--color-spot);
-}
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
-  }
-}
-@keyframes stamp-in {
-  from {
-    transform: rotate(-12deg) scale(1.5);
-    opacity: 0;
-  }
-  to {
-    transform: rotate(-4deg) scale(1);
-    opacity: 1;
-  }
-}
-</style>
