@@ -64,10 +64,10 @@ class UserAvatarControllerTest {
 
         mvc.perform(post("/v1/users/self/avatar/presign")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"contentType\":\"image/png\",\"sizeBytes\":1024}"))
+                .content("{\"content_type\":\"image/png\",\"size_bytes\":1024}"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.uploadUrl").value("http://signed"))
-            .andExpect(jsonPath("$.data.objectKey").value("avatars/u1/x.png"));
+            .andExpect(jsonPath("$.data.upload_url").value("http://signed"))
+            .andExpect(jsonPath("$.data.object_key").value("avatars/u1/x.png"));
     }
 
     @Test
@@ -81,7 +81,7 @@ class UserAvatarControllerTest {
 
         mvc.perform(put("/v1/users/self/avatar")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"objectKey\":\"avatars/u1/x.png\"}"))
+                .content("{\"object_key\":\"avatars/u1/x.png\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.avatarUrl")
                 .value("http://localhost:9000/ecommerce-media/avatars/u1/x.png"));

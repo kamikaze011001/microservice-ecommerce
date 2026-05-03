@@ -19,7 +19,7 @@ class ImageDtosTest {
 
     @Test
     void presignImageRequestSerializesAndBindsValidation() throws Exception {
-        String json = "{\"contentType\":\"image/jpeg\",\"sizeBytes\":1234}";
+        String json = "{\"content_type\":\"image/jpeg\",\"size_bytes\":1234}";
         PresignImageRequest req = mapper.readValue(json, PresignImageRequest.class);
         assertThat(req.getContentType()).isEqualTo("image/jpeg");
         assertThat(req.getSizeBytes()).isEqualTo(1234L);
@@ -28,7 +28,7 @@ class ImageDtosTest {
     @Test
     void attachImageRequestRoundTrips() throws Exception {
         AttachImageRequest req = mapper.readValue(
-            "{\"objectKey\":\"products/abc/x.jpg\"}", AttachImageRequest.class);
+            "{\"object_key\":\"products/abc/x.jpg\"}", AttachImageRequest.class);
         assertThat(req.getObjectKey()).isEqualTo("products/abc/x.jpg");
     }
 
@@ -37,8 +37,8 @@ class ImageDtosTest {
         PresignedUploadResponse r = new PresignedUploadResponse(
             "http://signed", "products/abc/x.jpg", Instant.parse("2026-04-27T00:00:00Z"));
         String json = mapper.writeValueAsString(r);
-        assertThat(json).contains("\"uploadUrl\":\"http://signed\"");
-        assertThat(json).contains("\"objectKey\":\"products/abc/x.jpg\"");
-        assertThat(json).contains("\"expiresAt\":\"2026-04-27T00:00:00Z\"");
+        assertThat(json).contains("\"upload_url\":\"http://signed\"");
+        assertThat(json).contains("\"object_key\":\"products/abc/x.jpg\"");
+        assertThat(json).contains("\"expires_at\":\"2026-04-27T00:00:00Z\"");
     }
 }
