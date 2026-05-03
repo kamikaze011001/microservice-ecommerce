@@ -81,7 +81,9 @@ defineEmits<{ 'update:modelValue': [value: string] }>();
 .b-select__chev {
   font-family: var(--font-mono);
 }
+</style>
 
+<style>
 .b-select__content {
   background: var(--paper);
   border: var(--border-thick);
@@ -100,6 +102,7 @@ defineEmits<{ 'update:modelValue': [value: string] }>();
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
   user-select: none;
+  background: var(--paper);
 }
 .b-select__item[data-highlighted] {
   background: var(--spot);
