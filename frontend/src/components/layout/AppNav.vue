@@ -25,6 +25,7 @@ function onLogout() {
     <div class="app-nav__right">
       <template v-if="isLoggedIn">
         <span class="app-nav__user" data-testid="nav-user">{{ greeting }}</span>
+        <RouterLink to="/account" class="app-nav__account">ACCOUNT</RouterLink>
         <BButton variant="ghost" data-testid="nav-logout" @click="onLogout"> LOG OUT </BButton>
       </template>
       <template v-else>
@@ -61,5 +62,12 @@ function onLogout() {
   font-family: var(--font-mono);
   font-size: 0.875rem;
   color: var(--muted-ink);
+}
+.app-nav__account {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  text-decoration: none;
 }
 </style>
