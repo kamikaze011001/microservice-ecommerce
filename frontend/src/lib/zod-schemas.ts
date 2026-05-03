@@ -52,3 +52,22 @@ export const addressSchema = z.object({
 });
 
 export type AddressInput = z.infer<typeof addressSchema>;
+
+export const profileSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(100, 'Max 100 chars'),
+  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).nullable(),
+  address: z.string().max(500, 'Max 500 chars').optional().or(z.literal('')),
+});
+export type ProfileInput = z.infer<typeof profileSchema>;
+
+export const changePasswordSchema = z
+  .object({
+    oldPassword: z.string().min(1, 'Required'),
+    newPassword: z.string().min(8, 'At least 8 chars'),
+    confirmNewPassword: z.string(),
+  })
+  .refine((d) => d.newPassword === d.confirmNewPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmNewPassword'],
+  });
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

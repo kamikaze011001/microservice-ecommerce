@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { passwordSchema, loginSchema, registerSchema, addressSchema } from '@/lib/zod-schemas';
+import {
+  passwordSchema,
+  loginSchema,
+  registerSchema,
+  addressSchema,
+  profileSchema,
+  changePasswordSchema,
+} from '@/lib/zod-schemas';
 
 describe('passwordSchema (matches backend @ValidPassword)', () => {
   it.each([
@@ -69,5 +76,51 @@ describe('addressSchema', () => {
 
   it('rejects bad phone', () => {
     expect(addressSchema.safeParse({ ...valid, phone: 'abc' }).success).toBe(false);
+  });
+});
+
+describe('profileSchema', () => {
+  it('accepts valid input', () => {
+    expect(
+      profileSchema.safeParse({ name: 'Ada', gender: 'FEMALE', address: '12 Lane' }).success,
+    ).toBe(true);
+  });
+  it('rejects empty name', () => {
+    expect(profileSchema.safeParse({ name: '', gender: null, address: '' }).success).toBe(false);
+  });
+  it('rejects address > 500 chars', () => {
+    expect(
+      profileSchema.safeParse({ name: 'A', gender: null, address: 'x'.repeat(501) }).success,
+    ).toBe(false);
+  });
+});
+
+describe('changePasswordSchema', () => {
+  it('accepts matching passwords', () => {
+    expect(
+      changePasswordSchema.safeParse({
+        oldPassword: 'old',
+        newPassword: 'newpass1',
+        confirmNewPassword: 'newpass1',
+      }).success,
+    ).toBe(true);
+  });
+  it('rejects mismatched confirm', () => {
+    expect(
+      changePasswordSchema.safeParse({
+        oldPassword: 'old',
+        newPassword: 'newpass1',
+        confirmNewPassword: 'newpass2',
+      }).success,
+    ).toBe(false);
+  });
+  it('rejects new < 8 chars', () => {
+    expect(
+      changePasswordSchema.safeParse({
+        oldPassword: 'old',
+        newPassword: 'short',
+        confirmNewPassword: 'short',
+      }).success,
+    ).toBe(false);
   });
 });

@@ -104,6 +104,9 @@ public class InventoryServiceImpl implements InventoryService {
         InventoryProduct inventoryProduct = inventoryProductOptional.get();
         inventoryProduct.setName(productUpdate.getName().toString());
         inventoryProduct.setPrice(productUpdate.getPrice());
+        inventoryProduct.setImageUrl(productUpdate.getImageUrl() != null
+                ? productUpdate.getImageUrl().toString()
+                : null);
         masterInventoryProductRepository.save(inventoryProduct);
     }
 
@@ -127,6 +130,7 @@ public class InventoryServiceImpl implements InventoryService {
                     .price(inventoryProduct.getPrice())
                     .quantity(productQuantityMap.get(inventoryProduct.getId()) != null ?
                             productQuantityMap.get(inventoryProduct.getId()) : 0L)
+                    .imageUrl(inventoryProduct.getImageUrl())
                     .build();
             inventoryProductResponses.add(inventoryProductResponse);
         }

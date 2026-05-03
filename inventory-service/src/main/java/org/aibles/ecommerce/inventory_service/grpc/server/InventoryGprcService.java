@@ -31,12 +31,17 @@ public class InventoryGprcService extends InventoryServiceGrpc.InventoryServiceI
             org.aibles.ecommerce.common_dto.response.InventoryProductIdsResponse serviceResponse = inventoryService.list(inventoryProductIdsRequest);
 
             List<InventoryProduct> inventoryProductResponses = serviceResponse.getInventoryProducts().stream().map(
-                    product -> InventoryProduct.newBuilder()
-                            .setId(product.getId())
-                            .setName(product.getName())
-                            .setPrice(product.getPrice())
-                            .setQuantity(product.getQuantity())
-                            .build()
+                    product -> {
+                        InventoryProduct.Builder builder = InventoryProduct.newBuilder()
+                                .setId(product.getId())
+                                .setName(product.getName())
+                                .setPrice(product.getPrice())
+                                .setQuantity(product.getQuantity());
+                        if (product.getImageUrl() != null) {
+                            builder.setImageUrl(product.getImageUrl());
+                        }
+                        return builder.build();
+                    }
             ).toList();
 
             InventoryProductIdsResponse grpcResp = InventoryProductIdsResponse.newBuilder()

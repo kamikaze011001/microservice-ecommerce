@@ -16,6 +16,7 @@ import org.aibles.ecommerce.core_paypal.dto.paypal.PaypalRestTemplateException;
 import org.aibles.ecommerce.core_paypal.service.PaypalService;
 import org.aibles.payment_service.constant.PaymentStatus;
 import org.aibles.payment_service.constant.PaymentType;
+import org.aibles.payment_service.dto.PaymentResponse;
 import org.aibles.payment_service.entity.Payment;
 import org.aibles.payment_service.exception.OrderInvalidException;
 import org.aibles.payment_service.repository.master.MasterPaymentRepo;
@@ -185,6 +186,14 @@ public class PaymentServiceImpl implements PaymentService {
 
         eventPublisher.publishEvent(mongoSavedEvent);
         return orderId;
+    }
+
+    @Override
+    public PaymentResponse getByOrderId(String orderId) {
+        log.info("(getByOrderId) orderId: {}", orderId);
+        return slavePaymentRepo.findByOrderId(orderId)
+                .map(PaymentResponse::from)
+                .orElse(null);
     }
 
     private void handleFailedPayment(String orderId) {

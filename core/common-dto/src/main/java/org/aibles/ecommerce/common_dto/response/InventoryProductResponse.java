@@ -21,4 +21,6 @@ public class InventoryProductResponse {
     private Double price;
 
     private Long quantity;
+
+    private String imageUrl;
 }

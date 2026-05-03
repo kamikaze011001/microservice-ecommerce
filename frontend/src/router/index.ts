@@ -9,6 +9,10 @@ import ActivatePage from '@/pages/ActivatePage.vue';
 import ProductDetailPage from '@/pages/ProductDetailPage.vue';
 import NotFoundPage from '@/pages/NotFoundPage.vue';
 import PaymentResultPage from '@/pages/PaymentResultPage.vue';
+import AccountLayout from '@/layouts/AccountLayout.vue';
+import ProfilePage from '@/pages/account/ProfilePage.vue';
+import OrdersPage from '@/pages/account/OrdersPage.vue';
+import OrderDetailPage from '@/pages/account/OrderDetailPage.vue';
 import { useAuthStore } from '@/stores/auth';
 
 export const router = createRouter({
@@ -24,6 +28,17 @@ export const router = createRouter({
     { path: '/payment/success', component: PaymentResultPage },
     { path: '/payment/cancel', component: PaymentResultPage },
     { path: '/products/:id', component: ProductDetailPage },
+    {
+      path: '/account',
+      component: AccountLayout,
+      meta: { requiresAuth: true },
+      children: [
+        { path: '', redirect: '/account/profile' },
+        { path: 'profile', component: ProfilePage },
+        { path: 'orders', component: OrdersPage },
+        { path: 'orders/:id', component: OrderDetailPage },
+      ],
+    },
     { path: '/:pathMatch(.*)*', component: NotFoundPage },
   ],
 });
