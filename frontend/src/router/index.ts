@@ -3,7 +3,7 @@ import HomePage from '@/pages/HomePage.vue';
 import DesignShowcase from '@/pages/DesignShowcase.vue';
 import LoginPage from '@/pages/LoginPage.vue';
 import RegisterPage from '@/pages/RegisterPage.vue';
-import CartPlaceholder from '@/pages/CartPlaceholder.vue';
+import CartPage from '@/pages/CartPage.vue';
 import ActivatePage from '@/pages/ActivatePage.vue';
 import ProductDetailPage from '@/pages/ProductDetailPage.vue';
 import NotFoundPage from '@/pages/NotFoundPage.vue';
@@ -17,7 +17,7 @@ export const router = createRouter({
     { path: '/login', component: LoginPage, meta: { guestOnly: true } },
     { path: '/register', component: RegisterPage, meta: { guestOnly: true } },
     { path: '/activate', component: ActivatePage, meta: { guestOnly: true } },
-    { path: '/cart', component: CartPlaceholder, meta: { requiresAuth: true } },
+    { path: '/cart', component: CartPage, meta: { requiresAuth: true } },
     { path: '/products/:id', component: ProductDetailPage },
     { path: '/:pathMatch(.*)*', component: NotFoundPage },
   ],
