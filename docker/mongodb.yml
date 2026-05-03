@@ -3,6 +3,7 @@ version: '3.8'
 services:
   ecommerce-mongodb:
     image: mongo:8.0.1
+    container_name: ecommerce-mongodb
     ports:
       - "27017:27017"
     environment:
