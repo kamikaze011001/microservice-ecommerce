@@ -158,4 +158,17 @@ async function cancelPending() {
   background: var(--color-paper);
   color: var(--color-ink);
 }
+
+@media (max-width: 37.49rem) {
+  .result {
+    padding: var(--space-6) var(--space-4);
+  }
+  .result__headline {
+    font-size: var(--type-h1);
+  }
+  .result__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
 </style>

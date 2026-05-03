@@ -133,4 +133,13 @@ async function onResend() {
   flex-direction: column;
   gap: var(--space-3);
 }
+
+@media (max-width: 37.49rem) {
+  .activate {
+    padding: var(--space-6) var(--space-4);
+  }
+  .activate h1 {
+    font-size: 1.75rem;
+  }
+}
 </style>
