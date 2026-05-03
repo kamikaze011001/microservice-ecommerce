@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watchEffect } from 'vue';
 import { useRouter } from 'vue-router';
 import { useCartQuery } from '@/api/queries/cart';
 import { useCreateOrderMutation, useCancelOrderMutation } from '@/api/queries/orders';
@@ -91,7 +91,9 @@ async function cancelPending() {
 const cartItems = computed(() => cart.data.value?.items ?? []);
 const cartEmpty = computed(() => !cart.isLoading.value && cartItems.value.length === 0);
 
-if (cartEmpty.value) router.replace('/cart');
+watchEffect(() => {
+  if (cartEmpty.value) router.replace('/cart');
+});
 </script>
 
 <template>
