@@ -9,7 +9,11 @@ defineEmits<{ dismiss: [] }>();
 </script>
 
 <template>
-  <div :class="['b-toast', `tone-${props.tone}`]" role="status" aria-live="polite">
+  <div
+    :class="['b-toast', `tone-${props.tone}`]"
+    :role="props.tone === 'error' ? 'alert' : 'status'"
+    :aria-live="props.tone === 'error' ? 'assertive' : 'polite'"
+  >
     <div class="b-toast__text">
       <p class="b-toast__title">{{ props.title }}</p>
       <p v-if="props.body" class="b-toast__body">{{ props.body }}</p>

@@ -24,5 +24,7 @@ const rotation = computed(() => ROTATE[props.status] ?? 0);
 </script>
 
 <template>
-  <BStamp tone="spot" size="sm" :rotate="rotation">{{ label }}</BStamp>
+  <span role="img" :aria-label="`Order status: ${label}`">
+    <BStamp tone="spot" size="sm" :rotate="rotation" aria-hidden="true">{{ label }}</BStamp>
+  </span>
 </template>
