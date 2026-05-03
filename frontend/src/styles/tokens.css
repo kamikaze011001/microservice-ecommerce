@@ -11,6 +11,7 @@
   --ink: #1c1c1c;
   --muted-ink: #6b6256;
   --spot: #ff4f1c;
+  --spot-ink: #c8340a; /* AA-on-paper variant for spot used as foreground text */
   --stamp-red: #c4302b;
 
   /* ─── Type ─── */
@@ -70,6 +71,7 @@
   --color-ink: var(--ink);
   --color-muted-ink: var(--muted-ink);
   --color-spot: var(--spot);
+  --color-spot-ink: var(--spot-ink);
   --color-stamp-red: var(--stamp-red);
 
   --font-display: 'Bricolage Grotesque', 'Cabinet Grotesk', system-ui, sans-serif;

@@ -119,7 +119,7 @@ const onSubmit = handleSubmit(async (values) => {
   color: var(--muted-ink);
 }
 .login__alt a {
-  color: var(--spot);
+  color: var(--spot-ink);
   text-decoration: underline;
 }
 
