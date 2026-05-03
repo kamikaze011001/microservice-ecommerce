@@ -114,17 +114,21 @@ function handleAddToCart() {
 .pdp {
   max-width: var(--container-max);
   margin: 0 auto;
-  padding: var(--space-6);
+  padding: var(--space-4);
 }
 .pdp__article {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-8);
+  grid-template-columns: 1fr;
+  gap: var(--space-6);
   align-items: start;
 }
-@media (max-width: 800px) {
+@media (min-width: 48rem) {
+  .pdp {
+    padding: var(--space-6);
+  }
   .pdp__article {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-8);
   }
 }
 .pdp__media {
