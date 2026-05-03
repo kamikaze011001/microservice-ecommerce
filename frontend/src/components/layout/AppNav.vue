@@ -4,15 +4,20 @@ import { RouterLink, useRouter, useRoute } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '@/stores/auth';
 import { useLogout } from '@/api/queries/auth';
+import { useProfileQuery } from '@/api/queries/profile';
 import { BButton } from '@/components/primitives';
 
 const auth = useAuthStore();
-const { isLoggedIn, username } = storeToRefs(auth);
+const { isLoggedIn } = storeToRefs(auth);
 const logout = useLogout();
 const router = useRouter();
 const route = useRoute();
 
-const greeting = computed(() => (username.value ? `@${username.value}` : ''));
+const profile = useProfileQuery();
+const greeting = computed(() => {
+  const name = profile.data.value?.name?.trim();
+  return name ? `HI, ${name.toUpperCase()}` : '';
+});
 
 const menuOpen = ref(false);
 function toggleMenu() {
