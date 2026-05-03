@@ -22,11 +22,16 @@ public class InventoryProduct {
 
     private Double price;
 
+    private String imageUrl;
+
     public static InventoryProduct from(final ProductUpdate productUpdate) {
         InventoryProduct inventoryProduct = new InventoryProduct();
         inventoryProduct.setId(productUpdate.getId().toString());
         inventoryProduct.setName(productUpdate.getName().toString());
         inventoryProduct.setPrice(productUpdate.getPrice());
+        inventoryProduct.setImageUrl(productUpdate.getImageUrl() != null
+                ? productUpdate.getImageUrl().toString()
+                : null);
         return inventoryProduct;
     }
 }

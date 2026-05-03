@@ -23,4 +23,5 @@ message InventoryProduct {
   string name = 2;
   double price = 3;
   int64 quantity = 4;
+  string image_url = 5;
 }

@@ -38,11 +38,14 @@ public class ProductServiceImpl implements ProductService {
         log.info("(create)request: {}", productRequest);
         Product product = ProductRequest.to(productRequest);
         product = productRepository.save(product);
-        ProductUpdate productUpdate = ProductUpdate.newBuilder()
+        ProductUpdate.Builder productUpdateBuilder = ProductUpdate.newBuilder()
                 .setId(product.getId())
                 .setName(product.getName())
-                .setPrice(product.getPrice())
-                .build();
+                .setPrice(product.getPrice());
+        if (product.getImageUrl() != null) {
+            productUpdateBuilder.setImageUrl(product.getImageUrl());
+        }
+        ProductUpdate productUpdate = productUpdateBuilder.build();
 
         MongoSavedEvent event = new MongoSavedEvent(this, EcommerceEvent.PRODUCT_UPDATE.getValue(), productUpdate);
         applicationEventPublisher.publishEvent(event);
@@ -72,11 +75,14 @@ public class ProductServiceImpl implements ProductService {
         product.setPrice(productRequest.getPrice());
         product.setAttributes(productRequest.getAttributes());
         product.setCategory(productRequest.getCategory());
-        ProductUpdate productUpdate = ProductUpdate.newBuilder()
+        ProductUpdate.Builder productUpdateBuilder = ProductUpdate.newBuilder()
                 .setId(product.getId())
                 .setName(product.getName())
-                .setPrice(product.getPrice())
-                .build();
+                .setPrice(product.getPrice());
+        if (product.getImageUrl() != null) {
+            productUpdateBuilder.setImageUrl(product.getImageUrl());
+        }
+        ProductUpdate productUpdate = productUpdateBuilder.build();
 
         MongoSavedEvent event = new MongoSavedEvent(this,
                 EcommerceEvent.PRODUCT_UPDATE.getValue(),

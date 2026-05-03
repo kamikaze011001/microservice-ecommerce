@@ -74,6 +74,7 @@ public class InventoryGrpcClientService {
                                 .name(product.getName())
                                 .price(product.getPrice())
                                 .quantity(product.getQuantity())
+                                .imageUrl(product.getImageUrl().isEmpty() ? null : product.getImageUrl())
                                 .build())
                         .toList();
 

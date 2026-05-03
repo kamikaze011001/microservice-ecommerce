@@ -325,8 +325,16 @@ public class OrderServiceImpl implements OrderService {
         // Create and save order entity
         Order order = saveOrder(request.getAddress(), request.getPhoneNumber(), userId);
 
-        // Save order items
-        saveOrderItems(request.getItems(), order.getId(), reservation.getPriceMap());
+        // Build product lookup map for snapshot fields (name, imageUrl)
+        Map<String, org.aibles.ecommerce.common_dto.response.InventoryProductResponse> productMap =
+                reservation.getInventoryResponse().getInventoryProducts().stream()
+                        .collect(Collectors.toMap(
+                                org.aibles.ecommerce.common_dto.response.InventoryProductResponse::getId,
+                                p -> p
+                        ));
+
+        // Save order items with snapshotted product name and image URL
+        saveOrderItems(request.getItems(), order.getId(), reservation.getPriceMap(), productMap);
 
         // Add to pending orders ZSET (stores price AND product quantities)
         long expiryTimestamp = Instant.now()
@@ -534,15 +542,23 @@ public class OrderServiceImpl implements OrderService {
         return masterOrderRepo.save(order);
     }
 
-    private void saveOrderItems(List<OrderItemRequest> orderItems, String orderId, Map<String, Double> itemPriceMap) {
+    private void saveOrderItems(List<OrderItemRequest> orderItems, String orderId,
+                                Map<String, Double> itemPriceMap,
+                                Map<String, org.aibles.ecommerce.common_dto.response.InventoryProductResponse> productMap) {
         log.info("(saveOrderItems) Saving order items for order: {}", orderId);
         List<OrderItem> items = orderItems.stream()
-                .map(item -> OrderItem.builder()
-                        .orderId(orderId)
-                        .productId(item.getProductId())
-                        .price(itemPriceMap.get(item.getProductId()) != null ? itemPriceMap.get(item.getProductId()) : 0.0)
-                        .quantity(item.getQuantity())
-                        .build())
+                .map(item -> {
+                    org.aibles.ecommerce.common_dto.response.InventoryProductResponse product =
+                            productMap.get(item.getProductId());
+                    return OrderItem.builder()
+                            .orderId(orderId)
+                            .productId(item.getProductId())
+                            .price(itemPriceMap.get(item.getProductId()) != null ? itemPriceMap.get(item.getProductId()) : 0.0)
+                            .quantity(item.getQuantity())
+                            .productName(product != null ? product.getName() : null)
+                            .imageUrl(product != null ? product.getImageUrl() : null)
+                            .build();
+                })
                 .toList();
 
         masterOrderItemRepo.saveAll(items);
