@@ -348,3 +348,158 @@ No feature flag — account routes are net-new and gated behind
 - Status filter on orders list
 - Backfill of `productName` / `imageUrl` for legacy orders
 - Admin-side order/profile management
+
+---
+
+## Visual Direction (binding)
+
+The storefront has a committed editorial / risograph-zine aesthetic: outlined
+display numerals as page folios, `BStamp` for state, `BCropmarks` framing key
+content, thick rules, mono uppercase kickers, a single `--spot` accent over
+ink. Phase 6 must extend that voice — it must NOT introduce SaaS-dashboard
+conventions (sidebar nav, traffic-light status pills, neutral "MY ORDERS"
+titles, "No orders yet." copy). If a page doesn't use at least two of
+`BStamp`, `BCropmarks`, `BMarginNumeral`, or the outlined-numeral folio
+treatment, it's wrong.
+
+### Naming & copy
+
+| Generic (do not use) | Use instead |
+|---|---|
+| "My Account" / sidebar header | `THE ACCOUNT` with folio numeral `02` |
+| "My Orders" page title | `THE LEDGER` with folio numeral and kicker `Issue Nº0X — Receipts` |
+| "Order Detail" | `RECEIPT Nº{last8}` (outlined-display treatment) |
+| "Profile" tab | `MASTHEAD` (avatar) / `COLOPHON` (form) / `CREDENTIALS` (password) — three sections, not three tabs |
+| "No orders yet." | `LEDGER UNPRINTED — BROWSE THE ISSUE` |
+| Loading spinner | `STAMPING…` / `INKING…` / `TYPESETTING…` (match HomePage tone) |
+| Error generic | `SERVER STAMP MISSED — RETRY?` (mirrors HomePage) |
+| Cancel modal "This cannot be undone" | `VOID THIS ORDER? STAMP IS PERMANENT.` |
+| REORDER toast partial | `N STAMPED · M OUT OF PRESS: [names]` |
+
+### Account shell — masthead strip, not sidebar
+
+`AccountLayout.vue` is a **masthead** with a horizontal tab strip on every
+breakpoint. Drop the 240px sidebar entirely.
+
+- Top: folio numeral `02` (outlined display, mirrors `home__numeral`) + kicker
+  `Issue Nº0X — The Account`.
+- Thick rule (`var(--border-thick)`) beneath.
+- Three nav items in mono uppercase: `MASTHEAD · LEDGER · RECEIPT`. (Internally
+  these route to `/account/profile`, `/account/orders`, `/account/orders/:id`.)
+- Active item: underlined with a 4px `--spot` rule, no background fill.
+- Inactive items: ink color, hover sets `--spot` underline.
+- The strip is the same horizontal element on mobile and desktop — no
+  collapse, no hamburger.
+
+### Status: stamps, not pills
+
+Replace every status pill in spec sections (orders list card + detail
+sidebar + payment block) with `BStamp`. One spot color only. No
+gray/blue/green/red palette.
+
+| Order status | Stamp text | Tone | Rotate |
+|---|---|---|---|
+| `PENDING` | `PENDING` | `ink` | `-3` |
+| `PROCESSING` | `IN PRESS` | `ink` | `+4` |
+| `PAID` | `PAID` | `spot` | `-6` |
+| `CANCELED` | `VOIDED` | `ink` | `+8` (struck-through if BStamp supports; otherwise plain) |
+| `FAILED` | `MISFIRE` | `ink` | `-4` |
+
+Payment statuses use the same vocabulary: `PAID` (spot), `PENDING`,
+`VOIDED`, `MISFIRE`. Missing payment renders an em-dash, not a placeholder
+pill.
+
+The **new** `OrderStatusPill.vue` component name in the original spec is
+misleading. Rename to **`OrderStatusStamp.vue`** and have it return a
+configured `BStamp`. Update plan Task 10 accordingly.
+
+### Orders list — receipts, not cards
+
+`OrdersPage.vue` is a stack of typeset receipts, not a grid of card
+components.
+
+- Page title: outlined-numeral folio (`02`) + display heading `THE LEDGER` +
+  kicker `Issue Nº0X — Receipts`.
+- Each row is a full-width receipt: thick top rule, two-row mono layout —
+  - Row 1: `Nº{last8} ──── STAMPED 2026.05.03 / 14:22 ──── {itemCount} ITEMS`
+  - Row 2: thumbnail (small, framed by 2px ink border, no rounded corners) on
+    the left; total set in display font on the right; `OrderStatusStamp` slotted
+    above the total, rotated.
+- Hover: row's left margin pulls 8px right and reveals a `→` glyph in
+  `--spot`. No card shadow. No background fill.
+- Empty state: centered `BStamp size="lg" rotate="-4"` reading `LEDGER
+  UNPRINTED`, ghost `BButton` `BROWSE THE ISSUE` below.
+- Pagination: reuse the existing `home__pager` mono-button treatment from
+  `HomePage.vue` verbatim. Don't invent a new "PREV / NEXT" bar.
+- `OrderCard.vue` becomes `OrderReceiptRow.vue` to reflect the metaphor.
+  Update plan Task 10.
+
+### Order detail — printed bill
+
+`OrderDetailPage.vue` is framed as a printed receipt.
+
+- Wrap the items block in `<BCropmarks>` — non-decorative use; this is the
+  signature device.
+- Header: outlined-display `RECEIPT Nº{last8}`, full UUID below in muted
+  mono, `STAMPED 2026.05.03 / 14:22` kicker.
+- Items rendered as a typeset bill (one row per line item):
+
+  ```
+  01 ── PRODUCT NAME ............... 2 × $29 ........ $58
+  02 ── PRODUCT NAME ...............  1 × $12 ........ $12
+  ```
+
+  Use a leader-dot CSS pattern (`::after` with `border-bottom: 1px dotted` or
+  flex with a `flex: 1` dotted spacer). Index column uses `BMarginNumeral`.
+  Legacy null `productName` renders `── PRODUCT VOIDED ──` in muted ink, no
+  link.
+- Right column: shipping block labeled `SHIP TO`, payment block labeled
+  `TENDERED`, totals block labeled `TOTAL DUE`. The totals row reverses to
+  ink-on-`--spot` — the only filled block on the page.
+- Status: `OrderStatusStamp` rotated and absolutely positioned to overlap the
+  top-right corner of the items frame, breaking the grid (the print-stamp
+  metaphor — match how `home__title` uses `text-shadow: 4px 4px 0 var(--spot)`).
+- Action buttons: ghost `BButton` only, mono uppercase. `REORDER → STAMP
+  AGAIN`. `CANCEL ORDER → VOID THIS RECEIPT`.
+- 404 state: `BStamp size="lg" rotate="-6"` reading `RECEIPT MISFILED`, ghost
+  `BButton` back link.
+- Loading: skeleton uses muted ink rules, not gray rectangles. Caption:
+  `INKING…`.
+
+### Profile — three printer's sections
+
+`ProfilePage.vue` stacks three sections divided by `BCropmarks`, each with a
+folio numeral and section label:
+
+1. `01 — MASTHEAD` — avatar card. CTA reads `RE-STAMP PHOTO`. Upload-in-flight
+   caption: `INKING…`. Error: inline `SERVER STAMP MISSED — RETRY?`.
+2. `02 — COLOPHON` — profile form. SAVE button copy: `SET IN TYPE`. Toast on
+   success: `COLOPHON UPDATED`.
+3. `03 — CREDENTIALS` — password change. Submit copy: `RE-KEY`. Toast: `KEY
+   CHANGED`. Mismatch error: `KEYS DON'T LINE UP`.
+
+Email read-only field labeled `IMPRINT` (not "Email"), set in mono.
+
+### Component renames (binding for plan)
+
+| Plan calls it | Build it as |
+|---|---|
+| `OrderStatusPill.vue` | `OrderStatusStamp.vue` (wraps `BStamp`) |
+| `OrderCard.vue` | `OrderReceiptRow.vue` |
+| `OrderItemRow.vue` | (keep name, but layout is leader-dot bill row) |
+
+### What this rules out
+
+- No `bg-blue-100` / `bg-green-100` / `bg-red-100` traffic-light backgrounds.
+- No rounded-card components with shadow. The aesthetic uses 2px ink rules,
+  not elevation.
+- No "Account" sidebar with vertical nav.
+- No emoji, no icon-only buttons, no Heroicons. Existing app uses zero of
+  these.
+- No tooltip libraries or dropdown menus introduced for Phase 6.
+
+### Tests pick up the rename
+
+Test file names follow the renamed components:
+`OrderStatusStamp.spec.ts`, `OrderReceiptRow.spec.ts`. Test the rendered
+stamp text + rotation prop, not pill background colors.
