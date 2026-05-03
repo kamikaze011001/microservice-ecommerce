@@ -469,4 +469,25 @@ async function onFileChange(e: Event) {
   display: flex;
   justify-content: flex-end;
 }
+
+@media (max-width: 47.99rem) {
+  .profile {
+    gap: var(--space-8);
+    padding: var(--space-4) var(--space-4);
+  }
+  .profile__numeral {
+    font-size: 3rem;
+  }
+  .profile__avatar-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+  .profile__form-footer {
+    justify-content: stretch;
+  }
+  .profile__form-footer :deep(.b-button) {
+    width: 100%;
+  }
+}
 </style>
