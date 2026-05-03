@@ -2,6 +2,7 @@ package org.aibles.payment_service.controller;
 
 import lombok.extern.slf4j.Slf4j;
 import org.aibles.ecommerce.common_dto.response.BaseResponse;
+import org.aibles.payment_service.dto.PaymentResponse;
 import org.aibles.payment_service.service.PaymentService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -22,5 +23,12 @@ public class PaymentController {
     public BaseResponse purchase(@RequestParam("orderId") String orderId) {
         log.info("(purchase)orderId: {}", orderId);
         return paymentService.purchase(orderId);
+    }
+
+    @GetMapping("/by-order/{orderId}")
+    @ResponseStatus(HttpStatus.OK)
+    public PaymentResponse getByOrderId(@PathVariable("orderId") String orderId) {
+        log.info("(getByOrderId)orderId: {}", orderId);
+        return paymentService.getByOrderId(orderId);
     }
 }

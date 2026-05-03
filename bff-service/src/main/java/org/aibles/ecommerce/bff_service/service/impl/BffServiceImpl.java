@@ -3,13 +3,19 @@ package org.aibles.ecommerce.bff_service.service.impl;
 import lombok.extern.slf4j.Slf4j;
 import org.aibles.ecommerce.bff_service.client.InventoryGrpcClientService;
 import org.aibles.ecommerce.bff_service.client.OrderFeignClient;
+import org.aibles.ecommerce.bff_service.client.PaymentFeignClient;
 import org.aibles.ecommerce.bff_service.client.ProductFeignClient;
 import org.aibles.ecommerce.bff_service.dto.OrderDetailBffResponse;
 import org.aibles.ecommerce.bff_service.dto.ProductDetailBffResponse;
+import org.aibles.ecommerce.bff_service.dto.response.OrderDetailView;
+import org.aibles.ecommerce.bff_service.dto.response.OrderItemView;
+import org.aibles.ecommerce.bff_service.dto.response.PaymentView;
 import org.aibles.ecommerce.bff_service.service.BffService;
 import org.aibles.ecommerce.common_dto.response.BaseResponse;
 import org.aibles.ecommerce.inventory.grpc.InventoryProduct;
 
+import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -18,13 +24,16 @@ public class BffServiceImpl implements BffService {
 
     private final ProductFeignClient productFeignClient;
     private final OrderFeignClient orderFeignClient;
+    private final PaymentFeignClient paymentFeignClient;
     private final InventoryGrpcClientService inventoryGrpcClientService;
 
     public BffServiceImpl(ProductFeignClient productFeignClient,
                           OrderFeignClient orderFeignClient,
+                          PaymentFeignClient paymentFeignClient,
                           InventoryGrpcClientService inventoryGrpcClientService) {
         this.productFeignClient = productFeignClient;
         this.orderFeignClient = orderFeignClient;
+        this.paymentFeignClient = paymentFeignClient;
         this.inventoryGrpcClientService = inventoryGrpcClientService;
     }
 
@@ -51,10 +60,44 @@ public class BffServiceImpl implements BffService {
     @Override
     public OrderDetailBffResponse getOrderDetail(String userId, String orderId) {
         log.info("(getOrderDetail) userId: {}, orderId: {}", userId, orderId);
+
         BaseResponse orderResponse = orderFeignClient.getOrder(userId, orderId);
-        return OrderDetailBffResponse.builder()
-                .order(orderResponse.getData())
-                .payment(null)
-                .build();
+        Map<String, Object> orderData = (Map<String, Object>) orderResponse.getData();
+        OrderDetailView orderView = mapToOrderDetailView(orderData);
+
+        PaymentView paymentView = paymentFeignClient.byOrderId(orderId);
+
+        return new OrderDetailBffResponse(orderView, paymentView);
+    }
+
+    private OrderDetailView mapToOrderDetailView(Map<String, Object> data) {
+        List<Map<String, Object>> rawItems = (List<Map<String, Object>>) data.getOrDefault("items", Collections.emptyList());
+        List<OrderItemView> items = rawItems.stream()
+                .map(this::mapToOrderItemView)
+                .toList();
+
+        String createdAtStr = (String) data.get("createdAt");
+        String updatedAtStr = (String) data.get("updatedAt");
+
+        return new OrderDetailView(
+                (String) data.get("id"),
+                (String) data.get("status"),
+                (String) data.get("address"),
+                (String) data.get("phoneNumber"),
+                createdAtStr != null ? LocalDateTime.parse(createdAtStr) : null,
+                updatedAtStr != null ? LocalDateTime.parse(updatedAtStr) : null,
+                items
+        );
+    }
+
+    private OrderItemView mapToOrderItemView(Map<String, Object> item) {
+        return new OrderItemView(
+                (String) item.get("id"),
+                (String) item.get("productId"),
+                (String) item.get("productName"),
+                (String) item.get("imageUrl"),
+                item.get("price") != null ? ((Number) item.get("price")).doubleValue() : null,
+                item.get("quantity") != null ? ((Number) item.get("quantity")).longValue() : null
+        );
     }
 }
