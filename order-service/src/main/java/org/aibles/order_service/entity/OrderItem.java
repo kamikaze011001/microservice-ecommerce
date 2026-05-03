@@ -28,4 +28,10 @@ public class OrderItem {
 
     @Column(nullable = false)
     private String productId;
+
+    @Column(name = "product_name", length = 255)
+    private String productName;
+
+    @Column(name = "image_url", length = 512)
+    private String imageUrl;
 }
