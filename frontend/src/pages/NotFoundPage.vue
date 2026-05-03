@@ -45,6 +45,15 @@ import { BCropmarks } from '@/components/primitives';
   font-size: var(--type-mono);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--spot);
+  color: var(--spot-ink);
+}
+
+@media (max-width: 37.49rem) {
+  .not-found {
+    padding: var(--space-6) var(--space-4);
+  }
+  .not-found__numeral {
+    font-size: 4rem;
+  }
 }
 </style>

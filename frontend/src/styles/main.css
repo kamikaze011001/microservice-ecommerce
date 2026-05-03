@@ -33,3 +33,56 @@ body::after {
   background: var(--spot);
   color: var(--paper);
 }
+
+/* Mobile base — prevent iOS text autosize, fluid media, sane box model */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+img,
+svg,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Skip-link — visible only on keyboard focus */
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  transform: translateY(-100%);
+  z-index: 100;
+}
+.skip-link:focus {
+  transform: translateY(0);
+  outline: 2px solid var(--spot);
+}
+
+/* Global focus ring — keyboard-only via :focus-visible */
+:focus-visible {
+  outline: 2px solid var(--spot);
+  outline-offset: 2px;
+}
+
+/* Reset visible-only outlines on mouse focus to avoid double rings */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Suppress focus ring on the main wrapper itself (programmatic target) */
+#main:focus {
+  outline: none;
+}

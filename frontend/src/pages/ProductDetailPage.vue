@@ -9,6 +9,7 @@ import { BCropmarks, BButton, BStamp } from '@/components/primitives';
 import { ApiError, classify } from '@/api/error';
 import { useAuthStore } from '@/stores/auth';
 import { useToast } from '@/composables/useToast';
+import { usePageMeta } from '@/composables/usePageMeta';
 
 const route = useRoute();
 const id = computed(() => String(route.params.id));
@@ -16,6 +17,8 @@ const query = useProductDetailQuery(id);
 const imageBroken = ref(false);
 
 const product = computed(() => query.data.value);
+const pageTitle = computed(() => product.value?.name ?? 'Product');
+usePageMeta({ title: pageTitle });
 const formattedPrice = computed(() =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
     product.value?.price ?? 0,
@@ -81,6 +84,8 @@ function handleAddToCart() {
           :src="product.image_url"
           :alt="product.name"
           class="pdp__img"
+          width="800"
+          height="800"
           @error="imageBroken = true"
         />
         <BImageFallback v-else :name="product.name" />
@@ -114,17 +119,21 @@ function handleAddToCart() {
 .pdp {
   max-width: var(--container-max);
   margin: 0 auto;
-  padding: var(--space-6);
+  padding: var(--space-4);
 }
 .pdp__article {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-8);
+  grid-template-columns: 1fr;
+  gap: var(--space-6);
   align-items: start;
 }
-@media (max-width: 800px) {
+@media (min-width: 48rem) {
+  .pdp {
+    padding: var(--space-6);
+  }
   .pdp__article {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-8);
   }
 }
 .pdp__media {

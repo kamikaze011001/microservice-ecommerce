@@ -137,7 +137,16 @@ const onSubmit = handleSubmit(async (values) => {
   color: var(--muted-ink);
 }
 .register__alt a {
-  color: var(--spot);
+  color: var(--spot-ink);
   text-decoration: underline;
+}
+
+@media (max-width: 37.49rem) {
+  .register {
+    padding: var(--space-6) var(--space-4);
+  }
+  .register h1 {
+    font-size: 1.75rem;
+  }
 }
 </style>

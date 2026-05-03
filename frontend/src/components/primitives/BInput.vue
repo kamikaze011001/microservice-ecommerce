@@ -12,6 +12,10 @@ interface Props {
 }
 const props = withDefaults(defineProps<Props>(), {
   type: 'text',
+  label: undefined,
+  error: undefined,
+  id: undefined,
+  placeholder: undefined,
   disabled: false,
 });
 

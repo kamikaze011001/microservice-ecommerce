@@ -11,6 +11,7 @@
   --ink: #1c1c1c;
   --muted-ink: #6b6256;
   --spot: #ff4f1c;
+  --spot-ink: #c8340a; /* AA-on-paper variant for spot used as foreground text */
   --stamp-red: #c4302b;
 
   /* ─── Type ─── */
@@ -53,6 +54,11 @@
 
   /* ─── Layout ─── */
   --container-max: 1280px;
+
+  /* ─── Breakpoints (reference values — CSS @media still uses literals) ─── */
+  --bp-sm: 30rem; /* 480px */
+  --bp-md: 48rem; /* 768px */
+  --bp-lg: 64rem; /* 1024px */
 }
 
 /*
@@ -65,6 +71,7 @@
   --color-ink: var(--ink);
   --color-muted-ink: var(--muted-ink);
   --color-spot: var(--spot);
+  --color-spot-ink: var(--spot-ink);
   --color-stamp-red: var(--stamp-red);
 
   --font-display: 'Bricolage Grotesque', 'Cabinet Grotesk', system-ui, sans-serif;

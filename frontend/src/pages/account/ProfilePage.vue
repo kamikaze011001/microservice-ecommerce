@@ -159,6 +159,8 @@ async function onFileChange(e: Event) {
               :src="profile.data.value.avatar_url"
               :alt="profile.data.value?.name ?? 'Avatar'"
               class="profile__avatar-img"
+              width="160"
+              height="160"
             />
             <BImageFallback
               v-else
@@ -468,5 +470,26 @@ async function onFileChange(e: Event) {
   margin-top: var(--space-6);
   display: flex;
   justify-content: flex-end;
+}
+
+@media (max-width: 47.99rem) {
+  .profile {
+    gap: var(--space-8);
+    padding: var(--space-4) var(--space-4);
+  }
+  .profile__numeral {
+    font-size: 3rem;
+  }
+  .profile__avatar-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+  .profile__form-footer {
+    justify-content: stretch;
+  }
+  .profile__form-footer :deep(.b-button) {
+    width: 100%;
+  }
 }
 </style>

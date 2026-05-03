@@ -119,7 +119,16 @@ const onSubmit = handleSubmit(async (values) => {
   color: var(--muted-ink);
 }
 .login__alt a {
-  color: var(--spot);
+  color: var(--spot-ink);
   text-decoration: underline;
+}
+
+@media (max-width: 37.49rem) {
+  .login {
+    padding: var(--space-6) var(--space-4);
+  }
+  .login h1 {
+    font-size: 1.75rem;
+  }
 }
 </style>

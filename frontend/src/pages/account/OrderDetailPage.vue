@@ -340,4 +340,29 @@ async function reorder() {
   gap: var(--space-3);
   flex-wrap: wrap;
 }
+
+@media (max-width: 47.99rem) {
+  .receipt {
+    padding: var(--space-3);
+    gap: var(--space-4);
+  }
+  .receipt__title {
+    font-size: var(--type-h2);
+  }
+  .receipt__numeral {
+    font-size: 3rem;
+  }
+  .receipt__total {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+  }
+  .receipt__total-amount {
+    font-size: var(--type-h1);
+  }
+  .receipt__actions :deep(.b-button) {
+    flex: 1 1 auto;
+  }
+}
 </style>

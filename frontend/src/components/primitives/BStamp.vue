@@ -6,6 +6,7 @@ interface Props {
 }
 const props = withDefaults(defineProps<Props>(), {
   tone: 'red',
+  rotate: undefined,
   size: 'md',
 });
 </script>
@@ -14,7 +15,6 @@ const props = withDefaults(defineProps<Props>(), {
   <span
     :class="['b-stamp', `tone-${props.tone}`, `size-${props.size}`]"
     :style="props.rotate ? { transform: `rotate(${props.rotate}deg)` } : undefined"
-    role="img"
   >
     <span class="b-stamp__inner"><slot /></span>
   </span>

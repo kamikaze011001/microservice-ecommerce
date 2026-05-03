@@ -15,7 +15,14 @@ const unit = computed(() => fmt(props.item.price));
   <div class="row">
     <span class="row__index">{{ String(index).padStart(2, '0') }}</span>
     <div class="row__thumb">
-      <img v-if="item.image_url" :src="item.image_url" :alt="item.product_name ?? 'Product'" />
+      <img
+        v-if="item.image_url"
+        :src="item.image_url"
+        :alt="item.product_name ?? 'Product'"
+        width="80"
+        height="80"
+        loading="lazy"
+      />
       <BImageFallback v-else :name="item.product_name ?? 'Product'" />
     </div>
     <div class="row__name">
@@ -80,5 +87,36 @@ const unit = computed(() => fmt(props.item.price));
 .row__sub {
   font-weight: 700;
   white-space: nowrap;
+}
+
+@media (max-width: 29.99rem) {
+  .row {
+    grid-template-columns: 56px 1fr auto;
+    grid-template-areas:
+      'thumb name sub'
+      'thumb qty qty';
+    column-gap: var(--space-3);
+    row-gap: var(--space-1);
+    align-items: start;
+  }
+  .row__index {
+    display: none;
+  }
+  .row__thumb {
+    grid-area: thumb;
+  }
+  .row__name {
+    grid-area: name;
+  }
+  .row__leader {
+    display: none;
+  }
+  .row__qty {
+    grid-area: qty;
+  }
+  .row__sub {
+    grid-area: sub;
+    text-align: right;
+  }
 }
 </style>

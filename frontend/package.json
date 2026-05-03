@@ -13,8 +13,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "api:gen": "./scripts/api-gen.sh"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@tanstack/vue-query": "^5.62.0",

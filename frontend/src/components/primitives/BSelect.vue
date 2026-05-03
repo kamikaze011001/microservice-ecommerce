@@ -24,7 +24,11 @@ interface Props {
   error?: string;
   disabled?: boolean;
 }
-const props = withDefaults(defineProps<Props>(), { disabled: false });
+const props = withDefaults(defineProps<Props>(), {
+  placeholder: undefined,
+  error: undefined,
+  disabled: false,
+});
 defineEmits<{ 'update:modelValue': [value: string] }>();
 </script>
 
@@ -95,7 +99,6 @@ defineEmits<{ 'update:modelValue': [value: string] }>();
   gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
-  outline: none;
   user-select: none;
 }
 .b-select__item[data-highlighted] {

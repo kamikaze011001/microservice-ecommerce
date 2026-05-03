@@ -34,7 +34,15 @@ function inc() {
 <template>
   <article class="line">
     <div class="line__media">
-      <img v-if="item.image_url" :src="item.image_url" :alt="item.name" class="line__img" />
+      <img
+        v-if="item.image_url"
+        :src="item.image_url"
+        :alt="item.name"
+        class="line__img"
+        width="120"
+        height="120"
+        loading="lazy"
+      />
       <BImageFallback v-else :name="item.name" />
     </div>
     <div class="line__info">
@@ -141,5 +149,36 @@ function inc() {
   font-size: 1.5em;
   cursor: pointer;
   color: var(--color-ink);
+}
+
+@media (max-width: 37.49rem) {
+  .line {
+    grid-template-columns: 80px 1fr auto;
+    grid-template-areas:
+      'img info remove'
+      'img qty qty'
+      'img subtotal subtotal';
+    column-gap: var(--space-3);
+    row-gap: var(--space-2);
+    align-items: start;
+  }
+  .line__media {
+    grid-area: img;
+  }
+  .line__info {
+    grid-area: info;
+  }
+  .line__qty {
+    grid-area: qty;
+    justify-self: start;
+  }
+  .line__subtotal {
+    grid-area: subtotal;
+    justify-self: start;
+  }
+  .line__remove {
+    grid-area: remove;
+    align-self: start;
+  }
 }
 </style>

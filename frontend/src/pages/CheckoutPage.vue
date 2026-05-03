@@ -124,7 +124,12 @@ watchEffect(() => {
 .checkout {
   max-width: var(--container-max);
   margin: 0 auto;
-  padding: var(--space-6);
+  padding: var(--space-4);
+}
+@media (min-width: 48rem) {
+  .checkout {
+    padding: var(--space-6);
+  }
 }
 .checkout__header {
   display: flex;
@@ -170,13 +175,14 @@ watchEffect(() => {
 }
 .checkout__body {
   display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: var(--space-6);
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
   align-items: start;
 }
-@media (max-width: 768px) {
+@media (min-width: 48rem) {
   .checkout__body {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 320px;
+    gap: var(--space-6);
   }
 }
 </style>

@@ -9,6 +9,9 @@ import {
 import CartLineItem from '@/components/domain/CartLineItem.vue';
 import CartSummary from '@/components/domain/CartSummary.vue';
 import BButton from '@/components/primitives/BButton.vue';
+import { usePageMeta } from '@/composables/usePageMeta';
+
+usePageMeta({ title: 'Cart — Issue Nº01', description: 'Your cart.' });
 
 const cart = useCartQuery();
 const update = useUpdateCartItemMutation();
@@ -92,7 +95,12 @@ const hasOverStock = computed(() =>
 .cart {
   max-width: var(--container-max);
   margin: 0 auto;
-  padding: var(--space-6);
+  padding: var(--space-4);
+}
+@media (min-width: 48rem) {
+  .cart {
+    padding: var(--space-6);
+  }
 }
 .cart__header {
   display: flex;

@@ -6,6 +6,9 @@ import { useDebouncedRef } from '@/composables/useDebouncedRef';
 import { ApiError, classify } from '@/api/error';
 import ProductCard from '@/components/ProductCard.vue';
 import { BInput, BStamp, BButton } from '@/components/primitives';
+import { usePageMeta } from '@/composables/usePageMeta';
+
+usePageMeta({ title: 'Issue Nº01 — Storefront', description: 'Browse the latest collection.' });
 
 const route = useRoute();
 const router = useRouter();
@@ -218,24 +221,25 @@ const pageButtons = computed<Array<number | 'gap'>>(() => {
   padding: 0;
   margin: 0;
   display: grid;
-  gap: var(--space-6);
+  gap: var(--space-4);
+  grid-template-columns: 1fr;
 }
-.home__hero-list {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-.home__grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-@media (max-width: 900px) {
+@media (min-width: 30rem) {
   .home__hero-list,
   .home__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-@media (max-width: 560px) {
+@media (min-width: 48rem) {
   .home__hero-list,
   .home__grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-6);
+  }
+}
+@media (min-width: 80rem) {
+  .home__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 .home__placeholder {
