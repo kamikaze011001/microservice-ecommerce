@@ -3,6 +3,9 @@ import { ref, computed } from 'vue';
 import { useOrdersListQuery } from '@/api/queries/orders';
 import OrderReceiptRow from '@/components/domain/OrderReceiptRow.vue';
 import { BButton, BStamp } from '@/components/primitives';
+import { usePageMeta } from '@/composables/usePageMeta';
+
+usePageMeta({ title: 'Orders — Issue Nº01', description: 'Your order history.' });
 
 const PAGE_SIZE = 20;
 const page = ref(1);

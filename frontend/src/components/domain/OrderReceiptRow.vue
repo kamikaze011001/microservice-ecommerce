@@ -33,7 +33,14 @@ const itemLabel = computed(
       <span class="receipt-row__date">{{ dateStr }}</span>
     </div>
     <div class="receipt-row__thumb">
-      <img v-if="summary.first_item_image_url" :src="summary.first_item_image_url" alt="" />
+      <img
+        v-if="summary.first_item_image_url"
+        :src="summary.first_item_image_url"
+        alt=""
+        width="80"
+        height="80"
+        loading="lazy"
+      />
       <BImageFallback v-else :name="summary.id" />
     </div>
     <div class="receipt-row__count">{{ itemLabel }}</div>

@@ -6,6 +6,9 @@ import { useDebouncedRef } from '@/composables/useDebouncedRef';
 import { ApiError, classify } from '@/api/error';
 import ProductCard from '@/components/ProductCard.vue';
 import { BInput, BStamp, BButton } from '@/components/primitives';
+import { usePageMeta } from '@/composables/usePageMeta';
+
+usePageMeta({ title: 'Issue Nº01 — Storefront', description: 'Browse the latest collection.' });
 
 const route = useRoute();
 const router = useRouter();

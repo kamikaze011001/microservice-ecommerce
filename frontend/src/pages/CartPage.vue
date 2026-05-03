@@ -9,6 +9,9 @@ import {
 import CartLineItem from '@/components/domain/CartLineItem.vue';
 import CartSummary from '@/components/domain/CartSummary.vue';
 import BButton from '@/components/primitives/BButton.vue';
+import { usePageMeta } from '@/composables/usePageMeta';
+
+usePageMeta({ title: 'Cart — Issue Nº01', description: 'Your cart.' });
 
 const cart = useCartQuery();
 const update = useUpdateCartItemMutation();

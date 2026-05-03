@@ -9,6 +9,7 @@ import { BCropmarks, BButton, BStamp } from '@/components/primitives';
 import { ApiError, classify } from '@/api/error';
 import { useAuthStore } from '@/stores/auth';
 import { useToast } from '@/composables/useToast';
+import { usePageMeta } from '@/composables/usePageMeta';
 
 const route = useRoute();
 const id = computed(() => String(route.params.id));
@@ -16,6 +17,8 @@ const query = useProductDetailQuery(id);
 const imageBroken = ref(false);
 
 const product = computed(() => query.data.value);
+const pageTitle = computed(() => product.value?.name ?? 'Product');
+usePageMeta({ title: pageTitle });
 const formattedPrice = computed(() =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
     product.value?.price ?? 0,
@@ -81,6 +84,8 @@ function handleAddToCart() {
           :src="product.image_url"
           :alt="product.name"
           class="pdp__img"
+          width="800"
+          height="800"
           @error="imageBroken = true"
         />
         <BImageFallback v-else :name="product.name" />

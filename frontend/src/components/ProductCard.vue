@@ -38,6 +38,9 @@ const soldOut = computed(() => (props.product.quantity ?? 0) <= 0);
           :src="product.image_url"
           :alt="product.name"
           class="product-card__img"
+          width="600"
+          height="600"
+          loading="lazy"
           @error="imageBroken = true"
         />
         <BImageFallback v-else :name="product.name" />

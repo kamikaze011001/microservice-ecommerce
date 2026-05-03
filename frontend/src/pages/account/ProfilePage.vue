@@ -159,6 +159,8 @@ async function onFileChange(e: Event) {
               :src="profile.data.value.avatar_url"
               :alt="profile.data.value?.name ?? 'Avatar'"
               class="profile__avatar-img"
+              width="160"
+              height="160"
             />
             <BImageFallback
               v-else

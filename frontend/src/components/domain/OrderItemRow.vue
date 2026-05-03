@@ -15,7 +15,14 @@ const unit = computed(() => fmt(props.item.price));
   <div class="row">
     <span class="row__index">{{ String(index).padStart(2, '0') }}</span>
     <div class="row__thumb">
-      <img v-if="item.image_url" :src="item.image_url" :alt="item.product_name ?? 'Product'" />
+      <img
+        v-if="item.image_url"
+        :src="item.image_url"
+        :alt="item.product_name ?? 'Product'"
+        width="80"
+        height="80"
+        loading="lazy"
+      />
       <BImageFallback v-else :name="item.product_name ?? 'Product'" />
     </div>
     <div class="row__name">

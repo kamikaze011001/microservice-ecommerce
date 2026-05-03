@@ -34,7 +34,15 @@ function inc() {
 <template>
   <article class="line">
     <div class="line__media">
-      <img v-if="item.image_url" :src="item.image_url" :alt="item.name" class="line__img" />
+      <img
+        v-if="item.image_url"
+        :src="item.image_url"
+        :alt="item.name"
+        class="line__img"
+        width="120"
+        height="120"
+        loading="lazy"
+      />
       <BImageFallback v-else :name="item.name" />
     </div>
     <div class="line__info">
