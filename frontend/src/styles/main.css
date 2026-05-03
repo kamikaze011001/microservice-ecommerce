@@ -33,3 +33,19 @@ body::after {
   background: var(--spot);
   color: var(--paper);
 }
+
+/* Mobile base — prevent iOS text autosize, fluid media, sane box model */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+img,
+svg,
+video {
+  max-width: 100%;
+  height: auto;
+}

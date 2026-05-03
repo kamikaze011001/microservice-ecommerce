@@ -53,6 +53,11 @@
 
   /* ─── Layout ─── */
   --container-max: 1280px;
+
+  /* ─── Breakpoints (reference values — CSS @media still uses literals) ─── */
+  --bp-sm: 30rem; /* 480px */
+  --bp-md: 48rem; /* 768px */
+  --bp-lg: 64rem; /* 1024px */
 }
 
 /*
