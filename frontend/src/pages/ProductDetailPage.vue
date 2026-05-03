@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, RouterLink } from 'vue-router';
 import { useProductDetailQuery } from '@/api/queries/products';
 import BImageFallback from '@/components/BImageFallback.vue';
 import NotFoundPage from '@/pages/NotFoundPage.vue';
-import { BCropmarks } from '@/components/primitives';
+import { BCropmarks, BButton, BStamp } from '@/components/primitives';
 import { ApiError, classify } from '@/api/error';
+import { useAuthStore } from '@/stores/auth';
 
 const route = useRoute();
 const id = computed(() => String(route.params.id));
@@ -41,6 +42,11 @@ const otherError = computed(() => {
   if (errorClass.value === 'network') return 'OFFLINE — RETRY?';
   return 'SERVER STAMP MISSED — RETRY?';
 });
+
+const auth = useAuthStore();
+const soldOut = computed(() => (product.value?.quantity ?? 0) <= 0);
+const isGuest = computed(() => !auth.isLoggedIn);
+const loginHref = computed(() => `/login?next=/products/${id.value}`);
 </script>
 
 <template>
@@ -72,7 +78,16 @@ const otherError = computed(() => {
             <dd>{{ v }}</dd>
           </template>
         </dl>
-        <slot name="cta" />
+        <div class="pdp__cta">
+          <BStamp v-if="soldOut" tone="red" size="md" :rotate="-6">SOLD OUT</BStamp>
+          <template v-else-if="isGuest">
+            <RouterLink :to="loginHref" class="pdp__cta-link"> LOGIN TO BUY </RouterLink>
+          </template>
+          <template v-else>
+            <BButton variant="ghost" :disabled="true">ADD TO CART</BButton>
+            <BStamp tone="ink" size="sm" :rotate="4">AVAILABLE PHASE 5</BStamp>
+          </template>
+        </div>
       </div>
     </article>
   </main>
@@ -157,5 +172,26 @@ const otherError = computed(() => {
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
   font-family: inherit;
+}
+.pdp__cta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+.pdp__cta-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3) var(--space-6);
+  border: var(--border-thick);
+  background: var(--spot);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: none;
+  box-shadow: var(--shadow-md);
 }
 </style>

@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia';
 import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
 import { router } from '@/router';
 import ProductDetailPage from '@/pages/ProductDetailPage.vue';
+import { useAuthStore } from '@/stores/auth';
 
 const useProductDetailQuery = vi.fn();
 vi.mock('@/api/queries/products', () => ({
@@ -80,5 +81,48 @@ describe('ProductDetailPage render', () => {
     });
     mount();
     expect(screen.getByText(/not in this issue/i)).toBeInTheDocument();
+  });
+});
+
+describe('ProductDetailPage CTA', () => {
+  it('guest sees LOGIN TO BUY linking to /login?next=/products/p1', () => {
+    useProductDetailQuery.mockReturnValue({
+      data: { value: makeProduct() },
+      isLoading: { value: false },
+      isError: { value: false },
+      error: { value: null },
+    });
+    mount();
+    const link = screen.getByRole('link', { name: /login to buy/i }) as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/login?next=/products/p1');
+  });
+
+  it('authed in-stock user sees disabled ADD TO CART + AVAILABLE PHASE 5 stamp', () => {
+    useProductDetailQuery.mockReturnValue({
+      data: { value: makeProduct({ quantity: 5 }) },
+      isLoading: { value: false },
+      isError: { value: false },
+      error: { value: null },
+    });
+    const auth = useAuthStore();
+    auth.login({ accessToken: 'x', refreshToken: 'y' });
+    mount();
+    const btn = screen.getByRole('button', { name: /add to cart/i });
+    expect(btn).toBeDisabled();
+    expect(screen.getByText(/available phase 5/i)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /login to buy/i })).toBeNull();
+  });
+
+  it('sold-out (quantity = 0) hides CTA and shows SOLD OUT stamp', () => {
+    useProductDetailQuery.mockReturnValue({
+      data: { value: makeProduct({ quantity: 0 }) },
+      isLoading: { value: false },
+      isError: { value: false },
+      error: { value: null },
+    });
+    mount();
+    expect(screen.queryByRole('button', { name: /add to cart/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /login to buy/i })).toBeNull();
+    expect(screen.getByText(/sold out/i)).toBeInTheDocument();
   });
 });
