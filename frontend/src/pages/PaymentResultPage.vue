@@ -83,6 +83,17 @@ async function cancelPending() {
 
 <template>
   <main class="result">
+    <h1 v-if="variant === 'success' && stampState === 'verifying'" class="result__headline">
+      VERIFYING…
+    </h1>
+    <h1
+      v-else-if="variant === 'success' && stampState === 'still-processing'"
+      class="result__headline"
+    >
+      STILL PROCESSING
+    </h1>
+    <h1 v-else-if="variant === 'cancel'" class="result__headline">PAYMENT CANCELED</h1>
+
     <OrderStatusStamp :status="stampStatus" />
 
     <p v-if="variant === 'success' && stampState === 'paid'" class="result__copy">

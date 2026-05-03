@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ref } from 'vue';
 import { render, screen, waitFor } from '@testing-library/vue';
 import userEvent from '@testing-library/user-event';
 import { flushPromises } from '@vue/test-utils';
@@ -17,14 +18,14 @@ vi.mock('@/api/queries/orders', () => ({
   useOrderDetailBffQuery: (...a: unknown[]) => useOrderDetailBffQuery(...a),
   useCancelOrderMutation: () => ({
     mutateAsync: cancelMutate,
-    isPending: { value: false },
+    isPending: ref(false),
   }),
 }));
 
 vi.mock('@/api/queries/cart', () => ({
   useAddToCartMutation: () => ({
     mutateAsync: addToCartMutate,
-    isPending: { value: false },
+    isPending: ref(false),
   }),
 }));
 
