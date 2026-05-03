@@ -19,6 +19,8 @@ public class OrderItemResponse {
     private String productId;
     private Double price;
     private Long quantity;
+    private String productName;
+    private String imageUrl;
 
     public static OrderItemResponse from(OrderItem item) {
         return OrderItemResponse.builder()
@@ -26,6 +28,8 @@ public class OrderItemResponse {
                 .productId(item.getProductId())
                 .price(item.getPrice())
                 .quantity(item.getQuantity())
+                .productName(item.getProductName())
+                .imageUrl(item.getImageUrl())
                 .build();
     }
 }
