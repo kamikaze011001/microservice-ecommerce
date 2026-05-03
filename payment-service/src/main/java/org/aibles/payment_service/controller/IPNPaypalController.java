@@ -30,7 +30,11 @@ public class IPNPaypalController {
     public ResponseEntity<Void> ipnSuccess(@RequestParam("token") String token) {
         log.info("IPN PayPal success token={}", token);
         String orderId = paymentService.handleSuccessPayment(token);
-        URI location = URI.create(frontendBaseUrl + "/payment/success?orderId=" + orderId);
+        if (orderId == null) {
+            log.warn("PayPal {} had no resolvable orderId for token={}", "success", token);
+        }
+        String suffix = orderId == null ? "" : "?orderId=" + orderId;
+        URI location = URI.create(frontendBaseUrl + "/payment/success" + suffix);
         return ResponseEntity.status(HttpStatus.FOUND).location(location).build();
     }
 
@@ -38,7 +42,11 @@ public class IPNPaypalController {
     public ResponseEntity<Void> ipnCancel(@RequestParam("token") String token) {
         log.info("IPN PayPal cancel token={}", token);
         String orderId = paymentService.handleCancelPayment(token);
-        URI location = URI.create(frontendBaseUrl + "/payment/cancel?orderId=" + orderId);
+        if (orderId == null) {
+            log.warn("PayPal {} had no resolvable orderId for token={}", "cancel", token);
+        }
+        String suffix = orderId == null ? "" : "?orderId=" + orderId;
+        URI location = URI.create(frontendBaseUrl + "/payment/cancel" + suffix);
         return ResponseEntity.status(HttpStatus.FOUND).location(location).build();
     }
 }
