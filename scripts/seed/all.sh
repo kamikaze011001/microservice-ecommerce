@@ -15,7 +15,13 @@ log_info "Seeding MySQL..."
 log_info "Seeding MongoDB api_role..."
 "$SCRIPT_DIR/mongo-roles.sh"
 
+log_info "Uploading product images to MinIO..."
+"$SCRIPT_DIR/minio-product-images.sh"
+
 log_info "Seeding MongoDB product..."
 "$SCRIPT_DIR/mongo-products.sh"
+
+log_info "Seeding MongoDB productQuantityHistory..."
+"$SCRIPT_DIR/mongo-product-quantity.sh"
 
 log_ok "All seed data imported"

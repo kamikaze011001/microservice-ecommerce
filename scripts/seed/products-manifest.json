@@ -1,0 +1,38 @@
+{
+  "bucket": "ecommerce-media",
+  "publicBaseUrl": "http://localhost:9000/ecommerce-media",
+  "products": [
+    { "slug": "cotton-crewneck-tee",   "productId": "67c000000000000000000001", "category": "apparel",     "name": "Cotton Crewneck Tee",   "price": 25,  "quantity": 30, "attributes": { "color": "White",  "material": "cotton",   "size": ["S","M","L","XL"] } },
+    { "slug": "heavyweight-hoodie",    "productId": "67c000000000000000000002", "category": "apparel",     "name": "Heavyweight Hoodie",    "price": 65,  "quantity": 18, "attributes": { "color": "Black",  "material": "fleece",   "size": ["S","M","L","XL"] } },
+    { "slug": "linen-button-up",       "productId": "67c000000000000000000003", "category": "apparel",     "name": "Linen Button-Up",       "price": 55,  "quantity": 12, "attributes": { "color": "Sand",   "material": "linen",    "size": ["S","M","L"] } },
+    { "slug": "denim-jacket",          "productId": "67c000000000000000000004", "category": "apparel",     "name": "Denim Jacket",          "price": 90,  "quantity": 0,  "attributes": { "color": "Indigo", "material": "denim",    "size": ["M","L","XL"] } },
+    { "slug": "wool-overcoat",         "productId": "67c000000000000000000005", "category": "apparel",     "name": "Wool Overcoat",         "price": 220, "quantity": 8,  "attributes": { "color": "Camel",  "material": "wool",     "size": ["M","L","XL"] } },
+    { "slug": "raw-denim-jeans",       "productId": "67c000000000000000000006", "category": "apparel",     "name": "Raw Denim Jeans",       "price": 110, "quantity": 25, "attributes": { "color": "Indigo", "material": "denim",    "size": ["30","32","34","36"] } },
+    { "slug": "flannel-shirt",         "productId": "67c000000000000000000007", "category": "apparel",     "name": "Flannel Shirt",         "price": 48,  "quantity": 22, "attributes": { "color": "Red",    "material": "cotton",   "size": ["S","M","L","XL"] } },
+    { "slug": "cashmere-sweater",      "productId": "67c000000000000000000008", "category": "apparel",     "name": "Cashmere Sweater",      "price": 180, "quantity": 2,  "attributes": { "color": "Cream",  "material": "cashmere", "size": ["S","M","L"] } },
+    { "slug": "utility-pants",         "productId": "67c000000000000000000009", "category": "apparel",     "name": "Utility Pants",         "price": 75,  "quantity": 35, "attributes": { "color": "Olive",  "material": "cotton",   "size": ["30","32","34","36"] } },
+    { "slug": "graphic-tee",           "productId": "67c00000000000000000000a", "category": "apparel",     "name": "Graphic Tee",           "price": 30,  "quantity": 40, "attributes": { "color": "Black",  "material": "cotton",   "size": ["S","M","L","XL"] } },
+
+    { "slug": "canvas-low-tops",       "productId": "67c00000000000000000000b", "category": "footwear",    "name": "Canvas Low-Tops",       "price": 50,  "quantity": 28, "attributes": { "color": "White",  "size": ["8","9","10","11"], "gender": "UNISEX" } },
+    { "slug": "leather-derbies",       "productId": "67c00000000000000000000c", "category": "footwear",    "name": "Leather Derbies",       "price": 185, "quantity": 14, "attributes": { "color": "Brown",  "size": ["8","9","10","11"], "gender": "MALE"   } },
+    { "slug": "trail-runners",         "productId": "67c00000000000000000000d", "category": "footwear",    "name": "Trail Runners",         "price": 135, "quantity": 22, "attributes": { "color": "Grey",   "size": ["8","9","10","11"], "gender": "UNISEX" } },
+    { "slug": "chelsea-boots",         "productId": "67c00000000000000000000e", "category": "footwear",    "name": "Chelsea Boots",         "price": 210, "quantity": 10, "attributes": { "color": "Black",  "size": ["8","9","10","11"], "gender": "UNISEX" } },
+    { "slug": "court-sneakers",        "productId": "67c00000000000000000000f", "category": "footwear",    "name": "Court Sneakers",        "price": 90,  "quantity": 0,  "attributes": { "color": "White",  "size": ["8","9","10","11"], "gender": "UNISEX" } },
+    { "slug": "running-flats",         "productId": "67c000000000000000000010", "category": "footwear",    "name": "Running Flats",         "price": 115, "quantity": 30, "attributes": { "color": "Pink",   "size": ["6","7","8","9"],   "gender": "FEMALE" } },
+    { "slug": "work-boots",            "productId": "67c000000000000000000011", "category": "footwear",    "name": "Work Boots",            "price": 245, "quantity": 6,  "attributes": { "color": "Tan",    "size": ["9","10","11","12"],"gender": "MALE"   } },
+    { "slug": "slip-on-loafers",       "productId": "67c000000000000000000012", "category": "footwear",    "name": "Slip-On Loafers",       "price": 140, "quantity": 1,  "attributes": { "color": "Navy",   "size": ["8","9","10"],      "gender": "UNISEX" } },
+    { "slug": "high-tops",             "productId": "67c000000000000000000013", "category": "footwear",    "name": "High-Tops",             "price": 80,  "quantity": 18, "attributes": { "color": "Black",  "size": ["8","9","10","11"], "gender": "UNISEX" } },
+    { "slug": "retro-runners",         "productId": "67c000000000000000000014", "category": "footwear",    "name": "Retro Runners",         "price": 125, "quantity": 24, "attributes": { "color": "Cream",  "size": ["8","9","10","11"], "gender": "UNISEX" } },
+
+    { "slug": "canvas-tote",           "productId": "67c000000000000000000015", "category": "accessories", "name": "Canvas Tote",           "price": 35,  "quantity": 50, "attributes": { "color": "Natural","material": "canvas"  } },
+    { "slug": "leather-belt",          "productId": "67c000000000000000000016", "category": "accessories", "name": "Leather Belt",          "price": 65,  "quantity": 18, "attributes": { "color": "Brown",  "material": "leather" } },
+    { "slug": "wool-beanie",           "productId": "67c000000000000000000017", "category": "accessories", "name": "Wool Beanie",           "price": 28,  "quantity": 32, "attributes": { "color": "Charcoal","material": "wool"   } },
+    { "slug": "linen-scarf",           "productId": "67c000000000000000000018", "category": "accessories", "name": "Linen Scarf",           "price": 42,  "quantity": 14, "attributes": { "color": "Stone",  "material": "linen"   } },
+    { "slug": "card-wallet",           "productId": "67c000000000000000000019", "category": "accessories", "name": "Card Wallet",           "price": 55,  "quantity": 0,  "attributes": { "color": "Black",  "material": "leather" } },
+    { "slug": "baseball-cap",          "productId": "67c00000000000000000001a", "category": "accessories", "name": "Baseball Cap",          "price": 32,  "quantity": 40, "attributes": { "color": "Navy",   "material": "cotton"  } },
+    { "slug": "crossbody-bag",         "productId": "67c00000000000000000001b", "category": "accessories", "name": "Crossbody Bag",         "price": 130, "quantity": 10, "attributes": { "color": "Black",  "material": "nylon"   } },
+    { "slug": "socks-3pack",           "productId": "67c00000000000000000001c", "category": "accessories", "name": "Socks 3-Pack",          "price": 18,  "quantity": 45, "attributes": { "color": "Mixed",  "material": "cotton"  } },
+    { "slug": "ribbed-gloves",         "productId": "67c00000000000000000001d", "category": "accessories", "name": "Ribbed Gloves",         "price": 38,  "quantity": 16, "attributes": { "color": "Black",  "material": "wool"    } },
+    { "slug": "messenger-bag",         "productId": "67c00000000000000000001e", "category": "accessories", "name": "Messenger Bag",         "price": 165, "quantity": 8,  "attributes": { "color": "Olive",  "material": "canvas"  } }
+  ]
+}

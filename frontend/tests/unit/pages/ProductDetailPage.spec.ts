@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/vue';
+import userEvent from '@testing-library/user-event';
+
+const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
 import { setActivePinia, createPinia } from 'pinia';
 import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
 import { router } from '@/router';
@@ -10,6 +13,14 @@ const useProductDetailQuery = vi.fn();
 vi.mock('@/api/queries/products', () => ({
   useProductDetailQuery: (...args: unknown[]) => useProductDetailQuery(...args),
   useProductListQuery: vi.fn(),
+}));
+
+const addMutate = vi.fn();
+vi.mock('@/api/queries/cart', () => ({
+  useAddToCartMutation: () => ({
+    mutate: addMutate,
+    isPending: { value: false },
+  }),
 }));
 
 function makeProduct(overrides: Partial<Record<string, unknown>> = {}) {
@@ -29,6 +40,7 @@ beforeEach(async () => {
   vi.useFakeTimers();
   setActivePinia(createPinia());
   useProductDetailQuery.mockReset();
+  addMutate.mockReset();
   router.addRoute({ path: '/products/:id', component: ProductDetailPage });
   await router.push('/products/p1');
   await router.isReady();
@@ -97,7 +109,7 @@ describe('ProductDetailPage CTA', () => {
     expect(link.getAttribute('href')).toBe('/login?next=/products/p1');
   });
 
-  it('authed in-stock user sees disabled ADD TO CART + AVAILABLE PHASE 5 stamp', () => {
+  it('authed in-stock user sees enabled ADD TO CART button', () => {
     useProductDetailQuery.mockReturnValue({
       data: { value: makeProduct({ quantity: 5 }) },
       isLoading: { value: false },
@@ -108,9 +120,29 @@ describe('ProductDetailPage CTA', () => {
     auth.login({ accessToken: 'x', refreshToken: 'y' });
     mount();
     const btn = screen.getByRole('button', { name: /add to cart/i });
-    expect(btn).toBeDisabled();
-    expect(screen.getByText(/available phase 5/i)).toBeInTheDocument();
+    expect(btn).not.toBeDisabled();
+    expect(screen.queryByText(/available phase 5/i)).toBeNull();
     expect(screen.queryByRole('link', { name: /login to buy/i })).toBeNull();
+  });
+
+  it('clicking ADD TO CART fires useAddToCartMutation with product and qty=1', async () => {
+    useProductDetailQuery.mockReturnValue({
+      data: {
+        value: makeProduct({ id: 'p1', price: 49.5, quantity: 5 }),
+      },
+      isLoading: { value: false },
+      isError: { value: false },
+      error: { value: null },
+    });
+    const auth = useAuthStore();
+    auth.login({ accessToken: 'tok', refreshToken: 'rtok' });
+    mount();
+    const button = screen.getByRole('button', { name: /ADD TO CART/i });
+    await user.click(button);
+    expect(addMutate).toHaveBeenCalledWith(
+      { product_id: 'p1', quantity: 1, price: 49.5 },
+      expect.any(Object),
+    );
   });
 
   it('sold-out (quantity = 0) hides CTA and shows SOLD OUT stamp', () => {

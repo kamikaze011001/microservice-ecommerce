@@ -3,10 +3,12 @@ import HomePage from '@/pages/HomePage.vue';
 import DesignShowcase from '@/pages/DesignShowcase.vue';
 import LoginPage from '@/pages/LoginPage.vue';
 import RegisterPage from '@/pages/RegisterPage.vue';
-import CartPlaceholder from '@/pages/CartPlaceholder.vue';
+import CartPage from '@/pages/CartPage.vue';
+import CheckoutPage from '@/pages/CheckoutPage.vue';
 import ActivatePage from '@/pages/ActivatePage.vue';
 import ProductDetailPage from '@/pages/ProductDetailPage.vue';
 import NotFoundPage from '@/pages/NotFoundPage.vue';
+import PaymentResultPage from '@/pages/PaymentResultPage.vue';
 import { useAuthStore } from '@/stores/auth';
 
 export const router = createRouter({
@@ -17,7 +19,10 @@ export const router = createRouter({
     { path: '/login', component: LoginPage, meta: { guestOnly: true } },
     { path: '/register', component: RegisterPage, meta: { guestOnly: true } },
     { path: '/activate', component: ActivatePage, meta: { guestOnly: true } },
-    { path: '/cart', component: CartPlaceholder, meta: { requiresAuth: true } },
+    { path: '/cart', component: CartPage, meta: { requiresAuth: true } },
+    { path: '/checkout', component: CheckoutPage, meta: { requiresAuth: true } },
+    { path: '/payment/success', component: PaymentResultPage },
+    { path: '/payment/cancel', component: PaymentResultPage },
     { path: '/products/:id', component: ProductDetailPage },
     { path: '/:pathMatch(.*)*', component: NotFoundPage },
   ],

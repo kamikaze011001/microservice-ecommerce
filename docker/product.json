@@ -1,146 +1,537 @@
 [
   {
-    "_id": {"$oid": "67bdcd9cd75c4919ce32d6a4"},
+    "_id": {
+      "$oid": "67c000000000000000000001"
+    },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Cotton Crewneck Tee",
+    "price": 25,
+    "category": "apparel",
+    "attributes": {
+      "color": "White",
+      "material": "cotton",
+      "size": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ]
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000001/cotton-crewneck-tee.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000002"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Heavyweight Hoodie",
+    "price": 65,
+    "category": "apparel",
+    "attributes": {
+      "color": "Black",
+      "material": "fleece",
+      "size": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ]
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000002/heavyweight-hoodie.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000003"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Linen Button-Up",
+    "price": 55,
+    "category": "apparel",
+    "attributes": {
+      "color": "Sand",
+      "material": "linen",
+      "size": [
+        "S",
+        "M",
+        "L"
+      ]
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000003/linen-button-up.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000004"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Denim Jacket",
+    "price": 90,
+    "category": "apparel",
+    "attributes": {
+      "color": "Indigo",
+      "material": "denim",
+      "size": [
+        "M",
+        "L",
+        "XL"
+      ]
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000004/denim-jacket.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000005"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Wool Overcoat",
+    "price": 220,
+    "category": "apparel",
+    "attributes": {
+      "color": "Camel",
+      "material": "wool",
+      "size": [
+        "M",
+        "L",
+        "XL"
+      ]
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000005/wool-overcoat.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000006"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Raw Denim Jeans",
+    "price": 110,
+    "category": "apparel",
+    "attributes": {
+      "color": "Indigo",
+      "material": "denim",
+      "size": [
+        "30",
+        "32",
+        "34",
+        "36"
+      ]
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000006/raw-denim-jeans.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000007"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Flannel Shirt",
+    "price": 48,
+    "category": "apparel",
     "attributes": {
       "color": "Red",
       "material": "cotton",
-      "size": ["XL", "XXL", "X", "L"]
+      "size": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ]
     },
-    "name": "Uniqlo shirt",
-    "price": 200
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000007/flannel-shirt.jpg"
   },
   {
-    "_id": {"$oid": "67bdd0bed75c4919ce32d6a5"},
+    "_id": {
+      "$oid": "67c000000000000000000008"
+    },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Cashmere Sweater",
+    "price": 180,
+    "category": "apparel",
     "attributes": {
-      "color": "Blue",
+      "color": "Cream",
+      "material": "cashmere",
+      "size": [
+        "S",
+        "M",
+        "L"
+      ]
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000008/cashmere-sweater.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000009"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Utility Pants",
+    "price": 75,
+    "category": "apparel",
+    "attributes": {
+      "color": "Olive",
       "material": "cotton",
-      "size": ["XL", "XXL", "X", "L"]
+      "size": [
+        "30",
+        "32",
+        "34",
+        "36"
+      ]
     },
-    "name": "Uniqlo jean",
-    "price": 250
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000009/utility-pants.jpg"
   },
   {
-    "_id": {"$oid": "67bdd146d75c4919ce32d6a7"},
-    "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "attributes": {
-      "color": "White",
-      "size": ["38", "39", "40", "42"],
-      "gender": "MALE"
+    "_id": {
+      "$oid": "67c00000000000000000000a"
     },
-    "name": "Adidas Ultraboost 5",
-    "price": 500
-  },
-  {
-    "_id": {"$oid": "67bdd160d75c4919ce32d6a8"},
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "attributes": {
-      "color": "White",
-      "size": ["38", "39", "40", "42"],
-      "gender": "MALE"
-    },
-    "name": "Anta sport 5",
-    "price": 300
-  },
-  {
-    "_id": {"$oid": "67bdd194d75c4919ce32d6a9"},
-    "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "attributes": {
-      "color": "White",
-      "RAM": "8GB",
-      "CPU": "10 cores",
-      "Storage": "356GB SSD"
-    },
-    "name": "Iphone XV",
-    "price": 300
-  },
-  {
-    "_id": {"$oid": "67bdd198d75c4919ce32d6aa"},
-    "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "attributes": {
-      "color": "Red",
-      "RAM": "8GB",
-      "CPU": "10 cores",
-      "Storage": "356GB SSD"
-    },
-    "name": "Iphone XV",
-    "price": 300
-  },
-  {
-    "_id": {"$oid": "67bdd1c2d75c4919ce32d6ab"},
-    "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "attributes": {
-      "color": "White",
-      "RAM": "16GB",
-      "CPU": "10 cores",
-      "Storage": "356GB SSD",
-      "GPU": "8 cores"
-    },
-    "name": "Mac mini",
-    "price": 800
-  },
-  {
-    "_id": {"$oid": "67bdd1ccd75c4919ce32d6ac"},
-    "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "attributes": {
-      "color": "White",
-      "RAM": "16GB",
-      "CPU": "10 cores",
-      "Storage": "356GB SSD",
-      "GPU": "8 cores"
-    },
-    "name": "Macbook Air",
-    "price": 1000
-  },
-  {
-    "_id": {"$oid": "67bdd1dbd75c4919ce32d6ad"},
-    "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "attributes": {
-      "color": "White",
-      "RAM": "16GB",
-      "CPU": "10 cores",
-      "Storage": "356GB SSD",
-      "GPU": "8 cores"
-    },
-    "name": "Macbook Pro",
-    "price": 2000
-  },
-  {
-    "_id": {"$oid": "67bdd210d75c4919ce32d6ae"},
-    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Graphic Tee",
+    "price": 30,
+    "category": "apparel",
     "attributes": {
       "color": "Black",
-      "RAM": "16GB",
-      "CPU": "10 cores",
-      "Storage": "356GB SSD",
-      "GPU": "8 cores"
+      "material": "cotton",
+      "size": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ]
     },
-    "name": "Lenovo Legion 7",
-    "price": 2000
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000a/graphic-tee.jpg"
   },
   {
-    "_id": {"$oid": "67bdd21cd75c4919ce32d6af"},
+    "_id": {
+      "$oid": "67c00000000000000000000b"
+    },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Canvas Low-Tops",
+    "price": 50,
+    "category": "footwear",
+    "attributes": {
+      "color": "White",
+      "size": [
+        "8",
+        "9",
+        "10",
+        "11"
+      ],
+      "gender": "UNISEX"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000b/canvas-low-tops.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c00000000000000000000c"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Leather Derbies",
+    "price": 185,
+    "category": "footwear",
+    "attributes": {
+      "color": "Brown",
+      "size": [
+        "8",
+        "9",
+        "10",
+        "11"
+      ],
+      "gender": "MALE"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000c/leather-derbies.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c00000000000000000000d"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Trail Runners",
+    "price": 135,
+    "category": "footwear",
+    "attributes": {
+      "color": "Grey",
+      "size": [
+        "8",
+        "9",
+        "10",
+        "11"
+      ],
+      "gender": "UNISEX"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000d/trail-runners.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c00000000000000000000e"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Chelsea Boots",
+    "price": 210,
+    "category": "footwear",
     "attributes": {
       "color": "Black",
-      "RAM": "16GB",
-      "CPU": "8 cores",
-      "Storage": "356GB SSD",
-      "GPU": "8 cores"
+      "size": [
+        "8",
+        "9",
+        "10",
+        "11"
+      ],
+      "gender": "UNISEX"
     },
-    "name": "Lenovo Legion 5",
-    "price": 1500
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000e/chelsea-boots.jpg"
   },
   {
-    "_id": {"$oid": "67bdd337d75c4919ce32d6b0"},
-    "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "attributes": {
-      "color": "Red",
-      "type": "Smart Phone",
-      "RAM": "16GB"
+    "_id": {
+      "$oid": "67c00000000000000000000f"
     },
-    "name": "Iphone XV",
-    "price": 2500
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Court Sneakers",
+    "price": 90,
+    "category": "footwear",
+    "attributes": {
+      "color": "White",
+      "size": [
+        "8",
+        "9",
+        "10",
+        "11"
+      ],
+      "gender": "UNISEX"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000f/court-sneakers.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000010"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Running Flats",
+    "price": 115,
+    "category": "footwear",
+    "attributes": {
+      "color": "Pink",
+      "size": [
+        "6",
+        "7",
+        "8",
+        "9"
+      ],
+      "gender": "FEMALE"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000010/running-flats.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000011"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Work Boots",
+    "price": 245,
+    "category": "footwear",
+    "attributes": {
+      "color": "Tan",
+      "size": [
+        "9",
+        "10",
+        "11",
+        "12"
+      ],
+      "gender": "MALE"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000011/work-boots.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000012"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Slip-On Loafers",
+    "price": 140,
+    "category": "footwear",
+    "attributes": {
+      "color": "Navy",
+      "size": [
+        "8",
+        "9",
+        "10"
+      ],
+      "gender": "UNISEX"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000012/slip-on-loafers.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000013"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "High-Tops",
+    "price": 80,
+    "category": "footwear",
+    "attributes": {
+      "color": "Black",
+      "size": [
+        "8",
+        "9",
+        "10",
+        "11"
+      ],
+      "gender": "UNISEX"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000013/high-tops.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000014"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Retro Runners",
+    "price": 125,
+    "category": "footwear",
+    "attributes": {
+      "color": "Cream",
+      "size": [
+        "8",
+        "9",
+        "10",
+        "11"
+      ],
+      "gender": "UNISEX"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000014/retro-runners.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000015"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Canvas Tote",
+    "price": 35,
+    "category": "accessories",
+    "attributes": {
+      "color": "Natural",
+      "material": "canvas"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000015/canvas-tote.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000016"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Leather Belt",
+    "price": 65,
+    "category": "accessories",
+    "attributes": {
+      "color": "Brown",
+      "material": "leather"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000016/leather-belt.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000017"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Wool Beanie",
+    "price": 28,
+    "category": "accessories",
+    "attributes": {
+      "color": "Charcoal",
+      "material": "wool"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000017/wool-beanie.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000018"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Linen Scarf",
+    "price": 42,
+    "category": "accessories",
+    "attributes": {
+      "color": "Stone",
+      "material": "linen"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000018/linen-scarf.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000019"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Card Wallet",
+    "price": 55,
+    "category": "accessories",
+    "attributes": {
+      "color": "Black",
+      "material": "leather"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000019/card-wallet.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c00000000000000000001a"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Baseball Cap",
+    "price": 32,
+    "category": "accessories",
+    "attributes": {
+      "color": "Navy",
+      "material": "cotton"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001a/baseball-cap.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c00000000000000000001b"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Crossbody Bag",
+    "price": 130,
+    "category": "accessories",
+    "attributes": {
+      "color": "Black",
+      "material": "nylon"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001b/crossbody-bag.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c00000000000000000001c"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Socks 3-Pack",
+    "price": 18,
+    "category": "accessories",
+    "attributes": {
+      "color": "Mixed",
+      "material": "cotton"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001c/socks-3pack.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c00000000000000000001d"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Ribbed Gloves",
+    "price": 38,
+    "category": "accessories",
+    "attributes": {
+      "color": "Black",
+      "material": "wool"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001d/ribbed-gloves.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c00000000000000000001e"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Messenger Bag",
+    "price": 165,
+    "category": "accessories",
+    "attributes": {
+      "color": "Olive",
+      "material": "canvas"
+    },
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001e/messenger-bag.jpg"
   }
 ]

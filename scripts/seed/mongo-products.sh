@@ -1,6 +1,6 @@
 #!/bin/bash
 # Import docker/product.json into MongoDB ecommerce_inventory.product.
-# Idempotent: skip if collection already non-empty.
+# Always drops the collection first so the manifest is the source of truth.
 
 set -e
 
@@ -20,18 +20,19 @@ USER="${MONGO_USERNAME:-ecommerce}"
 PASS="${MONGO_PASSWORD:-ecommerce123}"
 CONTAINER="${MONGO_CONTAINER:-ecommerce-mongodb}"
 
-count=$(docker exec "$CONTAINER" mongosh "$DB" \
+log_info "Dropping $DB.product before reseed…"
+docker exec "$CONTAINER" mongosh "$DB" \
     --quiet --authenticationDatabase admin -u "$USER" -p "$PASS" \
-    --eval "db.product.countDocuments()" 2>/dev/null | tail -1 | tr -d '[:space:]')
+    --eval "db.product.drop()" >/dev/null
 
-if [ "${count:-0}" -gt 0 ] 2>/dev/null; then
-    log_warn "product already seeded ($count docs) — skipping"
-    exit 0
-fi
-
-log_info "Importing /seed/product.json into $DB.product..."
+log_info "Importing /seed/product.json into $DB.product…"
 docker exec "$CONTAINER" mongoimport \
     --authenticationDatabase admin -u "$USER" -p "$PASS" \
     --db "$DB" --collection product \
     --file /seed/product.json --jsonArray
-log_ok "product seeded"
+
+count=$(docker exec "$CONTAINER" mongosh "$DB" \
+    --quiet --authenticationDatabase admin -u "$USER" -p "$PASS" \
+    --eval "db.product.countDocuments()" 2>/dev/null | tail -1 | tr -d '[:space:]')
+
+log_ok "product seeded ($count docs)"

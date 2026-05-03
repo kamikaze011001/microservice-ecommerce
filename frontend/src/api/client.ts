@@ -4,7 +4,7 @@ import { ApiError } from './error';
 import { useAuthStore } from '@/stores/auth';
 import { router } from '@/router';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:6868';
 
 interface BaseResponse<T> {
   status: number;

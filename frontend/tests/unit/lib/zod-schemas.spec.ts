@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { passwordSchema, loginSchema, registerSchema } from '@/lib/zod-schemas';
+import { passwordSchema, loginSchema, registerSchema, addressSchema } from '@/lib/zod-schemas';
 
 describe('passwordSchema (matches backend @ValidPassword)', () => {
   it.each([
@@ -42,5 +42,32 @@ describe('registerSchema', () => {
       confirmPassword: 'Aa1!aa',
     });
     expect(r.success).toBe(true);
+  });
+});
+
+describe('addressSchema', () => {
+  const valid = {
+    street: '123 Main St',
+    city: 'Brooklyn',
+    state: 'NY',
+    postcode: '11201',
+    country: 'US',
+    phone: '+1 555-123-4567',
+  };
+
+  it('accepts a valid address', () => {
+    expect(addressSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it('rejects missing street', () => {
+    expect(addressSchema.safeParse({ ...valid, street: '' }).success).toBe(false);
+  });
+
+  it('rejects bad postcode', () => {
+    expect(addressSchema.safeParse({ ...valid, postcode: 'a' }).success).toBe(false);
+  });
+
+  it('rejects bad phone', () => {
+    expect(addressSchema.safeParse({ ...valid, phone: 'abc' }).success).toBe(false);
   });
 });

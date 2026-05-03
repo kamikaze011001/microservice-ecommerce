@@ -2,11 +2,13 @@
 import { computed, ref } from 'vue';
 import { useRoute, RouterLink } from 'vue-router';
 import { useProductDetailQuery } from '@/api/queries/products';
+import { useAddToCartMutation } from '@/api/queries/cart';
 import BImageFallback from '@/components/BImageFallback.vue';
 import NotFoundPage from '@/pages/NotFoundPage.vue';
 import { BCropmarks, BButton, BStamp } from '@/components/primitives';
 import { ApiError, classify } from '@/api/error';
 import { useAuthStore } from '@/stores/auth';
+import { useToast } from '@/composables/useToast';
 
 const route = useRoute();
 const id = computed(() => String(route.params.id));
@@ -47,6 +49,20 @@ const auth = useAuthStore();
 const soldOut = computed(() => (product.value?.quantity ?? 0) <= 0);
 const isGuest = computed(() => !auth.isLoggedIn);
 const loginHref = computed(() => `/login?next=/products/${id.value}`);
+
+const addToCart = useAddToCartMutation();
+const toast = useToast();
+
+function handleAddToCart() {
+  if (!product.value) return;
+  addToCart.mutate(
+    { product_id: product.value.id, quantity: 1, price: product.value.price },
+    {
+      onSuccess: () => toast.success('Added to cart', `${product.value?.name} is in your cart.`),
+      onError: () => toast.error('Could not add to cart', 'Please try again.'),
+    },
+  );
+}
 </script>
 
 <template>
@@ -84,8 +100,9 @@ const loginHref = computed(() => `/login?next=/products/${id.value}`);
             <RouterLink :to="loginHref" class="pdp__cta-link"> LOGIN TO BUY </RouterLink>
           </template>
           <template v-else>
-            <BButton variant="ghost" :disabled="true">ADD TO CART</BButton>
-            <BStamp tone="ink" size="sm" :rotate="4">AVAILABLE PHASE 5</BStamp>
+            <BButton variant="spot" :disabled="addToCart.isPending.value" @click="handleAddToCart">
+              {{ addToCart.isPending.value ? 'ADDING…' : 'ADD TO CART' }}
+            </BButton>
           </template>
         </div>
       </div>

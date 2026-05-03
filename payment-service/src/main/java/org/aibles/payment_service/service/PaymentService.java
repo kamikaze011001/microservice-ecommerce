@@ -6,7 +6,7 @@ public interface PaymentService {
 
     BaseResponse purchase(String orderId);
 
-    void handleSuccessPayment(String token);
+    String handleSuccessPayment(String token);
 
-    void handleCancelPayment(String token);
+    String handleCancelPayment(String token);
 }

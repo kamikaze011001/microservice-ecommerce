@@ -3,6 +3,7 @@ version: '3.8'
 services:
   ecommerce-mongodb:
     image: mongo:8.0.1
+    container_name: ecommerce-mongodb
     ports:
       - "27017:27017"
     environment:
@@ -14,6 +15,7 @@ services:
       - ./temp-keyfile.key:/tmp/temp-keyfile.key
       - ./api_role.json:/seed/api_role.json:ro
       - ./product.json:/seed/product.json:ro
+      - ./product-quantity-history.json:/seed/product-quantity-history.json:ro
     entrypoint:
       - bash
       - -c
