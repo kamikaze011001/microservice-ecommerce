@@ -102,4 +102,36 @@ const itemLabel = computed(
   font-size: var(--type-h3);
   text-align: right;
 }
+
+@media (max-width: 37.49rem) {
+  .receipt-row {
+    grid-template-columns: 56px 1fr auto;
+    grid-template-areas:
+      'thumb id status'
+      'thumb count total';
+    column-gap: var(--space-3);
+    row-gap: var(--space-1);
+    align-items: start;
+    padding: var(--space-3);
+  }
+  .receipt-row__thumb {
+    grid-area: thumb;
+  }
+  .receipt-row__id {
+    grid-area: id;
+  }
+  .receipt-row__status {
+    grid-area: status;
+    justify-content: flex-end;
+  }
+  .receipt-row__count {
+    grid-area: count;
+  }
+  .receipt-row__total {
+    grid-area: total;
+  }
+  .receipt-row__numeral {
+    font-size: var(--type-h3);
+  }
+}
 </style>

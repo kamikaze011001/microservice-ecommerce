@@ -202,4 +202,10 @@ function goToPage(p: number) {
   align-self: center;
   color: var(--muted-ink);
 }
+
+@media (max-width: 37.49rem) {
+  .ledger__columns {
+    display: none;
+  }
+}
 </style>
