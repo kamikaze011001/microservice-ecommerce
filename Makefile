@@ -42,7 +42,7 @@ bootstrap: infra-up vault-init vault-unseal vault-import kafka-topics mongo-conn
 	@echo "✓ Bootstrap complete — run 'make up' to start services"
 
 .PHONY: up
-up: infra-up vault-unseal svc-start
+up: infra-up vault-unseal mongo-connector-ensure svc-start
 	@echo "✓ Stack is up"
 
 .PHONY: down
@@ -95,11 +95,13 @@ vault-login:
 # Kafka
 # ============================================================================
 
-.PHONY: kafka-topics mongo-connector
+.PHONY: kafka-topics mongo-connector mongo-connector-ensure
 kafka-topics:
 	@bash scripts/kafka/topics.sh
 mongo-connector:
 	@bash scripts/kafka/mongo-connector.sh
+mongo-connector-ensure:
+	@bash scripts/kafka/ensure-connector.sh
 
 # ============================================================================
 # Maven

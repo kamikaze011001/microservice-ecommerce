@@ -9,11 +9,13 @@ import org.aibles.order_service.entity.ShoppingCart;
 import org.aibles.order_service.entity.ShoppingCartItem;
 import org.aibles.order_service.repository.master.MasterShoppingCartItemRepo;
 import org.aibles.order_service.repository.master.MasterShoppingCartRepo;
+import org.aibles.order_service.repository.slave.SlaveShoppingCartItemRepo;
 import org.aibles.order_service.repository.slave.SlaveShoppingCartRepo;
 import org.aibles.order_service.service.ShoppingCartService;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -25,6 +27,8 @@ public class ShoppingCartServiceImpl implements ShoppingCartService {
 
     private final MasterShoppingCartItemRepo masterShoppingCartItemRepo;
 
+    private final SlaveShoppingCartItemRepo slaveShoppingCartItemRepo;
+
 
     @Override
     @Transactional
@@ -33,6 +37,15 @@ public class ShoppingCartServiceImpl implements ShoppingCartService {
 
         if (!slaveShoppingCartRepo.existsById(userId)) {
             masterShoppingCartRepo.save(new ShoppingCart(userId));
+        }
+
+        Optional<ShoppingCartItem> existing =
+                slaveShoppingCartItemRepo.findByShoppingCartIdAndProductId(userId, request.getProductId());
+
+        if (existing.isPresent()) {
+            ShoppingCartItem item = existing.get();
+            masterShoppingCartItemRepo.updateItem(item.getId(), item.getQuantity() + request.getQuantity());
+            return;
         }
 
         ShoppingCartItem shoppingCartItem = ShoppingCartItem.builder()

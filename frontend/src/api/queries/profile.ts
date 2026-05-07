@@ -1,5 +1,6 @@
+import type { MaybeRefOrGetter } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
-import { apiFetch } from '@/api/client';
+import { apiFetchUnsafe } from '@/api/client';
 
 export interface ProfileData {
   id: string;
@@ -12,10 +13,12 @@ export interface ProfileData {
 
 const PROFILE_KEY = ['profile'] as const;
 
-export function useProfileQuery() {
+export function useProfileQuery(options?: { enabled?: MaybeRefOrGetter<boolean> }) {
   return useQuery({
     queryKey: PROFILE_KEY,
-    queryFn: () => apiFetch<ProfileData>('/authorization-server/v1/users/self', { method: 'GET' }),
+    queryFn: () =>
+      apiFetchUnsafe<ProfileData>('/authorization-server/v1/users/self', { method: 'GET' }),
+    enabled: options?.enabled,
   });
 }
 
@@ -23,7 +26,7 @@ export function useUpdateProfileMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { name?: string; gender?: string | null; address?: string | null }) =>
-      apiFetch<ProfileData>('/authorization-server/v1/users/self', {
+      apiFetchUnsafe<ProfileData>('/authorization-server/v1/users/self', {
         method: 'PUT',
         body: JSON.stringify(body),
       }),
@@ -38,7 +41,7 @@ export function useChangePasswordMutation() {
       new_password: string;
       confirm_new_password: string;
     }) =>
-      apiFetch<void>('/authorization-server/v1/users/self:update-password', {
+      apiFetchUnsafe<void>('/authorization-server/v1/users/self:update-password', {
         method: 'PATCH',
         body: JSON.stringify(body),
       }),
@@ -54,7 +57,7 @@ export interface PresignResponse {
 export function useAvatarPresignMutation() {
   return useMutation({
     mutationFn: (body: { content_type: string; size_bytes: number }) =>
-      apiFetch<PresignResponse>('/authorization-server/v1/users/self/avatar/presign', {
+      apiFetchUnsafe<PresignResponse>('/authorization-server/v1/users/self/avatar/presign', {
         method: 'POST',
         body: JSON.stringify(body),
       }),
@@ -65,7 +68,7 @@ export function useAttachAvatarMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { object_key: string }) =>
-      apiFetch<{ avatar_url: string }>('/authorization-server/v1/users/self/avatar', {
+      apiFetchUnsafe<{ avatar_url: string }>('/authorization-server/v1/users/self/avatar', {
         method: 'PUT',
         body: JSON.stringify(body),
       }),

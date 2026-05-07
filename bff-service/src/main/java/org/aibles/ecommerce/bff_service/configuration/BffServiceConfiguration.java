@@ -5,7 +5,9 @@ import org.aibles.ecommerce.bff_service.client.OrderFeignClient;
 import org.aibles.ecommerce.bff_service.client.PaymentFeignClient;
 import org.aibles.ecommerce.bff_service.client.ProductFeignClient;
 import org.aibles.ecommerce.bff_service.service.BffService;
+import org.aibles.ecommerce.bff_service.service.CartBffService;
 import org.aibles.ecommerce.bff_service.service.impl.BffServiceImpl;
+import org.aibles.ecommerce.bff_service.service.impl.CartBffServiceImpl;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -18,5 +20,12 @@ public class BffServiceConfiguration {
                                  PaymentFeignClient paymentFeignClient,
                                  InventoryGrpcClientService inventoryGrpcClientService) {
         return new BffServiceImpl(productFeignClient, orderFeignClient, paymentFeignClient, inventoryGrpcClientService);
+    }
+
+    @Bean
+    public CartBffService cartBffService(OrderFeignClient orderFeignClient,
+                                         ProductFeignClient productFeignClient,
+                                         InventoryGrpcClientService inventoryGrpcClientService) {
+        return new CartBffServiceImpl(orderFeignClient, productFeignClient, inventoryGrpcClientService);
     }
 }

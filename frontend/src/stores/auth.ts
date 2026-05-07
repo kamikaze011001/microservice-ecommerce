@@ -8,17 +8,6 @@ interface AuthRecord {
   refreshToken: string;
 }
 
-function decodeJwtSub(token: string): string | null {
-  try {
-    const payload = token.split('.')[1];
-    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
-    const parsed = JSON.parse(json) as { sub?: string };
-    return parsed.sub ?? null;
-  } catch {
-    return null;
-  }
-}
-
 function readStorage(): AuthRecord | null {
   const raw = localStorage.getItem(AUTH_STORAGE_KEY);
   if (!raw) return null;
@@ -33,7 +22,6 @@ export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref<string | null>(null);
   const refreshToken = ref<string | null>(null);
 
-  const username = computed(() => (accessToken.value ? decodeJwtSub(accessToken.value) : null));
   const isLoggedIn = computed(() => accessToken.value !== null);
 
   function login(tokens: AuthRecord) {
@@ -63,5 +51,5 @@ export const useAuthStore = defineStore('auth', () => {
     });
   }
 
-  return { accessToken, refreshToken, username, isLoggedIn, login, clear };
+  return { accessToken, refreshToken, isLoggedIn, login, clear };
 });

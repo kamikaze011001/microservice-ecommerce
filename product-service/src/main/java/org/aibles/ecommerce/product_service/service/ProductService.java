@@ -4,6 +4,9 @@ import org.aibles.ecommerce.common_dto.response.PagingResponse;
 import org.aibles.ecommerce.product_service.dto.request.ProductRequest;
 import org.aibles.ecommerce.product_service.dto.response.ProductResponse;
 
+import java.util.Collection;
+import java.util.List;
+
 public interface ProductService {
 
     ProductResponse create(ProductRequest productRequest);
@@ -13,6 +16,8 @@ public interface ProductService {
     void update(String id, ProductRequest productRequest);
 
     PagingResponse list(Integer page, Integer size, String keyword, String category);
+
+    List<ProductResponse> listByIds(Collection<String> ids);
 
     void delete(String id);
 }

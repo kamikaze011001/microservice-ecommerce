@@ -5,18 +5,18 @@ import { BStamp } from '@/components/primitives';
 const props = defineProps<{ status: string }>();
 
 const LABEL: Record<string, string> = {
-  PENDING: 'PENDING',
   PROCESSING: 'IN PRESS',
-  PAID: 'PAID',
+  COMPLETED: 'PAID',
   CANCELED: 'VOIDED',
   FAILED: 'MISFIRE',
+  REFUNDED: 'REFUNDED',
 };
 const ROTATE: Record<string, number> = {
-  PENDING: -3,
   PROCESSING: 4,
-  PAID: -2,
+  COMPLETED: -2,
   CANCELED: 6,
   FAILED: -5,
+  REFUNDED: 3,
 };
 
 const label = computed(() => LABEL[props.status] ?? props.status);

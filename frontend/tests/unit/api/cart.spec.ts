@@ -13,8 +13,8 @@ beforeEach(() => {
 });
 
 describe('queries/cart', () => {
-  it('useCartQuery GETs /order-service/v1/shopping-carts', async () => {
-    const apiFetch = vi.spyOn(client, 'apiFetch').mockResolvedValueOnce({
+  it('useCartQuery GETs /bff-service/v1/cart', async () => {
+    const apiFetch = vi.spyOn(client, 'apiFetchUnsafe').mockResolvedValueOnce({
       shopping_cart_id: 'c1',
       user_id: 'u1',
       items: [],
@@ -22,15 +22,15 @@ describe('queries/cart', () => {
     const [, app] = withSetup(() => useCartQuery());
     await Promise.resolve();
     await Promise.resolve();
-    expect(apiFetch).toHaveBeenCalledWith('/order-service/v1/shopping-carts', { method: 'GET' });
+    expect(apiFetch).toHaveBeenCalledWith('/bff-service/v1/cart', { method: 'GET' });
     app.unmount();
   });
 
   it('useAddToCartMutation POSTs add-item with body', async () => {
-    const apiFetch = vi.spyOn(client, 'apiFetch').mockResolvedValueOnce(undefined);
+    const apiFetch = vi.spyOn(client, 'apiFetchUnsafe').mockResolvedValueOnce(undefined);
     const [mutation, app] = withSetup(() => useAddToCartMutation());
     await mutation.mutateAsync({ product_id: 'p1', quantity: 2, price: 25 });
-    expect(apiFetch).toHaveBeenCalledWith('/order-service/v1/shopping-carts:add-item', {
+    expect(apiFetch).toHaveBeenCalledWith('/bff-service/v1/cart:add-item', {
       method: 'POST',
       body: JSON.stringify({ product_id: 'p1', quantity: 2, price: 25 }),
     });
@@ -38,10 +38,10 @@ describe('queries/cart', () => {
   });
 
   it('useUpdateCartItemMutation PATCHes update-item', async () => {
-    const apiFetch = vi.spyOn(client, 'apiFetch').mockResolvedValueOnce(undefined);
+    const apiFetch = vi.spyOn(client, 'apiFetchUnsafe').mockResolvedValueOnce(undefined);
     const [mutation, app] = withSetup(() => useUpdateCartItemMutation());
     await mutation.mutateAsync({ shopping_cart_item_id: 'i1', quantity: 3 });
-    expect(apiFetch).toHaveBeenCalledWith('/order-service/v1/shopping-carts:update-item', {
+    expect(apiFetch).toHaveBeenCalledWith('/bff-service/v1/cart:update-item', {
       method: 'PATCH',
       body: JSON.stringify({ shopping_cart_item_id: 'i1', quantity: 3 }),
     });
@@ -49,13 +49,12 @@ describe('queries/cart', () => {
   });
 
   it('useRemoveCartItemMutation DELETEs with itemId query', async () => {
-    const apiFetch = vi.spyOn(client, 'apiFetch').mockResolvedValueOnce(undefined);
+    const apiFetch = vi.spyOn(client, 'apiFetchUnsafe').mockResolvedValueOnce(undefined);
     const [mutation, app] = withSetup(() => useRemoveCartItemMutation());
     await mutation.mutateAsync({ shopping_cart_item_id: 'i1' });
-    expect(apiFetch).toHaveBeenCalledWith(
-      '/order-service/v1/shopping-carts:delete-item?itemId=i1',
-      { method: 'DELETE' },
-    );
+    expect(apiFetch).toHaveBeenCalledWith('/bff-service/v1/cart:delete-item?itemId=i1', {
+      method: 'DELETE',
+    });
     app.unmount();
   });
 });

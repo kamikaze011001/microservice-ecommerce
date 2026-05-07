@@ -46,7 +46,11 @@ public class ProductController {
     @ResponseStatus(HttpStatus.OK)
     public BaseResponse list(final PagingRequest pagingRequest,
                              @RequestParam(required = false) String keyword,
-                             @RequestParam(required = false) String category) {
+                             @RequestParam(required = false) String category,
+                             @RequestParam(required = false) java.util.Set<String> ids) {
+        if (ids != null && !ids.isEmpty()) {
+            return BaseResponse.ok(productService.listByIds(ids));
+        }
         PagingResponse response = productService.list(pagingRequest.getPage(), pagingRequest.getSize(), keyword, category);
         return BaseResponse.ok(response);
     }

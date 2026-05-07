@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/vue-query';
-import { apiFetch } from '@/api/client';
+import { apiFetchUnsafe } from '@/api/client';
 
 interface PaypalLink {
   rel: string;
@@ -22,7 +22,7 @@ export interface CreatePaymentResult {
 export function useCreatePaymentMutation() {
   return useMutation({
     mutationFn: async (input: CreatePaymentInput): Promise<CreatePaymentResult> => {
-      const raw = await apiFetch<PaypalOrderSimple>(
+      const raw = await apiFetchUnsafe<PaypalOrderSimple>(
         `/payment-service/v1/payments?orderId=${encodeURIComponent(input.orderId)}`,
         { method: 'POST' },
       );

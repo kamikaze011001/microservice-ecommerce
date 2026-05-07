@@ -40,10 +40,10 @@ class ProductImageControllerTest {
 
         mvc.perform(post("/v1/products/abc/image/presign")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"contentType\":\"image/jpeg\",\"sizeBytes\":1024}"))
+                .content("{\"content_type\":\"image/jpeg\",\"size_bytes\":1024}"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.uploadUrl").value("http://signed"))
-            .andExpect(jsonPath("$.data.objectKey").value("products/abc/x.jpg"));
+            .andExpect(jsonPath("$.data.upload_url").value("http://signed"))
+            .andExpect(jsonPath("$.data.object_key").value("products/abc/x.jpg"));
     }
 
     @Test
@@ -56,7 +56,7 @@ class ProductImageControllerTest {
 
         mvc.perform(put("/v1/products/abc/image")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"objectKey\":\"products/abc/x.jpg\"}"))
+                .content("{\"object_key\":\"products/abc/x.jpg\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.image_url")
                 .value("http://localhost:9000/ecommerce-media/products/abc/x.jpg"));

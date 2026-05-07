@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/vue-query';
-import { apiFetch } from '@/api/client';
+import { apiFetchUnsafe } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 import type { LoginInput, RegisterInput, ActivateInput, ResendOtpInput } from '@/lib/zod-schemas';
 
@@ -9,14 +9,14 @@ interface LoginResponseData {
 }
 
 async function callLogin(input: LoginInput): Promise<LoginResponseData> {
-  return apiFetch<LoginResponseData>('/authorization-server/v1/auth:login', {
+  return apiFetchUnsafe<LoginResponseData>('/authorization-server/v1/auth:login', {
     method: 'POST',
     body: JSON.stringify({ username: input.username, password: input.password }),
   });
 }
 
 async function callRegister(input: Omit<RegisterInput, 'confirmPassword'>): Promise<void> {
-  await apiFetch<unknown>('/authorization-server/v1/auth:register', {
+  await apiFetchUnsafe<unknown>('/authorization-server/v1/auth:register', {
     method: 'POST',
     body: JSON.stringify({
       username: input.username,
@@ -27,14 +27,14 @@ async function callRegister(input: Omit<RegisterInput, 'confirmPassword'>): Prom
 }
 
 async function callActivate(input: ActivateInput): Promise<void> {
-  await apiFetch<unknown>('/authorization-server/v1/auth:activate', {
+  await apiFetchUnsafe<unknown>('/authorization-server/v1/auth:activate', {
     method: 'POST',
     body: JSON.stringify({ email: input.email, otp: input.otp }),
   });
 }
 
 async function callResendOtp(input: ResendOtpInput): Promise<void> {
-  await apiFetch<unknown>('/authorization-server/v1/auth:resend-otp', {
+  await apiFetchUnsafe<unknown>('/authorization-server/v1/auth:resend-otp', {
     method: 'POST',
     body: JSON.stringify({ type: input.type, email: input.email }),
   });

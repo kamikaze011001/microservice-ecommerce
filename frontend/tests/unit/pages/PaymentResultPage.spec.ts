@@ -7,7 +7,9 @@ import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
 import { router } from '@/router';
 import PaymentResultPage from '@/pages/PaymentResultPage.vue';
 
-const orderData = ref<{ orderId: string; status: string } | undefined>(undefined);
+const orderData = ref<{ order: { id: string; status: string }; payment: null } | undefined>(
+  undefined,
+);
 const useOrderQuery = vi.fn();
 const cancelMutate = vi.fn();
 const createPayment = vi.fn();
@@ -47,17 +49,17 @@ describe('PaymentResultPage — success', () => {
       isError: { value: false },
       error: { value: null },
     });
-    orderData.value = { orderId: 'o1', status: 'PROCESSING' };
+    orderData.value = { order: { id: 'o1', status: 'PROCESSING' }, payment: null };
     await mount('/payment/success?orderId=o1');
     expect(screen.getByText(/VERIFYING…/i)).toBeInTheDocument();
-    orderData.value = { orderId: 'o1', status: 'PAID' };
+    orderData.value = { order: { id: 'o1', status: 'COMPLETED' }, payment: null };
     await waitFor(() => expect(screen.getByText(/^PAID$/)).toBeInTheDocument());
   });
 
   it('shows STILL PROCESSING after polling timeout (10s)', async () => {
     vi.useFakeTimers();
     useOrderQuery.mockReturnValue({
-      data: ref({ orderId: 'o1', status: 'PROCESSING' }),
+      data: ref({ order: { id: 'o1', status: 'PROCESSING' }, payment: null }),
       isLoading: { value: false },
       isError: { value: false },
       error: { value: null },
@@ -72,7 +74,7 @@ describe('PaymentResultPage — success', () => {
 describe('PaymentResultPage — cancel', () => {
   it('renders CANCELED stamp and exposes RETRY/CANCEL buttons', async () => {
     useOrderQuery.mockReturnValue({
-      data: ref({ orderId: 'o1', status: 'PROCESSING' }),
+      data: ref({ order: { id: 'o1', status: 'PROCESSING' }, payment: null }),
       isLoading: { value: false },
       isError: { value: false },
       error: { value: null },
@@ -86,7 +88,7 @@ describe('PaymentResultPage — cancel', () => {
   it('CANCEL ORDER calls cancel mutation and routes home', async () => {
     cancelMutate.mockResolvedValueOnce(undefined);
     useOrderQuery.mockReturnValue({
-      data: ref({ orderId: 'o1', status: 'PROCESSING' }),
+      data: ref({ order: { id: 'o1', status: 'PROCESSING' }, payment: null }),
       isLoading: { value: false },
       isError: { value: false },
       error: { value: null },

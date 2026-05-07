@@ -4,15 +4,26 @@ import { RouterLink, useRouter, useRoute } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '@/stores/auth';
 import { useLogout } from '@/api/queries/auth';
+import { useProfileQuery } from '@/api/queries/profile';
+import { useCartQuery } from '@/api/queries/cart';
 import { BButton } from '@/components/primitives';
 
 const auth = useAuthStore();
-const { isLoggedIn, username } = storeToRefs(auth);
+const { isLoggedIn } = storeToRefs(auth);
 const logout = useLogout();
 const router = useRouter();
 const route = useRoute();
 
-const greeting = computed(() => (username.value ? `@${username.value}` : ''));
+const profile = useProfileQuery({ enabled: isLoggedIn });
+const greeting = computed(() => {
+  const name = profile.data.value?.name?.trim();
+  return name ? `HI, ${name.toUpperCase()}` : '';
+});
+
+const cart = useCartQuery({ enabled: isLoggedIn });
+const cartCount = computed(() =>
+  (cart.data.value?.items ?? []).reduce((sum, item) => sum + (item.quantity ?? 0), 0),
+);
 
 const menuOpen = ref(false);
 function toggleMenu() {
@@ -52,6 +63,9 @@ function onLogout() {
       <div class="app-nav__right">
         <template v-if="isLoggedIn">
           <span class="app-nav__user" data-testid="nav-user">{{ greeting }}</span>
+          <RouterLink to="/cart" class="app-nav__account" data-testid="nav-cart">
+            CART<span v-if="cartCount > 0" class="app-nav__cart-count">({{ cartCount }})</span>
+          </RouterLink>
           <RouterLink to="/account" class="app-nav__account">ACCOUNT</RouterLink>
           <BButton variant="ghost" data-testid="nav-logout" @click="onLogout"> LOG OUT </BButton>
         </template>
@@ -65,6 +79,9 @@ function onLogout() {
     <div id="app-nav-menu" class="app-nav__menu" :hidden="!menuOpen">
       <template v-if="isLoggedIn">
         <span class="app-nav__menu-user">{{ greeting }}</span>
+        <RouterLink to="/cart" class="app-nav__menu-link" data-testid="nav-cart-mobile">
+          CART<span v-if="cartCount > 0" class="app-nav__cart-count">({{ cartCount }})</span>
+        </RouterLink>
         <RouterLink to="/account" class="app-nav__menu-link">ACCOUNT</RouterLink>
         <button
           type="button"
@@ -161,6 +178,10 @@ function onLogout() {
   letter-spacing: 0.08em;
   color: var(--ink);
   text-decoration: none;
+}
+.app-nav__cart-count {
+  margin-left: 0.25rem;
+  color: var(--muted-ink);
 }
 
 /* Tablet+ : show the inline links, hide the hamburger and the dropdown panel */

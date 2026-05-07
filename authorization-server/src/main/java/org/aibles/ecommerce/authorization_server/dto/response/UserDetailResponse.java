@@ -24,4 +24,6 @@ public class UserDetailResponse {
     private Gender gender;
 
     private String address;
+
+    private String avatarUrl;
 }

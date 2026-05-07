@@ -1,6 +1,7 @@
 import { computed, type MaybeRefOrGetter, toValue, type Ref } from 'vue';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/vue-query';
-import { apiFetch } from '@/api/client';
+import { z } from 'zod';
+import { apiFetch, apiFetchUnsafe } from '@/api/client';
 
 export interface OrderItemInput {
   product_id: string;
@@ -13,11 +14,12 @@ export interface CreateOrderInput {
   items: OrderItemInput[];
 }
 
-export interface CreateOrderResponse {
-  orderId: string;
-}
+export const CreateOrderResponseSchema = z.object({
+  order_id: z.string(),
+});
+export type CreateOrderResponse = z.infer<typeof CreateOrderResponseSchema>;
 
-export type OrderStatus = 'PENDING' | 'PROCESSING' | 'PAID' | 'CANCELED' | 'FAILED';
+export type OrderStatus = 'PROCESSING' | 'COMPLETED' | 'CANCELED' | 'FAILED' | 'REFUNDED';
 
 export interface OrderSummary {
   id: string;
@@ -32,17 +34,17 @@ export interface OrderSummary {
 }
 
 export interface OrdersListPage {
-  content: OrderSummary[];
+  data: OrderSummary[];
   page: number;
   size: number;
-  total_elements: number;
+  total: number;
 }
 
 export function useOrdersListQuery(params: { page: Ref<number>; size: number }) {
   return useQuery({
     queryKey: computed(() => ['orders', 'list', params.page.value, params.size] as const),
     queryFn: () =>
-      apiFetch<OrdersListPage>(
+      apiFetchUnsafe<OrdersListPage>(
         `/order-service/v1/orders?page=${params.page.value}&size=${params.size}`,
         { method: 'GET' },
       ),
@@ -50,22 +52,16 @@ export function useOrdersListQuery(params: { page: Ref<number>; size: number }) 
   });
 }
 
-export interface OrderResponse {
-  orderId: string;
-  status: OrderStatus;
-  totalAmount?: number;
-  items?: Array<{ product_id: string; quantity: number; unit_price: number; name?: string }>;
-  address?: string;
-  createdAt?: string;
-}
+export type OrderResponse = OrderDetailBffData;
 
 export function useCreateOrderMutation() {
   return useMutation({
     mutationFn: (input: CreateOrderInput) =>
-      apiFetch<CreateOrderResponse>('/order-service/v1/orders', {
-        method: 'POST',
-        body: JSON.stringify(input),
-      }),
+      apiFetch(
+        '/order-service/v1/orders',
+        { method: 'POST', body: JSON.stringify(input) },
+        CreateOrderResponseSchema,
+      ),
   });
 }
 
@@ -73,7 +69,7 @@ export function useCancelOrderMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (orderId: string) =>
-      apiFetch<void>(`/order-service/v1/orders/${encodeURIComponent(orderId)}:cancel`, {
+      apiFetchUnsafe<void>(`/order-service/v1/orders/${encodeURIComponent(orderId)}:cancel`, {
         method: 'PATCH',
       }),
     onSuccess: (_, orderId) => qc.invalidateQueries({ queryKey: ['order', orderId] }),
@@ -114,7 +110,9 @@ export function useOrderDetailBffQuery(orderId: Ref<string>) {
   return useQuery({
     queryKey: computed(() => ['orders', 'detail', orderId.value] as const),
     queryFn: () =>
-      apiFetch<OrderDetailBffData>(`/bff-service/v1/orders/${orderId.value}`, { method: 'GET' }),
+      apiFetchUnsafe<OrderDetailBffData>(`/bff-service/v1/orders/${orderId.value}`, {
+        method: 'GET',
+      }),
     enabled: computed(() => !!orderId.value),
     retry: (failureCount, err) => {
       const status = (err as { status?: number })?.status;
@@ -132,14 +130,18 @@ export function useOrderQuery(orderId: MaybeRefOrGetter<string>, opts: OrderQuer
   return useQuery({
     queryKey: computed(() => ['order', toValue(orderId)] as const),
     queryFn: () =>
-      apiFetch<OrderResponse>(`/bff-service/v1/orders/${encodeURIComponent(toValue(orderId))}`, {
-        method: 'GET',
-      }),
+      apiFetchUnsafe<OrderResponse>(
+        `/bff-service/v1/orders/${encodeURIComponent(toValue(orderId))}`,
+        {
+          method: 'GET',
+        },
+      ),
     enabled: computed(() => !!toValue(orderId)),
     refetchInterval: (query) => {
       if (!opts.polling) return false;
       const data = query.state.data as OrderResponse | undefined;
-      if (data?.status === 'PAID' || data?.status === 'CANCELED' || data?.status === 'FAILED') {
+      const status = data?.order?.status;
+      if (status === 'COMPLETED' || status === 'CANCELED' || status === 'FAILED') {
         return false;
       }
       return 1000;

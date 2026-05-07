@@ -10,12 +10,11 @@ beforeEach(() => {
 });
 
 describe('useAuthStore.login', () => {
-  it('sets tokens, derives username from JWT, persists to localStorage', () => {
+  it('sets tokens, persists to localStorage, marks logged-in', () => {
     const auth = useAuthStore();
     auth.login({ accessToken: FAKE_TOKEN, refreshToken: 'r' });
     expect(auth.accessToken).toBe(FAKE_TOKEN);
     expect(auth.refreshToken).toBe('r');
-    expect(auth.username).toBe('son');
     expect(auth.isLoggedIn).toBe(true);
     expect(JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY)!)).toMatchObject({
       accessToken: FAKE_TOKEN,
@@ -43,7 +42,6 @@ describe('useAuthStore hydration', () => {
     );
     const auth = useAuthStore();
     expect(auth.isLoggedIn).toBe(true);
-    expect(auth.username).toBe('son');
   });
 });
 

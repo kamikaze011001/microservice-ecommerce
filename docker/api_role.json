@@ -123,6 +123,42 @@
     "method": ["GET", "POST", "PUT", "PATCH", "DELETE"]
   },
   {
+    "_id": {"$oid": "67ff000000000000000c0001"},
+    "path": "/bff-service/v1/cart",
+    "roles": ["AUTHORIZED"],
+    "method": ["GET"]
+  },
+  {
+    "_id": {"$oid": "67ff000000000000000c0002"},
+    "path": "/bff-service/v1/cart:add-item",
+    "roles": ["AUTHORIZED"],
+    "method": ["POST"]
+  },
+  {
+    "_id": {"$oid": "67ff000000000000000c0003"},
+    "path": "/bff-service/v1/cart:update-item",
+    "roles": ["AUTHORIZED"],
+    "method": ["PATCH"]
+  },
+  {
+    "_id": {"$oid": "67ff000000000000000c0004"},
+    "path": "/bff-service/v1/cart:delete-item",
+    "roles": ["AUTHORIZED"],
+    "method": ["DELETE"]
+  },
+  {
+    "_id": {"$oid": "67ff000000000000000c0010"},
+    "path": "/bff-service/v1/orders/**",
+    "roles": ["AUTHORIZED"],
+    "method": ["GET"]
+  },
+  {
+    "_id": {"$oid": "67ff000000000000000c0011"},
+    "path": "/bff-service/v1/orders**",
+    "roles": ["AUTHORIZED"],
+    "method": ["GET"]
+  },
+  {
     "_id": {"$oid": "67bdd5f4159bec37d09bb6a0"},
     "path": "/order-service/v3/api-docs/**",
     "roles": ["PERMIT_ALL"]
@@ -131,13 +167,13 @@
     "_id": {"$oid": "67bdd5f4159bec37d09bb6a1"},
     "path": "/order-service/v1/orders/**",
     "roles": ["AUTHORIZED"],
-    "method": ["GET", "POST"]
+    "method": ["GET", "POST", "PATCH", "DELETE"]
   },
   {
     "_id": {"$oid": "67bdd5f4159bec37d09bb6a2"},
     "path": "/order-service/v1/orders**",
     "roles": ["AUTHORIZED"],
-    "method": ["GET", "POST"]
+    "method": ["GET", "POST", "PATCH", "DELETE"]
   },
   {
     "_id": {"$oid": "67bdd5f4159bec37d09bb6a3"},

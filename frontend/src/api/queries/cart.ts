@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
-import { apiFetch } from '@/api/client';
+import type { MaybeRefOrGetter } from 'vue';
+import { apiFetchUnsafe } from '@/api/client';
 
 export interface CartItem {
   shopping_cart_item_id: string;
@@ -34,11 +35,12 @@ export interface RemoveCartItemInput {
 
 const CART_KEY = ['cart'] as const;
 
-export function useCartQuery() {
+export function useCartQuery(options?: { enabled?: MaybeRefOrGetter<boolean> }) {
   return useQuery({
     queryKey: CART_KEY,
-    queryFn: () => apiFetch<CartResponse>('/order-service/v1/shopping-carts', { method: 'GET' }),
+    queryFn: () => apiFetchUnsafe<CartResponse>('/bff-service/v1/cart', { method: 'GET' }),
     staleTime: 0,
+    enabled: options?.enabled,
   });
 }
 
@@ -46,7 +48,7 @@ export function useAddToCartMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: AddToCartInput) =>
-      apiFetch<void>('/order-service/v1/shopping-carts:add-item', {
+      apiFetchUnsafe<void>('/bff-service/v1/cart:add-item', {
         method: 'POST',
         body: JSON.stringify(input),
       }),
@@ -58,7 +60,7 @@ export function useUpdateCartItemMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: UpdateCartItemInput) =>
-      apiFetch<void>('/order-service/v1/shopping-carts:update-item', {
+      apiFetchUnsafe<void>('/bff-service/v1/cart:update-item', {
         method: 'PATCH',
         body: JSON.stringify(input),
       }),
@@ -88,8 +90,8 @@ export function useRemoveCartItemMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: RemoveCartItemInput) =>
-      apiFetch<void>(
-        `/order-service/v1/shopping-carts:delete-item?itemId=${encodeURIComponent(input.shopping_cart_item_id)}`,
+      apiFetchUnsafe<void>(
+        `/bff-service/v1/cart:delete-item?itemId=${encodeURIComponent(input.shopping_cart_item_id)}`,
         { method: 'DELETE' },
       ),
     onMutate: async (input) => {

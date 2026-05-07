@@ -11,8 +11,8 @@ const PAGE_SIZE = 20;
 const page = ref(1);
 const query = useOrdersListQuery({ page, size: PAGE_SIZE });
 
-const items = computed(() => query.data.value?.content ?? []);
-const totalElements = computed(() => query.data.value?.total_elements ?? 0);
+const items = computed(() => query.data.value?.data ?? []);
+const totalElements = computed(() => query.data.value?.total ?? 0);
 const totalPages = computed(() => Math.max(1, Math.ceil(totalElements.value / PAGE_SIZE)));
 const isEmpty = computed(
   () =>
