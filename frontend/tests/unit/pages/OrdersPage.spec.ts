@@ -28,14 +28,14 @@ function makeOrder(i: number): OrderSummary {
   };
 }
 
-function makePageResult(orders: OrderSummary[], total_elements: number, page = 1) {
+function makePageResult(orders: OrderSummary[], total: number, page = 1) {
   return {
     data: {
       value: {
-        content: orders,
+        data: orders,
         page,
         size: 20,
-        total_elements,
+        total,
       },
     },
     isLoading: { value: false },

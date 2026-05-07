@@ -1,5 +1,6 @@
 package org.aibles.ecommerce.bff_service.service.impl;
 
+import feign.FeignException;
 import lombok.extern.slf4j.Slf4j;
 import org.aibles.ecommerce.bff_service.client.InventoryGrpcClientService;
 import org.aibles.ecommerce.bff_service.client.OrderFeignClient;
@@ -11,6 +12,7 @@ import org.aibles.ecommerce.bff_service.dto.response.OrderDetailView;
 import org.aibles.ecommerce.bff_service.dto.response.OrderItemView;
 import org.aibles.ecommerce.bff_service.dto.response.PaymentView;
 import org.aibles.ecommerce.bff_service.service.BffService;
+import org.aibles.ecommerce.common_dto.exception.NotFoundException;
 import org.aibles.ecommerce.common_dto.response.BaseResponse;
 import org.aibles.ecommerce.inventory.grpc.InventoryProduct;
 
@@ -61,13 +63,29 @@ public class BffServiceImpl implements BffService {
     public OrderDetailBffResponse getOrderDetail(String userId, String orderId) {
         log.info("(getOrderDetail) userId: {}, orderId: {}", userId, orderId);
 
-        BaseResponse orderResponse = orderFeignClient.getOrder(userId, orderId);
+        BaseResponse orderResponse;
+        try {
+            orderResponse = orderFeignClient.getOrder(userId, orderId);
+        } catch (FeignException.NotFound e) {
+            // order-service couldn't find the order — surface as 404 to the client
+            // instead of bubbling Feign's exception up as 500.
+            throw new NotFoundException();
+        }
         Map<String, Object> orderData = (Map<String, Object>) orderResponse.getData();
         OrderDetailView orderView = mapToOrderDetailView(orderData);
 
-        PaymentView paymentView = paymentFeignClient.byOrderId(orderId);
+        PaymentView paymentView = fetchPaymentOrNull(orderId);
 
         return new OrderDetailBffResponse(orderView, paymentView);
+    }
+
+    private PaymentView fetchPaymentOrNull(String orderId) {
+        try {
+            return paymentFeignClient.byOrderId(orderId);
+        } catch (FeignException.NotFound e) {
+            // Order has no payment yet (created but never checked out, or canceled before pay).
+            return null;
+        }
     }
 
     private OrderDetailView mapToOrderDetailView(Map<String, Object> data) {
@@ -76,14 +94,14 @@ public class BffServiceImpl implements BffService {
                 .map(this::mapToOrderItemView)
                 .toList();
 
-        String createdAtStr = (String) data.get("createdAt");
-        String updatedAtStr = (String) data.get("updatedAt");
+        String createdAtStr = (String) data.get("created_at");
+        String updatedAtStr = (String) data.get("updated_at");
 
         return new OrderDetailView(
                 (String) data.get("id"),
                 (String) data.get("status"),
                 (String) data.get("address"),
-                (String) data.get("phoneNumber"),
+                (String) data.get("phone_number"),
                 createdAtStr != null ? LocalDateTime.parse(createdAtStr) : null,
                 updatedAtStr != null ? LocalDateTime.parse(updatedAtStr) : null,
                 items
@@ -93,9 +111,9 @@ public class BffServiceImpl implements BffService {
     private OrderItemView mapToOrderItemView(Map<String, Object> item) {
         return new OrderItemView(
                 (String) item.get("id"),
-                (String) item.get("productId"),
-                (String) item.get("productName"),
-                (String) item.get("imageUrl"),
+                (String) item.get("product_id"),
+                (String) item.get("product_name"),
+                (String) item.get("image_url"),
                 item.get("price") != null ? ((Number) item.get("price")).doubleValue() : null,
                 item.get("quantity") != null ? ((Number) item.get("quantity")).longValue() : null
         );

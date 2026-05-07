@@ -1,4 +1,5 @@
 import createClient, { type Middleware } from 'openapi-fetch';
+import type { ZodType, ZodTypeDef } from 'zod';
 import type { paths } from './schema';
 import { ApiError } from './error';
 import { useAuthStore } from '@/stores/auth';
@@ -50,10 +51,11 @@ export const client = createClient<paths>({ baseUrl: BASE_URL });
 client.use(authMiddleware, errorMiddleware);
 
 /**
- * Thin escape hatch for endpoints not yet typed. Unwraps `BaseResponse.data`,
- * throws ApiError on non-2xx, runs through the same auth + 401-redirect path.
+ * Unvalidated escape hatch. Unwraps `BaseResponse.data` and trusts the caller's
+ * generic type — runtime shape is not checked. Prefer `apiFetch` with a Zod
+ * schema for any new code; this function exists only for callers not yet migrated.
  */
-export async function apiFetch<T = unknown>(path: string, init: RequestInit): Promise<T> {
+export async function apiFetchUnsafe<T = unknown>(path: string, init: RequestInit): Promise<T> {
   const auth = useAuthStore();
   const headers = new Headers(init.headers ?? {});
   headers.set('content-type', headers.get('content-type') ?? 'application/json');
@@ -82,4 +84,30 @@ export async function apiFetch<T = unknown>(path: string, init: RequestInit): Pr
     throw new ApiError(response.status, body?.code ?? '', body?.message ?? response.statusText);
   }
   return (body?.data ?? (null as unknown)) as T;
+}
+
+/**
+ * Validated fetch: parses `BaseResponse.data` through the supplied Zod schema.
+ * The return type is derived from the schema, so the TS type can never drift
+ * from the runtime contract. A schema mismatch throws an `ApiError` with code
+ * `SCHEMA_MISMATCH` so wire-format drift surfaces at the boundary instead of
+ * silently producing `undefined` deeper in the call stack.
+ */
+export async function apiFetch<S extends ZodType<unknown, ZodTypeDef, unknown>>(
+  path: string,
+  init: RequestInit,
+  schema: S,
+): Promise<ReturnType<S['parse']>> {
+  const data = await apiFetchUnsafe<unknown>(path, init);
+  const result = schema.safeParse(data);
+  if (!result.success) {
+    const issue = result.error.issues[0];
+    const where = issue?.path.length ? issue.path.join('.') : '<root>';
+    throw new ApiError(
+      0,
+      'SCHEMA_MISMATCH',
+      `Response from ${path} did not match expected shape at ${where}: ${issue?.message ?? 'unknown'}`,
+    );
+  }
+  return result.data as ReturnType<S['parse']>;
 }

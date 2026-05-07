@@ -1,6 +1,6 @@
 import { computed, type MaybeRefOrGetter, toValue } from 'vue';
 import { useQuery, keepPreviousData } from '@tanstack/vue-query';
-import { apiFetch } from '@/api/client';
+import { apiFetchUnsafe } from '@/api/client';
 
 export interface ProductDto {
   id: string;
@@ -44,7 +44,7 @@ export function useProductListQuery(params: MaybeRefOrGetter<ProductListParams>)
     queryKey,
     queryFn: async () => {
       const p = toValue(params);
-      return apiFetch<ProductPage>(`/product-service/v1/products?${buildListQs(p)}`, {
+      return apiFetchUnsafe<ProductPage>(`/product-service/v1/products?${buildListQs(p)}`, {
         method: 'GET',
       });
     },
@@ -58,9 +58,12 @@ export function useProductDetailQuery(id: MaybeRefOrGetter<string>) {
   return useQuery({
     queryKey,
     queryFn: () =>
-      apiFetch<ProductDto>(`/product-service/v1/products/${encodeURIComponent(toValue(id))}`, {
-        method: 'GET',
-      }),
+      apiFetchUnsafe<ProductDto>(
+        `/product-service/v1/products/${encodeURIComponent(toValue(id))}`,
+        {
+          method: 'GET',
+        },
+      ),
     enabled: computed(() => !!toValue(id)),
     staleTime: 30_000,
   });

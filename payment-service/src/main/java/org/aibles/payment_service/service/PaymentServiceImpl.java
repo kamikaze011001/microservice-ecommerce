@@ -133,8 +133,8 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         Payment payment = paymentOptional.get();
-        payment.setStatus(PaymentStatus.SUCCESS);
-        payment.setCaptureId(paypalCaptureResponse.getPurchaseUnits().get(0).getPayments().getCaptures().get(0).getId());
+        String captureId = paypalCaptureResponse.getPurchaseUnits().get(0).getPayments().getCaptures().get(0).getId();
+        masterPaymentRepo.markSuccess(payment.getOrderId(), PaymentStatus.SUCCESS, captureId);
 
         PaymentSuccess paymentSuccess = PaymentSuccess.newBuilder()
                 .setOrderId(orderId)

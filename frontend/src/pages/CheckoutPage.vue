@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router';
 import { useCartQuery } from '@/api/queries/cart';
 import { useCreateOrderMutation, useCancelOrderMutation } from '@/api/queries/orders';
 import { useCreatePaymentMutation } from '@/api/queries/payments';
+import { apiFetchUnsafe } from '@/api/client';
+import { ApiError } from '@/api/error';
 import AddressForm from '@/components/domain/AddressForm.vue';
 import CartSummary from '@/components/domain/CartSummary.vue';
 import type { AddressInput } from '@/lib/zod-schemas';
@@ -22,9 +24,7 @@ const errorBanner = ref<string | null>(null);
 const stamping = ref(false);
 const initialAddress = ref<AddressInput | undefined>(undefined);
 
-onMounted(() => {
-  const pending = localStorage.getItem(PENDING_KEY);
-  if (pending) banner.value = pending;
+onMounted(async () => {
   const stored = localStorage.getItem(ADDRESS_KEY);
   if (stored) {
     try {
@@ -32,6 +32,26 @@ onMounted(() => {
     } catch {
       /* ignore */
     }
+  }
+
+  const pending = localStorage.getItem(PENDING_KEY);
+  if (!pending) return;
+
+  // Verify the pending order still exists server-side. If the user (or an
+  // admin) deleted it out-of-band, the cached id is a ghost — wipe it so we
+  // don't lure the user into a Resume Payment flow that 404s.
+  try {
+    await apiFetchUnsafe(`/bff-service/v1/orders/${encodeURIComponent(pending)}`, {
+      method: 'GET',
+    });
+    banner.value = pending;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      localStorage.removeItem(PENDING_KEY);
+      return;
+    }
+    // Network/5xx — keep the cached id; user can retry on the next mount.
+    banner.value = pending;
   }
 });
 
@@ -48,7 +68,7 @@ async function onSubmit(payload: { structured: AddressInput; address: string; ph
         quantity: i.quantity,
       })),
     });
-    orderId = result.orderId;
+    orderId = result.order_id;
     localStorage.setItem(PENDING_KEY, orderId);
     localStorage.setItem(ADDRESS_KEY, JSON.stringify(payload.structured));
   } catch {

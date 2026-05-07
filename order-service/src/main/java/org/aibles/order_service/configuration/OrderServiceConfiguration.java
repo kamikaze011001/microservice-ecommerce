@@ -14,6 +14,7 @@ import org.aibles.order_service.repository.master.MasterShoppingCartItemRepo;
 import org.aibles.order_service.repository.master.MasterShoppingCartRepo;
 import org.aibles.order_service.repository.slave.SlaveOrderItemRepo;
 import org.aibles.order_service.repository.slave.SlaveOrderRepo;
+import org.aibles.order_service.repository.slave.SlaveShoppingCartItemRepo;
 import org.aibles.order_service.repository.slave.SlaveShoppingCartRepo;
 import org.aibles.order_service.service.OrderService;
 import org.aibles.order_service.service.ShoppingCartService;
@@ -42,8 +43,9 @@ public class OrderServiceConfiguration {
     @Bean
     public ShoppingCartService shoppingCartService(MasterShoppingCartRepo masterShoppingCartRepo,
                                                    SlaveShoppingCartRepo slaveShoppingCartRepo,
-                                                   MasterShoppingCartItemRepo masterShoppingCartItemRepo) {
-        return new ShoppingCartServiceImpl(masterShoppingCartRepo, slaveShoppingCartRepo, masterShoppingCartItemRepo);
+                                                   MasterShoppingCartItemRepo masterShoppingCartItemRepo,
+                                                   SlaveShoppingCartItemRepo slaveShoppingCartItemRepo) {
+        return new ShoppingCartServiceImpl(masterShoppingCartRepo, slaveShoppingCartRepo, masterShoppingCartItemRepo, slaveShoppingCartItemRepo);
     }
 
     @Bean

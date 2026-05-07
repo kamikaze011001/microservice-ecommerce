@@ -33,8 +33,8 @@ describe('apiFetch', () => {
     fetchMock.mockResolvedValueOnce(
       await jsonRes(200, { status: 200, code: 'OK', message: '', data: { ok: true } }),
     );
-    const { apiFetch } = await import('@/api/client');
-    await apiFetch('/anything', {});
+    const { apiFetchUnsafe } = await import('@/api/client');
+    await apiFetchUnsafe('/anything', {});
     const headers = fetchMock.mock.calls[0][1].headers as Headers;
     expect(headers.get('authorization')).toBe('Bearer h.e.s');
   });
@@ -43,8 +43,8 @@ describe('apiFetch', () => {
     fetchMock.mockResolvedValueOnce(
       await jsonRes(200, { status: 200, code: 'OK', message: '', data: { id: 7 } }),
     );
-    const { apiFetch } = await import('@/api/client');
-    const data = await apiFetch('/x', {});
+    const { apiFetchUnsafe } = await import('@/api/client');
+    const data = await apiFetchUnsafe('/x', {});
     expect(data).toEqual({ id: 7 });
   });
 
@@ -52,8 +52,8 @@ describe('apiFetch', () => {
     fetchMock.mockResolvedValueOnce(
       await jsonRes(400, { status: 400, code: 'BAD', message: 'nope', data: null }),
     );
-    const { apiFetch } = await import('@/api/client');
-    await expect(apiFetch('/x', {})).rejects.toMatchObject({
+    const { apiFetchUnsafe } = await import('@/api/client');
+    await expect(apiFetchUnsafe('/x', {})).rejects.toMatchObject({
       status: 400,
       code: 'BAD',
       message: 'nope',
@@ -66,8 +66,8 @@ describe('apiFetch', () => {
     fetchMock.mockResolvedValueOnce(
       await jsonRes(401, { status: 401, code: 'UNAUTHORIZED', message: 'x', data: null }),
     );
-    const { apiFetch } = await import('@/api/client');
-    await expect(apiFetch('/x', {})).rejects.toBeInstanceOf(ApiError);
+    const { apiFetchUnsafe } = await import('@/api/client');
+    await expect(apiFetchUnsafe('/x', {})).rejects.toBeInstanceOf(ApiError);
     expect(auth.isLoggedIn).toBe(false);
     expect(routerPush).toHaveBeenCalledWith({
       path: '/login',
@@ -77,7 +77,7 @@ describe('apiFetch', () => {
 
   it('on network failure throws ApiError(status=0)', async () => {
     fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
-    const { apiFetch } = await import('@/api/client');
-    await expect(apiFetch('/x', {})).rejects.toMatchObject({ status: 0 });
+    const { apiFetchUnsafe } = await import('@/api/client');
+    await expect(apiFetchUnsafe('/x', {})).rejects.toMatchObject({ status: 0 });
   });
 });

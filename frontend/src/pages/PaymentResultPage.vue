@@ -35,8 +35,8 @@ const errorBanner = ref<string | null>(null);
 // UI state for branch logic / watch
 const stampState = computed<'verifying' | 'paid' | 'still-processing' | 'canceled'>(() => {
   if (variant.value === 'cancel') return 'canceled';
-  const status = order.data?.value?.status;
-  if (status === 'PAID') return 'paid';
+  const status = order.data?.value?.order?.status;
+  if (status === 'COMPLETED') return 'paid';
   if (timedOut.value) return 'still-processing';
   return 'verifying';
 });
@@ -44,10 +44,10 @@ const stampState = computed<'verifying' | 'paid' | 'still-processing' | 'cancele
 // Map UI state → backend-style status string for OrderStatusStamp
 const stampStatus = computed(() => {
   const s = stampState.value;
-  if (s === 'paid') return 'PAID';
+  if (s === 'paid') return 'COMPLETED';
   if (s === 'canceled') return 'CANCELED';
   if (s === 'still-processing') return 'PROCESSING';
-  return 'PENDING'; // verifying
+  return 'PROCESSING'; // verifying
 });
 
 watch(stampState, (s) => {
@@ -110,7 +110,7 @@ async function cancelPending() {
 
     <div class="result__actions">
       <template v-if="variant === 'success'">
-        <RouterLink :to="`/orders?selected=${orderId}`" class="result__cta">VIEW ORDER</RouterLink>
+        <RouterLink :to="`/account/orders/${orderId}`" class="result__cta">VIEW ORDER</RouterLink>
       </template>
       <template v-else>
         <button type="button" class="result__cta" @click="retryPayment">RETRY PAYMENT</button>

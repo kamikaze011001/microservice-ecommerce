@@ -17,6 +17,7 @@ import org.aibles.ecommerce.product_service.repository.ProductRepository;
 import org.aibles.ecommerce.product_service.service.impl.ProductImageServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -47,7 +48,7 @@ class ProductImageServiceImplTest {
         props.setAllowedTypes(List.of("image/jpeg", "image/png", "image/webp"));
         props.setPresignTtl(Duration.ofMinutes(5));
         props.setPublicBaseUrl("http://localhost:9000/ecommerce-media");
-        service = new ProductImageServiceImpl(productRepo, storage, props);
+        service = new ProductImageServiceImpl(productRepo, storage, props, mock(ApplicationEventPublisher.class));
     }
 
     @Test

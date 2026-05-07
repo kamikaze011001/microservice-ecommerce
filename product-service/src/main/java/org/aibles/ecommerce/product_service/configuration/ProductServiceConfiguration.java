@@ -31,7 +31,8 @@ public class ProductServiceConfiguration {
     @Bean
     public ProductImageService productImageService(ProductRepository productRepository,
                                                    S3StorageService storage,
-                                                   S3Properties props) {
-        return new ProductImageServiceImpl(productRepository, storage, props);
+                                                   S3Properties props,
+                                                   ApplicationEventPublisher applicationEventPublisher) {
+        return new ProductImageServiceImpl(productRepository, storage, props, applicationEventPublisher);
     }
 }

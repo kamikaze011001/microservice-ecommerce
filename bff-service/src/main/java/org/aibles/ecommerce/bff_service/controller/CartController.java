@@ -19,7 +19,6 @@ import java.util.Map;
 
 @Slf4j
 @RestController
-@RequestMapping("/v1/cart")
 public class CartController {
 
     private final CartBffService cartBffService;
@@ -28,14 +27,14 @@ public class CartController {
         this.cartBffService = cartBffService;
     }
 
-    @GetMapping
+    @GetMapping("/v1/cart")
     @ResponseStatus(HttpStatus.OK)
     public BaseResponse getCart(@RequestHeader("X-User-Id") String userId) {
         log.info("(getCart) userId: {}", userId);
         return BaseResponse.ok(cartBffService.getCart(userId));
     }
 
-    @PostMapping(":add-item")
+    @PostMapping("/v1/cart:add-item")
     @ResponseStatus(HttpStatus.OK)
     public BaseResponse addItem(@RequestHeader("X-User-Id") String userId,
                                 @RequestBody Map<String, Object> body) {
@@ -43,14 +42,14 @@ public class CartController {
         return cartBffService.addItem(userId, body);
     }
 
-    @PatchMapping(":update-item")
+    @PatchMapping("/v1/cart:update-item")
     @ResponseStatus(HttpStatus.OK)
     public BaseResponse updateItem(@RequestBody Map<String, Object> body) {
         log.info("(updateItem)");
         return cartBffService.updateItem(body);
     }
 
-    @DeleteMapping(":delete-item")
+    @DeleteMapping("/v1/cart:delete-item")
     @ResponseStatus(HttpStatus.OK)
     public BaseResponse deleteItem(@RequestParam("itemId") String itemId) {
         log.info("(deleteItem) itemId: {}", itemId);

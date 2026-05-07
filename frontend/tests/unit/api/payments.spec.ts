@@ -7,12 +7,10 @@ beforeEach(() => vi.restoreAllMocks());
 
 describe('queries/payments', () => {
   it('POSTs /payments?orderId=...', async () => {
-    const apiFetch = vi
-      .spyOn(client, 'apiFetch')
-      .mockResolvedValueOnce({
-        id: 'pp1',
-        links: [{ rel: 'approve', href: 'https://paypal/approve/x' }],
-      });
+    const apiFetch = vi.spyOn(client, 'apiFetchUnsafe').mockResolvedValueOnce({
+      id: 'pp1',
+      links: [{ rel: 'approve', href: 'https://paypal/approve/x' }],
+    });
     const [m, app] = withSetup(() => useCreatePaymentMutation());
     const result = await m.mutateAsync({ orderId: 'o1' });
     expect(apiFetch).toHaveBeenCalledWith('/payment-service/v1/payments?orderId=o1', {

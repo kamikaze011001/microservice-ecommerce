@@ -88,7 +88,7 @@ describe('CheckoutPage', () => {
   });
 
   it('runs sequential mutations and redirects to approvalUrl', async () => {
-    createOrder.mockResolvedValueOnce({ orderId: 'o1' });
+    createOrder.mockResolvedValueOnce({ order_id: 'o1' });
     createPayment.mockResolvedValueOnce({ approvalUrl: 'https://paypal/x' });
     mount();
     await fillValidForm();

@@ -13,4 +13,8 @@ public interface MasterPaymentRepo extends JpaRepository<Payment, String> {
     @Modifying
     @Query(value = "update Payment p set p.status = :status where p.orderId = :orderId")
     void updateStatus(String orderId, PaymentStatus status);
+
+    @Modifying
+    @Query(value = "update Payment p set p.status = :status, p.captureId = :captureId where p.orderId = :orderId")
+    void markSuccess(String orderId, PaymentStatus status, String captureId);
 }

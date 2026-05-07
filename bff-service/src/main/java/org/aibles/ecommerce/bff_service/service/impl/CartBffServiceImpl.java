@@ -40,7 +40,7 @@ public class CartBffServiceImpl implements CartBffService {
 
         BaseResponse cartResp = orderFeignClient.getCart(userId);
         Map<String, Object> cartData = (Map<String, Object>) cartResp.getData();
-        List<Map<String, Object>> rawRows = (List<Map<String, Object>>) cartData.getOrDefault("shoppingCarts", Collections.emptyList());
+        List<Map<String, Object>> rawRows = (List<Map<String, Object>>) cartData.getOrDefault("shopping_carts", Collections.emptyList());
 
         if (rawRows.isEmpty()) {
             return CartView.builder()
@@ -51,7 +51,7 @@ public class CartBffServiceImpl implements CartBffService {
         }
 
         Set<String> productIds = rawRows.stream()
-                .map(r -> (String) r.get("productId"))
+                .map(r -> (String) r.get("product_id"))
                 .filter(java.util.Objects::nonNull)
                 .collect(Collectors.toSet());
 
@@ -71,7 +71,7 @@ public class CartBffServiceImpl implements CartBffService {
 
         List<CartItemView> items = new ArrayList<>();
         for (Map<String, Object> row : rawRows) {
-            String productId = (String) row.get("productId");
+            String productId = (String) row.get("product_id");
             Map<String, Object> product = productById.get(productId);
             if (product == null) {
                 log.warn("(getCart) product {} missing — dropping cart row {}", productId, row.get("id"));
@@ -83,7 +83,7 @@ public class CartBffServiceImpl implements CartBffService {
                     .shoppingCartItemId((String) row.get("id"))
                     .productId(productId)
                     .name((String) product.get("name"))
-                    .imageUrl((String) product.get("imageUrl"))
+                    .imageUrl((String) product.get("image_url"))
                     .unitPrice(priceObj != null ? ((Number) priceObj).doubleValue() : null)
                     .quantity(qtyObj != null ? ((Number) qtyObj).longValue() : 0L)
                     .availableStock(stockById.getOrDefault(productId, 0L))

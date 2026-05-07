@@ -152,6 +152,35 @@ Services use `@EnableRoutingDatasource` annotation with separate configurations:
 
 ## Code Conventions (non-obvious)
 
+### Colon-action paths (Google API style) — use absolute method paths
+Spring MVC's `PathPattern.combine()` **always inserts a `/` separator** when the
+method-level path does not start with `/`. This means:
+
+```java
+// BROKEN — Spring registers /v1/cart/:add-item, not /v1/cart:add-item
+@RestController
+@RequestMapping("/v1/cart")
+public class CartController {
+    @PostMapping(":add-item")  // ← no leading slash → Spring inserts /
+    public BaseResponse addItem(...) { ... }
+}
+
+// CORRECT — omit class-level @RequestMapping, use absolute paths per method
+@RestController
+public class CartController {
+    @GetMapping("/v1/cart")
+    public BaseResponse getCart(...) { ... }
+
+    @PostMapping("/v1/cart:add-item")   // ← absolute path, no auto-slash
+    public BaseResponse addItem(...) { ... }
+}
+```
+
+Rule: for colon-action endpoints, either (a) put the full path on the method
+annotation, or (b) keep a class-level `@RequestMapping` and make every method
+path start with `/` (e.g. `@PostMapping("/sub:action")`). Never write a
+method-level annotation whose value begins with `:`.
+
 ### Gateway routing — no StripPrefix
 Each service sets `server.servlet.context-path: /<service-name>` in its `application.yml`.
 Gateway routes use `Path=/<service-name>/**` → `lb://<SERVICE-NAME>` (uppercase, no
@@ -162,6 +191,31 @@ handles the prefix. Don't add `StripPrefix` and don't repeat the service name in
 `PERMIT_ALL` (storefront browse + detail work without login). All other routes
 require authentication; admin routes require the `ADMIN` role. Auth rules live in
 `docker/api_role.json` and are loaded into MongoDB by `make seed-data`.
+
+### Cross-service JSON: map keys are snake_case, not camelCase
+Every downstream DTO in this codebase is annotated `@JsonNaming(SnakeCaseStrategy)`,
+so the wire format is snake_case. When a service (e.g. `bff-service`) calls another
+service via Feign and deserializes the response into `Map<String, Object>` instead
+of a typed DTO, **the map keys are the JSON wire-format keys (snake_case), not the
+Java field names (camelCase)**. Reading `row.get("productId")` on a response that
+serialized `private String productId` will silently return `null` — the actual key
+is `product_id`.
+
+```java
+// BROKEN — silently returns null, cart rows get dropped
+List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("shoppingCarts");
+String productId = (String) row.get("productId");
+String imageUrl  = (String) product.get("imageUrl");
+
+// CORRECT — match the JSON wire format produced by SnakeCaseStrategy
+List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("shopping_carts");
+String productId = (String) row.get("product_id");
+String imageUrl  = (String) product.get("image_url");
+```
+
+Rule: when consuming a `BaseResponse` whose payload you read as `Map<String, Object>`,
+key access must use snake_case. Even better — bind to a typed DTO with `@JsonNaming`
+so Jackson converts back to camelCase fields and the compiler catches typos.
 
 ### Gateway CORS
 The gateway publishes a single `CorsConfigurationSource` covering all routes.

@@ -24,4 +24,10 @@ log_info "Seeding MongoDB product..."
 log_info "Seeding MongoDB productQuantityHistory..."
 "$SCRIPT_DIR/mongo-product-quantity.sh"
 
+log_info "Seeding MySQL inventory_product..."
+"$SCRIPT_DIR/mysql-inventory-products.sh"
+
+log_info "Seeding MySQL product_quantity_history..."
+"$SCRIPT_DIR/mysql-product-quantity-history.sh"
+
 log_ok "All seed data imported"
