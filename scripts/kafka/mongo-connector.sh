@@ -128,7 +128,7 @@ install_connector_plugin() {
 fix_mongodb_replica_set() {
     log_info "Checking MongoDB replica set configuration..."
 
-    local rs_host=$(docker exec docker-ecommerce-mongodb-1 mongosh --quiet \
+    local rs_host=$(docker exec ecommerce-mongodb mongosh --quiet \
         -u "${MONGO_USERNAME}" -p "${MONGO_PASSWORD}" \
         --authenticationDatabase admin \
         --eval "rs.conf().members[0].host" 2>/dev/null || echo "")
@@ -136,7 +136,7 @@ fix_mongodb_replica_set() {
     if [ "$rs_host" == "localhost:27017" ]; then
         log_warning "MongoDB replica set is configured with localhost, fixing..."
 
-        docker exec docker-ecommerce-mongodb-1 mongosh --quiet \
+        docker exec ecommerce-mongodb mongosh --quiet \
             -u "${MONGO_USERNAME}" -p "${MONGO_PASSWORD}" \
             --authenticationDatabase admin \
             --eval '
@@ -324,7 +324,7 @@ Examples:
 
 Troubleshooting:
   1. If connector fails to connect, check MongoDB replica set config:
-     docker exec docker-ecommerce-mongodb-1 mongosh -u ecommerce -p <password> --authenticationDatabase admin --eval "rs.conf()"
+     docker exec ecommerce-mongodb mongosh -u ecommerce -p <password> --authenticationDatabase admin --eval "rs.conf()"
 
   2. Check Kafka Connect logs:
      docker compose -f docker/kafka.yml logs -f kafka-connect
