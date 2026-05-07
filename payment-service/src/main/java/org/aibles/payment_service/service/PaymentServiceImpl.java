@@ -177,6 +177,8 @@ public class PaymentServiceImpl implements PaymentService {
             return paymentOptional.get().getOrderId();
         }
 
+        masterPaymentRepo.updateStatus(orderId, PaymentStatus.CANCELED);
+
         PaymentCanceled paymentCanceled = PaymentCanceled.newBuilder()
                 .setOrderId(orderId)
                 .build();
