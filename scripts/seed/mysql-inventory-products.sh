@@ -48,17 +48,16 @@ if [ "${count:-0}" -gt 0 ] 2>/dev/null; then
 fi
 
 log_info "Generating INSERT statements from $JSON_FILE…"
-# Seeds id/name/price only — those are the columns the cart-stock lookup needs
-# (BFF reads inv.getId() + inv.getQuantity() from gRPC; quantity comes from the
-# productQuantityHistory Mongo collection). The entity also has an imageUrl
-# field, but image_url isn't a required column on this Hibernate-managed table
-# and inventory's image isn't read on the cart path.
+# image_url must be seeded: order-service snapshots it via gRPC from
+# inventory_product into order_item at order create, and BFF surfaces it on
+# the order detail page. Skipping it leaves image_url null all the way down.
 sql=$(jq -r '
   .[] |
-  "INSERT INTO inventory_product (id, name, price) VALUES ("
+  "INSERT INTO inventory_product (id, name, price, image_url) VALUES ("
   + "\"" + ._id."$oid" + "\", "
   + "\"" + (.name | gsub("\""; "\\\"")) + "\", "
-  + (.price | tostring)
+  + (.price | tostring) + ", "
+  + (if .imageUrl then "\"" + (.imageUrl | gsub("\""; "\\\"")) + "\"" else "NULL" end)
   + ");"
 ' "$JSON_FILE")
 

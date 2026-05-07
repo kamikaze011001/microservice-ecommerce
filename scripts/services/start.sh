@@ -91,5 +91,7 @@ else
     http=$(svc_field "$line" 2)
     grpc=$(svc_field "$line" 3)
     wait_for_port "$target HTTP" "$http"
-    [ "$grpc" != "-" ] && wait_for_port "$target gRPC" "$grpc"
+    if [ "$grpc" != "-" ]; then
+        wait_for_port "$target gRPC" "$grpc"
+    fi
 fi

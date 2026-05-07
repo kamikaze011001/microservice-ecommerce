@@ -37,7 +37,7 @@ export const activateSchema = z.object({
 export type ActivateInput = z.infer<typeof activateSchema>;
 
 export const resendOtpSchema = z.object({
-  type: z.literal('REGISTER'),
+  type: z.enum(['active_account', 'forgot_password']),
   email: emailSchema,
 });
 export type ResendOtpInput = z.infer<typeof resendOtpSchema>;

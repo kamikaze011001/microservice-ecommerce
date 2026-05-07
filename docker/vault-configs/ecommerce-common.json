@@ -27,8 +27,7 @@
 
   "spring.mail.host": "smtp.gmail.com",
   "spring.mail.port": "587",
-  "spring.mail.username": "your-email@gmail.com",
-  "spring.mail.password": "your-app-password",
+  "_comment_mail_creds": "spring.mail.username and spring.mail.password come from docker/.env (APPLICATION_MAIL_USERNAME / APPLICATION_MAIL_PASSWORD), resolved by application.yml. Don't put real Gmail creds here — this file is checked into git.",
   "spring.mail.protocol": "smtp",
   "spring.mail.properties.mail.smtp.auth": "true",
   "spring.mail.properties.mail.smtp.starttls.enable": "true"

@@ -38,8 +38,11 @@ help:
 # ============================================================================
 
 .PHONY: bootstrap
-bootstrap: infra-up vault-init vault-unseal vault-import kafka-topics mongo-connector build seed-data
-	@echo "✓ Bootstrap complete — run 'make up' to start services"
+# NOTE: svc-start runs BEFORE seed-data because docker/ecommerce.sql is a
+# data-only dump. Tables are created by Hibernate ddl-auto on first service
+# boot, then the seed inserts rows. Reordering these breaks fresh bootstrap.
+bootstrap: infra-up vault-init vault-unseal vault-import kafka-topics mongo-connector build svc-start seed-data
+	@echo "✓ Bootstrap complete — stack is up"
 
 .PHONY: up
 up: infra-up vault-unseal mongo-connector-ensure svc-start

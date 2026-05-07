@@ -6,8 +6,7 @@ Microservice e-commerce platform — Spring Boot 3.3.6 / Java 17, master-slave M
 
 ```bash
 cp docker/.env.example docker/.env  # fill values
-make bootstrap                       # first-run only
-make up                              # start everything
+make bootstrap                       # first-run only — also starts services
 make status                          # health table
 ```
 

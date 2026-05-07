@@ -33,3 +33,19 @@ init_result=$(curl -s -X PUT -d '{"secret_shares":5,"secret_threshold":3}' "$VAU
 echo "$init_result" > "$KEYS_FILE"
 chmod 600 "$KEYS_FILE"
 log_ok "Vault initialized — keys saved to vault-keys.json"
+
+# Sync the fresh root token back into docker/.env so the vault CLI / e2e docs
+# don't keep pointing at a dead token after `make nuke`. Without this, every
+# fresh bootstrap leaves VAULT_TOKEN stale and hand-run vault commands fail
+# with "permission denied / invalid token".
+ENV_FILE="$REPO_ROOT/docker/.env"
+ROOT_TOKEN=$(grep -o '"root_token":"[^"]*"' "$KEYS_FILE" | cut -d'"' -f4)
+if [ -n "$ROOT_TOKEN" ] && [ -f "$ENV_FILE" ]; then
+    if grep -q '^VAULT_TOKEN=' "$ENV_FILE"; then
+        # In-place rewrite. Use a tmp file for portability across BSD/GNU sed.
+        awk -v tok="$ROOT_TOKEN" '/^VAULT_TOKEN=/{print "VAULT_TOKEN=" tok; next} {print}' "$ENV_FILE" > "$ENV_FILE.tmp" && mv "$ENV_FILE.tmp" "$ENV_FILE"
+    else
+        printf '\nVAULT_TOKEN=%s\n' "$ROOT_TOKEN" >> "$ENV_FILE"
+    fi
+    log_ok "VAULT_TOKEN synced into docker/.env"
+fi

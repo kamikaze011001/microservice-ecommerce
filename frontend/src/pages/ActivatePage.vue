@@ -78,7 +78,7 @@ async function onResend() {
     return;
   }
   try {
-    await resend.mutateAsync({ type: 'REGISTER', email: email.value });
+    await resend.mutateAsync({ type: 'active_account', email: email.value });
     startCooldown();
   } catch (err) {
     const e = err as { message?: string };

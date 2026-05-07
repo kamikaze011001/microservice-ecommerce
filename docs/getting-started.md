@@ -36,13 +36,10 @@ cp docker/.env.example docker/.env
 $EDITOR docker/.env        # fill MySQL / Redis / Mongo / PayPal values
                            # leave VAULT_TOKEN empty — it's set during init
 
-# 2. Bootstrap everything: infra → vault → kafka → maven → seed
+# 2. Bootstrap everything: infra → vault → kafka → maven → services → seed
 make bootstrap
 
-# 3. Start the JVM services
-make up
-
-# 4. Sanity check
+# 3. Sanity check
 make status                # all 9 services should show "● running"
 ```
 
@@ -54,7 +51,10 @@ make status                # all 9 services should show "● running"
 5. **`kafka-topics`** — create topics
 6. **`mongo-connector`** — register the Debezium MongoDB → Kafka CDC connector (drives the saga)
 7. **`build`** — `mvn install` core modules then services in correct order
-8. **`seed-data`** — seed MySQL (`ecommerce_dev`) + Mongo collections (`api_role`, `product`)
+8. **`svc-start`** — boot the 9 JVM services in tier order (Hibernate `ddl-auto: update` creates MySQL schemas on first boot)
+9. **`seed-data`** — seed MySQL (`ecommerce_dev`) + Mongo collections (`api_role`, `product`)
+
+> Why services boot *before* seeding: `docker/ecommerce.sql` is a data-only mysqldump (no `CREATE TABLE`). The schema is owned by JPA / Hibernate, not the SQL file. Seeding before services have ever run fails with `Table 'ecommerce_dev.account' doesn't exist`.
 
 If bootstrap fails partway through, fix the underlying cause and re-run — each step is idempotent.
 

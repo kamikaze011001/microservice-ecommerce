@@ -21,7 +21,7 @@ public class ResendOTPRequest {
     @ValidEmail
     private String email;
 
-    @AssertTrue(message = "OTP must be valid")
+    @AssertTrue(message = "type must be one of: active_account, forgot_password")
     @JsonIgnore
     private boolean isTypeValid() {
         return OTPType.resolve(type) != null;

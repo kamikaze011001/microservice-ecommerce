@@ -1,10 +1,8 @@
 {
   "server.port": "8484",
   "application.frontend.base-url": "http://localhost:5173",
-  "application.paypal.client-id": "your-paypal-client-id",
-  "application.paypal.client-secret": "your-paypal-client-secret",
+  "_comment_paypal_creds": "client-id, client-secret, and tunnel-url come from docker/.env (PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET / PAYPAL_TUNNEL_URL), resolved by application.yml. Don't put real PayPal creds or your ngrok tunnel here — this file is checked into git.",
   "application.paypal.base-url": "https://api-m.sandbox.paypal.com",
-  "application.paypal.tunnel-url": "https://your-ngrok-or-tunnel-url.com",
   "application.paypal.success-path": "/payment-service/v1/paypal:success",
   "application.paypal.cancel-path": "/payment-service/v1/paypal:cancel"
 }

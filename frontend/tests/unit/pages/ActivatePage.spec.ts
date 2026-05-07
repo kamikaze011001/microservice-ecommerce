@@ -63,7 +63,10 @@ describe('ActivatePage', () => {
     await user.click(btn);
     vi.advanceTimersByTime(10);
     await flushPromises();
-    expect(resendMutateAsync).toHaveBeenCalledWith({ type: 'REGISTER', email: 'son@example.com' });
+    expect(resendMutateAsync).toHaveBeenCalledWith({
+      type: 'active_account',
+      email: 'son@example.com',
+    });
     expect(btn).toBeDisabled();
     expect(btn.textContent ?? '').toMatch(/30/);
     vi.advanceTimersByTime(30_000);
