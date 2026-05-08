@@ -1,6 +1,7 @@
 package org.aibles.ecommerce.authorization_server.service.impl;
 
 import lombok.extern.slf4j.Slf4j;
+import org.aibles.ecommerce.authorization_server.exception.TokenInvalidException;
 import org.aibles.ecommerce.authorization_server.service.RefreshTokenService;
 import org.springframework.data.redis.core.RedisTemplate;
 
@@ -57,7 +58,31 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     }
 
     @Override
-    public String rotate(String incomingToken) { throw new UnsupportedOperationException("Task 4"); }
+    public String rotate(String incomingToken) {
+        String familyId = (String) redis.opsForValue().get(RT_PREFIX + incomingToken);
+        if (familyId == null) {
+            throw new TokenInvalidException();
+        }
+        String familyKey = FAMILY_PREFIX + familyId;
+        Map<Object, Object> familyHash = redis.opsForHash().entries(familyKey);
+        if (familyHash.isEmpty()) {
+            throw new TokenInvalidException();
+        }
+
+        String currentToken = (String) familyHash.get("currentToken");
+        if (!incomingToken.equals(currentToken)) {
+            // TASK 4 — reuse detection branch goes here (handoff point).
+            throw new TokenInvalidException();
+        }
+
+        long expiresAt = ((Number) familyHash.get("expiresAt")).longValue();
+        long remainingMs = Math.max(1, expiresAt - System.currentTimeMillis());
+
+        String newToken = randomOpaqueToken();
+        redis.opsForValue().set(RT_PREFIX + newToken, familyId, remainingMs, TimeUnit.MILLISECONDS);
+        redis.opsForHash().put(familyKey, "currentToken", newToken);
+        return newToken;
+    }
 
     @Override
     public void revokeByToken(String incomingToken) { throw new UnsupportedOperationException("Task 5"); }

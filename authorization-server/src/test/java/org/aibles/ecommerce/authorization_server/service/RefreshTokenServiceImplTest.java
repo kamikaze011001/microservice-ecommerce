@@ -8,9 +8,12 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -50,5 +53,24 @@ class RefreshTokenServiceImplTest {
         verify(redis).expire(startsWith("family:"), eq(604_800_000L), eq(TimeUnit.MILLISECONDS));
         verify(setOps).add(eq("user:user-1:families"), anyString());
         verify(redis).expire(eq("user:user-1:families"), eq(604_800_000L), eq(TimeUnit.MILLISECONDS));
+    }
+
+    @Test
+    void rotate_happyPath_returns_new_token_and_updates_family() {
+        String oldToken = "old-token";
+        String familyId = "fam-1";
+        when(valueOps.get("rt:" + oldToken)).thenReturn(familyId);
+        Map<Object, Object> familyHash = new HashMap<>();
+        familyHash.put("userId", "user-1");
+        familyHash.put("currentToken", oldToken);
+        familyHash.put("createdAt", 1L);
+        familyHash.put("expiresAt", System.currentTimeMillis() + 60_000L);
+        when(hashOps.entries("family:" + familyId)).thenReturn(familyHash);
+
+        String newToken = service.rotate(oldToken);
+
+        assertThat(newToken).isNotBlank().isNotEqualTo(oldToken);
+        verify(valueOps).set(eq("rt:" + newToken), eq(familyId), anyLong(), eq(TimeUnit.MILLISECONDS));
+        verify(hashOps).put("family:" + familyId, "currentToken", newToken);
     }
 }
