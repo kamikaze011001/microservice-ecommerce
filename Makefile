@@ -145,3 +145,27 @@ svc-restart:
 logs:
 	@if [ -z "$(svc)" ]; then echo "Usage: make logs svc=NAME"; exit 1; fi
 	@bash scripts/services/logs.sh $(svc)
+
+# ============================================================================
+# Kubernetes (local kind cluster)
+# See docs/superpowers/specs/2026-05-09-k8s-local-design.md
+# ============================================================================
+
+K8S_CLUSTER := microecom
+
+.PHONY: k8s-cluster-up k8s-cluster-down k8s-cluster-status
+
+k8s-cluster-up:
+	@if ! kind get clusters | grep -q "^$(K8S_CLUSTER)$$"; then \
+	  kind create cluster --config k8s/kind/cluster.yaml; \
+	fi
+	@k8s/kind/registry.sh
+	@kubectl cluster-info --context kind-$(K8S_CLUSTER)
+
+k8s-cluster-down:
+	-kind delete cluster --name $(K8S_CLUSTER)
+	-docker rm -f kind-registry
+
+k8s-cluster-status:
+	@kind get clusters
+	@kubectl get nodes -o wide 2>/dev/null || echo "(cluster not running)"
