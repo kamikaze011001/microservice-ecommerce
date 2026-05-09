@@ -1,0 +1,16 @@
+# Base image with all core/* modules installed into the maven local repo.
+# Built once; per-service Dockerfile.jvm uses this as FROM so each service
+# build can resolve common-dto, grpc-common, etc. without rebuilding them.
+#
+# Module install order matches scripts/maven/install-modules.sh (which is
+# canonical for dependency order).
+FROM maven:3.9-eclipse-temurin-17
+WORKDIR /workspace
+COPY core/ ./core/
+RUN set -eux; \
+    cd core; \
+    for m in common-dto grpc-common core-jwt-util core-redis core-s3 \
+             core-order-cache core-routing-db core-paypal core-email \
+             core-exception-api; do \
+      (cd "$m" && mvn -B -DskipTests install); \
+    done
