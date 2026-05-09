@@ -1,0 +1,122 @@
+---
+# Kafka Connect worker — long-running Deployment that hosts source/sink
+# connectors. Single replica is enough for local stress testing; for AWS,
+# bump replicas and switch the internal topics' replication factor to 3.
+#
+# JSON converter is used for keys and values to avoid the Schema Registry
+# dependency. If/when Avro is needed, deploy confluentinc-schema-registry
+# and flip the converter classes here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-connect-plugins
+  namespace: infra
+data:
+  install-plugins.sh: |
+    #!/bin/sh
+    set -eu
+    confluent-hub install --no-prompt mongodb/kafka-connect-mongodb:1.13.1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-connect
+  namespace: infra
+  labels:
+    app: kafka-connect
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-connect
+  template:
+    metadata:
+      labels:
+        app: kafka-connect
+    spec:
+      initContainers:
+        - name: install-plugins
+          image: confluentinc/cp-kafka-connect:7.6.1
+          command: ["/bin/sh", "/scripts/install-plugins.sh"]
+          env:
+            - name: CONFLUENT_HUB_COMPONENT_DIR
+              value: /usr/share/confluent-hub-components
+          volumeMounts:
+            - name: plugins
+              mountPath: /usr/share/confluent-hub-components
+            - name: scripts
+              mountPath: /scripts
+      containers:
+        - name: connect
+          image: confluentinc/cp-kafka-connect:7.6.1
+          ports:
+            - name: rest
+              containerPort: 8083
+          env:
+            - name: CONNECT_BOOTSTRAP_SERVERS
+              value: "kafka.infra.svc.cluster.local:9092"
+            - name: CONNECT_REST_PORT
+              value: "8083"
+            - name: CONNECT_REST_ADVERTISED_HOST_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: CONNECT_GROUP_ID
+              value: "ecommerce-connect"
+            - name: CONNECT_CONFIG_STORAGE_TOPIC
+              value: "connect-configs"
+            - name: CONNECT_OFFSET_STORAGE_TOPIC
+              value: "connect-offsets"
+            - name: CONNECT_STATUS_STORAGE_TOPIC
+              value: "connect-status"
+            - name: CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: CONNECT_STATUS_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: CONNECT_KEY_CONVERTER
+              value: "org.apache.kafka.connect.json.JsonConverter"
+            - name: CONNECT_VALUE_CONVERTER
+              value: "org.apache.kafka.connect.json.JsonConverter"
+            - name: CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE
+              value: "false"
+            - name: CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE
+              value: "false"
+            - name: CONNECT_PLUGIN_PATH
+              value: "/usr/share/java,/usr/share/confluent-hub-components"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: rest
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          volumeMounts:
+            - name: plugins
+              mountPath: /usr/share/confluent-hub-components
+      volumes:
+        - name: plugins
+          emptyDir: {}
+        - name: scripts
+          configMap:
+            name: kafka-connect-plugins
+            defaultMode: 0755
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-connect
+  namespace: infra
+spec:
+  selector:
+    app: kafka-connect
+  ports:
+    - name: rest
+      port: 8083
+      targetPort: rest
