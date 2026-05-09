@@ -179,3 +179,8 @@ k8s-rebuild:
 	@if [ -z "$(svc)" ]; then echo "Usage: make k8s-rebuild svc=NAME"; exit 1; fi
 	@SVC=$(svc) SKIP_CORES=1 k8s/images/build.sh
 	@kubectl -n apps rollout restart deployment/$(svc)
+
+.PHONY: k8s-infra
+
+k8s-infra:
+	@k8s/infra/install.sh
