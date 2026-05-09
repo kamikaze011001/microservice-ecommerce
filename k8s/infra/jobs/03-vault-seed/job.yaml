@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-seed
+  namespace: bootstrap
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: seed
+          image: hashicorp/vault:1.17
+          env:
+            - name: VAULT_ADDR
+              value: http://vault.infra.svc.cluster.local:8200
+            - name: VAULT_TOKEN
+              value: root
+          command: ["/bin/sh", "/scripts/seed.sh"]
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+      volumes:
+        - name: scripts
+          configMap:
+            name: vault-seed-scripts
+            defaultMode: 0755
