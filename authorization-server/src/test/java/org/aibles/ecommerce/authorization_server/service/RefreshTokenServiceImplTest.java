@@ -11,6 +11,7 @@ import org.springframework.data.redis.core.ValueOperations;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -21,6 +22,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -92,5 +94,52 @@ class RefreshTokenServiceImplTest {
                 .isInstanceOf(TokenInvalidException.class);
         verify(redis).delete("family:" + familyId);
         verify(setOps).remove("user:user-1:families", familyId);
+    }
+
+    @Test
+    void revokeByToken_deletes_family_and_index_entry() {
+        when(valueOps.get("rt:t1")).thenReturn("fam-1");
+        Map<Object, Object> familyHash = new HashMap<>();
+        familyHash.put("userId", "user-1");
+        familyHash.put("currentToken", "t1");
+        familyHash.put("expiresAt", System.currentTimeMillis() + 60_000L);
+        when(hashOps.entries("family:fam-1")).thenReturn(familyHash);
+
+        service.revokeByToken("t1");
+
+        verify(redis).delete("family:fam-1");
+        verify(setOps).remove("user:user-1:families", "fam-1");
+    }
+
+    @Test
+    void revokeByToken_silent_on_unknown_token() {
+        when(valueOps.get("rt:unknown")).thenReturn(null);
+        service.revokeByToken("unknown");
+        verify(redis, never()).delete(anyString());
+    }
+
+    @Test
+    void revokeAllForUser_wipes_all_families_and_index() {
+        when(setOps.members("user:user-1:families")).thenReturn(Set.of("fam-a", "fam-b"));
+
+        service.revokeAllForUser("user-1");
+
+        verify(redis).delete("family:fam-a");
+        verify(redis).delete("family:fam-b");
+        verify(redis).delete("user:user-1:families");
+    }
+
+    @Test
+    void userIdForToken_returns_userId_from_family() {
+        when(valueOps.get("rt:t1")).thenReturn("fam-1");
+        when(hashOps.get("family:fam-1", "userId")).thenReturn("user-1");
+
+        assertThat(service.userIdForToken("t1")).isEqualTo("user-1");
+    }
+
+    @Test
+    void userIdForToken_returns_null_for_unknown_token() {
+        when(valueOps.get("rt:unknown")).thenReturn(null);
+        assertThat(service.userIdForToken("unknown")).isNull();
     }
 }

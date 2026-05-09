@@ -9,6 +9,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -27,11 +28,11 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     public RefreshTokenServiceImpl(RedisTemplate<String, Object> redis, long refreshTokenLifetimeMs) {
         this.redis = redis;
         this.refreshTokenLifetimeMs = refreshTokenLifetimeMs;
-    }
+}
 
     @Override
     public String issueForUser(String userId) {
-        log.info("(issueForUser)userId: {}", userId);
+        log.debug("(issueForUser)userId: {}", userId);
         String rawToken = randomOpaqueToken();
         String familyId = UUID.randomUUID().toString();
         long now = System.currentTimeMillis();
@@ -50,7 +51,7 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         redis.opsForHash().putAll(familyKey, familyHash);
         redis.expire(familyKey, refreshTokenLifetimeMs, TimeUnit.MILLISECONDS);
 
-        String userFamiliesKey = USER_FAMILIES_PREFIX + userId + USER_FAMILIES_SUFFIX;
+        String userFamiliesKey = userFamiliesKey(userId);
         redis.opsForSet().add(userFamiliesKey, familyId);
         redis.expire(userFamiliesKey, refreshTokenLifetimeMs, TimeUnit.MILLISECONDS);
 
@@ -76,8 +77,7 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
             redis.delete(familyKey);
             redis.opsForValue().getAndDelete(RT_PREFIX + incomingToken);
             if (userId != null) {
-                String userFamiliesKey = USER_FAMILIES_PREFIX + userId + USER_FAMILIES_SUFFIX;
-                redis.opsForSet().remove(userFamiliesKey, familyId);
+                redis.opsForSet().remove(userFamiliesKey(userId), familyId);
             }
             throw new TokenInvalidException();
         }
@@ -92,17 +92,46 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     }
 
     @Override
-    public void revokeByToken(String incomingToken) { throw new UnsupportedOperationException("Task 5"); }
+    public void revokeByToken(String incomingToken) {
+        String familyId = (String) redis.opsForValue().get(RT_PREFIX + incomingToken);
+        if (familyId == null) return;
+        String familyKey = FAMILY_PREFIX + familyId;
+        Map<Object, Object> familyHash = redis.opsForHash().entries(familyKey);
+        String userId = (String) familyHash.get("userId");
+        redis.delete(familyKey);
+        if (userId != null) {
+            redis.opsForSet().remove(userFamiliesKey(userId), familyId);
+        }
+    }
 
     @Override
-    public void revokeAllForUser(String userId) { throw new UnsupportedOperationException("Task 5"); }
+    public void revokeAllForUser(String userId) {
+        String userFamiliesKey = userFamiliesKey(userId);
+        Set<Object> familyIds = redis.opsForSet().members(userFamiliesKey);
+        if (familyIds != null) {
+            for (Object familyId : familyIds) {
+                redis.delete(FAMILY_PREFIX + familyId);
+            }
+        }
+        log.info("revoked all refresh-token families. userId={} count={}", userId, familyIds == null ? 0 : familyIds.size());
+        redis.delete(userFamiliesKey);
+    }
 
     @Override
-    public String userIdForToken(String incomingToken) { throw new UnsupportedOperationException("Task 5"); }
+    public String userIdForToken(String incomingToken) {
+        String familyId = (String) redis.opsForValue().get(RT_PREFIX + incomingToken);
+        if (familyId == null) return null;
+        Object userId = redis.opsForHash().get(FAMILY_PREFIX + familyId, "userId");
+        return userId == null ? null : userId.toString();
+    }
 
     private String randomOpaqueToken() {
         byte[] buf = new byte[32];
         random.nextBytes(buf);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
+    }
+
+    private String userFamiliesKey(String userId) {
+        return USER_FAMILIES_PREFIX + userId + USER_FAMILIES_SUFFIX;
     }
 }
