@@ -36,4 +36,12 @@ helm upgrade --install kps prometheus-community/kube-prometheus-stack \
   -f k8s/infra/values/kube-prometheus-stack.yaml \
   --wait --timeout 10m
 
-echo "ingress-nginx + metrics-server + kps installed"
+helm upgrade --install mysql bitnami/mysql \
+  --namespace infra \
+  --version 11.1.0 \
+  -f k8s/infra/values/mysql.yaml \
+  --wait --timeout 5m
+
+kubectl apply -f k8s/infra/manifests/mysql-replica-service.yaml
+
+echo "ingress-nginx + metrics-server + kps + mysql installed"
