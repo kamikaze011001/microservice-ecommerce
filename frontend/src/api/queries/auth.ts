@@ -2,7 +2,13 @@ import { useMutation, useQueryClient } from '@tanstack/vue-query';
 import { useRouter } from 'vue-router';
 import { apiFetchUnsafe } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
-import type { LoginInput, RegisterInput, ActivateInput, ResendOtpInput } from '@/lib/zod-schemas';
+import type {
+  LoginInput,
+  RegisterInput,
+  ActivateInput,
+  ResendOtpInput,
+  VerifyForgotOtpInput,
+} from '@/lib/zod-schemas';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:6868';
 
@@ -43,6 +49,39 @@ async function callResendOtp(input: ResendOtpInput): Promise<void> {
   });
 }
 
+async function callForgotPassword(input: { email: string }): Promise<void> {
+  await apiFetchUnsafe<unknown>('/authorization-server/v1/auth:forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email: input.email }),
+  });
+}
+
+async function callVerifyForgotOtp(
+  input: VerifyForgotOtpInput,
+): Promise<{ reset_password_key: string }> {
+  return apiFetchUnsafe<{ reset_password_key: string }>(
+    '/authorization-server/v1/auth:verify-forgot-pass-otp',
+    { method: 'POST', body: JSON.stringify({ email: input.email, otp: input.otp }) },
+  );
+}
+
+async function callResetPassword(input: {
+  resetPasswordKey: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}): Promise<void> {
+  await apiFetchUnsafe<unknown>('/authorization-server/v1/auth:reset-password', {
+    method: 'POST',
+    body: JSON.stringify({
+      reset_password_key: input.resetPasswordKey,
+      email: input.email,
+      password: input.password,
+      confirm_password: input.confirmPassword,
+    }),
+  });
+}
+
 export function useLoginMutation() {
   const auth = useAuthStore();
   const qc = useQueryClient();
@@ -69,6 +108,18 @@ export function useActivateMutation() {
 
 export function useResendOtpMutation() {
   return useMutation({ mutationFn: callResendOtp });
+}
+
+export function useForgotPasswordMutation() {
+  return useMutation({ mutationFn: callForgotPassword });
+}
+
+export function useVerifyForgotOtpMutation() {
+  return useMutation({ mutationFn: callVerifyForgotOtp });
+}
+
+export function useResetPasswordMutation() {
+  return useMutation({ mutationFn: callResetPassword });
 }
 
 export function useLogout() {
