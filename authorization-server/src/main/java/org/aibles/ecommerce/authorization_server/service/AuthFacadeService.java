@@ -28,4 +28,8 @@ public interface AuthFacadeService {
     void resetPassword(ResetPasswordRequest request);
 
     void resendOtp(OTPType type, String email);
+
+    void logout(String refreshTokenHeader);
+
+    void logoutAll(String userId);
 }

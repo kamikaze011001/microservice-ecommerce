@@ -178,6 +178,22 @@ public class AuthFacadeServiceImpl implements AuthFacadeService {
     }
 
     @Override
+    public void logout(String refreshTokenHeader) {
+        if (Objects.isNull(refreshTokenHeader) || !refreshTokenHeader.startsWith("Bearer ")) {
+            throw new TokenInvalidException();
+        }
+        refreshTokenService.revokeByToken(refreshTokenHeader.substring(7));
+    }
+
+    @Override
+    public void logoutAll(String userId) {
+        if (Objects.isNull(userId) || userId.isBlank()) {
+            throw new TokenInvalidException();
+        }
+        refreshTokenService.revokeAllForUser(userId);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public void forgotPassword(String email) {
         log.info("(forgotPassword)email: {}", email);
