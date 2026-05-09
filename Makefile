@@ -169,3 +169,13 @@ k8s-cluster-down:
 k8s-cluster-status:
 	@kind get clusters
 	@kubectl get nodes -o wide 2>/dev/null || echo "(cluster not running)"
+
+.PHONY: k8s-build k8s-rebuild
+
+k8s-build:
+	@k8s/images/build.sh
+
+k8s-rebuild:
+	@if [ -z "$(svc)" ]; then echo "Usage: make k8s-rebuild svc=NAME"; exit 1; fi
+	@SVC=$(svc) SKIP_CORES=1 k8s/images/build.sh
+	@kubectl -n apps rollout restart deployment/$(svc)
