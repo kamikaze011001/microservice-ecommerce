@@ -64,4 +64,9 @@ helm upgrade --install vault hashicorp/vault \
   --namespace infra --version 0.27.0 \
   -f k8s/infra/values/vault.yaml --wait --timeout 5m
 
+# Kafka Connect — long-running Deployment hosting source/sink connectors.
+# Connector registration is a separate Job (k8s/infra/jobs/04-kafka-connect-register).
+kubectl apply -f k8s/infra/manifests/kafka-connect.yaml
+kubectl -n infra rollout status deployment/kafka-connect --timeout=5m
+
 echo "infra install complete"
