@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mysql-seed
+  namespace: bootstrap
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: seed
+          image: bitnami/mysql:8.0
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: root
+          command: ["/bin/sh", "/scripts/seed.sh"]
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: sql
+              mountPath: /seed
+      volumes:
+        - name: scripts
+          configMap:
+            name: mysql-seed-scripts
+            defaultMode: 0755
+        - name: sql
+          configMap:
+            name: mysql-seed-sql
