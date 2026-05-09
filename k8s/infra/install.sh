@@ -60,4 +60,8 @@ helm upgrade --install kafka bitnami/kafka \
   --namespace infra --version 29.2.0 \
   -f k8s/infra/values/kafka.yaml --wait --timeout 8m
 
-echo "ingress-nginx + metrics-server + kps + mysql + mongodb + redis + minio + kafka installed"
+helm upgrade --install vault hashicorp/vault \
+  --namespace infra --version 0.27.0 \
+  -f k8s/infra/values/vault.yaml --wait --timeout 5m
+
+echo "infra install complete"
