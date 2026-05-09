@@ -22,4 +22,18 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   -f k8s/infra/values/ingress-nginx.yaml \
   --wait --timeout 5m
 
-echo "ingress-nginx installed"
+# Metrics-server (separate chart) — required for HPA
+helm upgrade --install metrics-server bitnami/metrics-server \
+  --namespace infra \
+  --set apiService.create=true \
+  --set extraArgs[0]=--kubelet-insecure-tls \
+  --wait --timeout 3m
+
+# kube-prometheus-stack
+helm upgrade --install kps prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --version 58.2.0 \
+  -f k8s/infra/values/kube-prometheus-stack.yaml \
+  --wait --timeout 10m
+
+echo "ingress-nginx + metrics-server + kps installed"

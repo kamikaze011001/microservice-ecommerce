@@ -1,0 +1,21 @@
+prometheus:
+  prometheusSpec:
+    retention: 6h
+    resources:
+      requests: { cpu: 100m, memory: 400Mi }
+      limits:   { cpu: 500m, memory: 1Gi }
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+grafana:
+  adminPassword: admin
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 200m, memory: 256Mi }
+  service:
+    type: ClusterIP
+alertmanager:
+  enabled: false
+kubeEtcd:        { enabled: false }
+kubeControllerManager: { enabled: false }
+kubeScheduler:   { enabled: false }
+kubeProxy:       { enabled: false }
