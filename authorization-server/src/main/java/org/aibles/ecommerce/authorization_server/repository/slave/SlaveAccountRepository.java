@@ -4,6 +4,7 @@ import org.aibles.ecommerce.authorization_server.entity.Account;
 import org.aibles.ecommerce.authorization_server.repository.projection.AccountUserProjection;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -42,4 +43,7 @@ public interface SlaveAccountRepository extends JpaRepository<Account, String> {
     List<String> findRolesByUserId(String userId);
 
     Optional<Account> findByUserId(String userId);
+
+    @Query("SELECT a.userId FROM Account a LEFT JOIN User u ON a.userId = u.id WHERE u.email = :email")
+    Optional<String> findUserIdByEmail(@Param("email") String email);
 }

@@ -27,4 +27,6 @@ public interface AccountService {
     void resetPasswordByEmail(String email, String newPassword);
 
     void updatePassword(String userId, String oldPassword, String newPassword);
+
+    String getUserIdByEmail(String email);
 }

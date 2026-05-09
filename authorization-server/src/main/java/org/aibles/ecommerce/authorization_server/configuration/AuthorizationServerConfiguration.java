@@ -73,8 +73,9 @@ public class AuthorizationServerConfiguration {
     public AccountService accountService(MasterAccountRepository masterAccountRepository,
                                          SlaveAccountRepository slaveAccountRepository,
                                          MasterAccountRoleRepository masterAccountRoleRepository,
-                                         PasswordEncoder passwordEncoder) {
-        return new AccountServiceImpl(masterAccountRepository, slaveAccountRepository, masterAccountRoleRepository, passwordEncoder);
+                                         PasswordEncoder passwordEncoder,
+                                         RefreshTokenService refreshTokenService) {
+        return new AccountServiceImpl(masterAccountRepository, slaveAccountRepository, masterAccountRoleRepository, passwordEncoder, refreshTokenService);
     }
 
     @Bean

@@ -261,6 +261,10 @@ public class AuthFacadeServiceImpl implements AuthFacadeService {
 
         accountService.resetPasswordByEmail(request.getEmail(), request.getPassword());
 
+        String userId = accountService.getUserIdByEmail(request.getEmail());
+        log.info("revoked all refresh-token families on password reset. userId={}", userId);
+        refreshTokenService.revokeAllForUser(userId);
+
         redisRepository.delete(CacheConstant.RESET_PASSWORD_KEY, request.getEmail());
     }
 
