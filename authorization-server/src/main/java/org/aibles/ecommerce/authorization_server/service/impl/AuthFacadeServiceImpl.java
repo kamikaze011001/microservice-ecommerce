@@ -48,7 +48,9 @@ public class AuthFacadeServiceImpl implements AuthFacadeService {
 
     private final JWKSet jwkSet;
 
-    public AuthFacadeServiceImpl(AccountService accountService, UserService userService, RedisRepository redisRepository, EmailHelper emailHelper, PasswordEncoder passwordEncoder, JWTService jwtService, RoleService roleService, JWKSet jwkSet) {
+    private final RefreshTokenService refreshTokenService;
+
+    public AuthFacadeServiceImpl(AccountService accountService, UserService userService, RedisRepository redisRepository, EmailHelper emailHelper, PasswordEncoder passwordEncoder, JWTService jwtService, RoleService roleService, JWKSet jwkSet, RefreshTokenService refreshTokenService) {
         this.accountService = accountService;
         this.userService = userService;
         this.redisRepository = redisRepository;
@@ -57,6 +59,7 @@ public class AuthFacadeServiceImpl implements AuthFacadeService {
         this.jwtService = jwtService;
         this.roleService = roleService;
         this.jwkSet = jwkSet;
+        this.refreshTokenService = refreshTokenService;
     }
 
     @Override
@@ -122,14 +125,13 @@ public class AuthFacadeServiceImpl implements AuthFacadeService {
 
         List<String> roles = accountService.getRolesById(accountUserPrj.getAccountId());
         String accessToken;
-        String refreshToken;
         try {
             accessToken = jwtService.generateAccessToken(accountUserPrj.getUserId(), accountUserPrj.getEmail(), roles);
-            refreshToken = jwtService.generateRefreshToken(accountUserPrj.getUserId(), accountUserPrj.getEmail());
         } catch (JOSEException ex) {
-            log.error("(login)Error when generate tokens", ex);
+            log.error("(login)Error when generate access token", ex);
             throw new InternalErrorException();
         }
+        String refreshToken = refreshTokenService.issueForUser(accountUserPrj.getUserId());
         return LoginResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)

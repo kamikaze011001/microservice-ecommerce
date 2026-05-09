@@ -108,7 +108,8 @@ public class AuthorizationServerConfiguration {
                                                PasswordEncoder passwordEncoder,
                                                JWTService jwtService,
                                                RoleService roleService,
-                                               JWKSet jwkSet) {
-        return new AuthFacadeServiceImpl(accountService, userService, redisRepository, emailHelper, passwordEncoder, jwtService, roleService, jwkSet);
+                                               JWKSet jwkSet,
+                                               RefreshTokenService refreshTokenService) {
+        return new AuthFacadeServiceImpl(accountService, userService, redisRepository, emailHelper, passwordEncoder, jwtService, roleService, jwkSet, refreshTokenService);
     }
 }
