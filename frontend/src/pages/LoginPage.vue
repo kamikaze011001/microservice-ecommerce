@@ -72,9 +72,10 @@ const onSubmit = handleSubmit(async (values) => {
 <template>
   <main class="login">
     <h1>LOG IN</h1>
-    <p v-if="showResetSuccess" class="login__alt login__alt--ok" role="status">
-      Password updated. Sign in with your new password.
-    </p>
+    <aside v-if="showResetSuccess" class="login__notice" role="status">
+      <span class="login__notice-tag">✓ UPDATED</span>
+      <span class="login__notice-body">Password updated. Sign in with your new password.</span>
+    </aside>
     <form novalidate class="login__form" @submit.prevent="onSubmit">
       <BInput
         v-model="username"
@@ -129,12 +130,35 @@ const onSubmit = handleSubmit(async (values) => {
   color: var(--spot-ink);
   text-decoration: underline;
 }
-.login__alt--ok {
+.login__notice {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  background: var(--paper-shade);
+  border: var(--border-thin);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-6);
+}
+.login__notice-tag {
+  font-family: var(--font-mono);
+  font-size: var(--type-mono);
+  color: var(--spot-ink);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.login__notice-body {
+  font-family: var(--font-body);
+  font-size: var(--type-small);
   color: var(--ink);
-  background: var(--paper-tint, #efe);
-  border: 1px solid var(--ink);
-  padding: var(--space-2) var(--space-3);
-  margin-bottom: var(--space-4);
+  line-height: var(--leading-body);
+}
+
+@media (max-width: 30rem) {
+  .login__notice {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
 }
 
 @media (max-width: 37.49rem) {
