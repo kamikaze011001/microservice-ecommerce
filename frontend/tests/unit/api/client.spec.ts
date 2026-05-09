@@ -60,12 +60,49 @@ describe('apiFetch', () => {
     });
   });
 
-  it('on 401 clears store and pushes /login?next=…', async () => {
+  it('on 401 refreshes and replays original request transparently', async () => {
     const auth = useAuthStore();
-    auth.login({ accessToken: 'h.e.s', refreshToken: 'r' });
-    fetchMock.mockResolvedValueOnce(
-      await jsonRes(401, { status: 401, code: 'UNAUTHORIZED', message: 'x', data: null }),
-    );
+    auth.login({ accessToken: 'old-at', refreshToken: 'old-rt' });
+
+    fetchMock
+      .mockResolvedValueOnce(
+        await jsonRes(401, { status: 401, code: 'UNAUTHORIZED', message: 'expired', data: null }),
+      )
+      .mockResolvedValueOnce(
+        await jsonRes(200, {
+          status: 200,
+          code: 'OK',
+          message: '',
+          data: { access_token: 'new-at', refresh_token: 'new-rt' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        await jsonRes(200, { status: 200, code: 'OK', message: '', data: { id: 7 } }),
+      );
+
+    const { apiFetchUnsafe } = await import('@/api/client');
+    const data = await apiFetchUnsafe('/x', {});
+
+    expect(data).toEqual({ id: 7 });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const refreshCall = fetchMock.mock.calls[1];
+    expect(refreshCall[0]).toContain('/authorization-server/v1/auth:refresh-token');
+    const replayHeaders = fetchMock.mock.calls[2][1].headers as Headers;
+    expect(replayHeaders.get('authorization')).toBe('Bearer new-at');
+    expect(auth.accessToken).toBe('new-at');
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+
+  it('on 401 with failed refresh clears store and pushes /login?next=…', async () => {
+    const auth = useAuthStore();
+    auth.login({ accessToken: 'old-at', refreshToken: 'old-rt' });
+
+    fetchMock
+      .mockResolvedValueOnce(
+        await jsonRes(401, { status: 401, code: 'UNAUTHORIZED', message: 'x', data: null }),
+      )
+      .mockResolvedValueOnce(await jsonRes(401, {}));
+
     const { apiFetchUnsafe } = await import('@/api/client');
     await expect(apiFetchUnsafe('/x', {})).rejects.toBeInstanceOf(ApiError);
     expect(auth.isLoggedIn).toBe(false);

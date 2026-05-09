@@ -4,8 +4,20 @@ import type { paths } from './schema';
 import { ApiError } from './error';
 import { useAuthStore } from '@/stores/auth';
 import { router } from '@/router';
+import { refreshAccessToken } from './refresh';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:6868';
+const REFRESH_PATH = '/authorization-server/v1/auth:refresh-token';
+
+function isRefreshUrl(url: string): boolean {
+  return url.endsWith(REFRESH_PATH);
+}
+
+function redirectToLogin() {
+  useAuthStore().clear();
+  const next = router.currentRoute.value.fullPath;
+  router.replace({ path: '/login', query: { next } });
+}
 
 interface BaseResponse<T> {
   status: number;
@@ -24,8 +36,32 @@ const authMiddleware: Middleware = {
   },
 };
 
+const requestClones = new WeakMap<Request, Request>();
+
+const cloneMiddleware: Middleware = {
+  async onRequest({ request }) {
+    if (!isRefreshUrl(request.url)) {
+      requestClones.set(request, request.clone());
+    }
+    return request;
+  },
+};
+
 const errorMiddleware: Middleware = {
-  async onResponse({ response }) {
+  async onResponse({ request, response }) {
+    if (response.status === 401 && !isRefreshUrl(request.url)) {
+      const newAT = await refreshAccessToken();
+      if (newAT) {
+        const original = requestClones.get(request);
+        if (original) {
+          const retryReq = new Request(original);
+          retryReq.headers.set('Authorization', `Bearer ${newAT}`);
+          const retryRes = await fetch(retryReq);
+          if (retryRes.ok) return retryRes;
+          response = retryRes;
+        }
+      }
+    }
     if (!response.ok) {
       let code = '';
       let message = response.statusText;
@@ -37,9 +73,7 @@ const errorMiddleware: Middleware = {
         /* non-JSON body */
       }
       if (response.status === 401) {
-        useAuthStore().clear();
-        const next = router.currentRoute.value.fullPath;
-        router.replace({ path: '/login', query: { next } });
+        redirectToLogin();
       }
       throw new ApiError(response.status, code, message);
     }
@@ -48,7 +82,7 @@ const errorMiddleware: Middleware = {
 };
 
 export const client = createClient<paths>({ baseUrl: BASE_URL });
-client.use(authMiddleware, errorMiddleware);
+client.use(authMiddleware, cloneMiddleware, errorMiddleware);
 
 /**
  * Unvalidated escape hatch. Unwraps `BaseResponse.data` and trusts the caller's
@@ -68,6 +102,19 @@ export async function apiFetchUnsafe<T = unknown>(path: string, init: RequestIni
     throw new ApiError(0, 'NETWORK', (e as Error).message);
   }
 
+  if (response.status === 401 && !isRefreshUrl(path)) {
+    const newAT = await refreshAccessToken();
+    if (newAT) {
+      const retryHeaders = new Headers(headers);
+      retryHeaders.set('authorization', `Bearer ${newAT}`);
+      try {
+        response = await fetch(`${BASE_URL}${path}`, { ...init, headers: retryHeaders });
+      } catch (e) {
+        throw new ApiError(0, 'NETWORK', (e as Error).message);
+      }
+    }
+  }
+
   let body: BaseResponse<T> | null = null;
   try {
     body = (await response.json()) as BaseResponse<T>;
@@ -77,9 +124,7 @@ export async function apiFetchUnsafe<T = unknown>(path: string, init: RequestIni
 
   if (!response.ok) {
     if (response.status === 401) {
-      useAuthStore().clear();
-      const next = router.currentRoute.value.fullPath;
-      router.replace({ path: '/login', query: { next } });
+      redirectToLogin();
     }
     throw new ApiError(response.status, body?.code ?? '', body?.message ?? response.statusText);
   }
