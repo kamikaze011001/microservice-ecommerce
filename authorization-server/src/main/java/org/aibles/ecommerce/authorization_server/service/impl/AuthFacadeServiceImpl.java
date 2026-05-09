@@ -1,9 +1,7 @@
 package org.aibles.ecommerce.authorization_server.service.impl;
 
 import com.nimbusds.jose.JOSEException;
-import com.nimbusds.jose.jwk.JWKSet;
 import lombok.extern.slf4j.Slf4j;
-import org.aibles.core_jwt_util.util.JwtUtil;
 import org.aibles.ecommerce.authorization_server.constant.CacheConstant;
 import org.aibles.ecommerce.authorization_server.constant.OTPType;
 import org.aibles.ecommerce.authorization_server.dto.request.RegisterUserRequest;
@@ -23,7 +21,6 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.text.ParseException;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -46,11 +43,9 @@ public class AuthFacadeServiceImpl implements AuthFacadeService {
 
     private final RoleService roleService;
 
-    private final JWKSet jwkSet;
-
     private final RefreshTokenService refreshTokenService;
 
-    public AuthFacadeServiceImpl(AccountService accountService, UserService userService, RedisRepository redisRepository, EmailHelper emailHelper, PasswordEncoder passwordEncoder, JWTService jwtService, RoleService roleService, JWKSet jwkSet, RefreshTokenService refreshTokenService) {
+    public AuthFacadeServiceImpl(AccountService accountService, UserService userService, RedisRepository redisRepository, EmailHelper emailHelper, PasswordEncoder passwordEncoder, JWTService jwtService, RoleService roleService, RefreshTokenService refreshTokenService) {
         this.accountService = accountService;
         this.userService = userService;
         this.redisRepository = redisRepository;
@@ -58,7 +53,6 @@ public class AuthFacadeServiceImpl implements AuthFacadeService {
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.roleService = roleService;
-        this.jwkSet = jwkSet;
         this.refreshTokenService = refreshTokenService;
     }
 
@@ -157,31 +151,25 @@ public class AuthFacadeServiceImpl implements AuthFacadeService {
         if (Objects.isNull(refreshToken) || !refreshToken.startsWith("Bearer ")) {
             throw new TokenInvalidException();
         }
+        String rawToken = refreshToken.substring(7);
 
-        refreshToken = refreshToken.substring(7);
-        String userId;
-        String email;
-        try {
-            if (!JwtUtil.verifyToken(jwkSet, refreshToken)) {
-                throw new TokenInvalidException();
-            }
-            userId = JwtUtil.getSubjectFromToken(refreshToken);
-            email = JwtUtil.getEmailFromToken(refreshToken);
-        } catch (ParseException | JOSEException e) {
+        String userId = refreshTokenService.userIdForToken(rawToken);
+        if (userId == null) {
             throw new TokenInvalidException();
         }
 
+        String email = userService.get(userId).getEmail();
         List<String> roles = accountService.getRolesByUserId(userId);
 
         String newAccessToken;
-        String newRefreshToken;
         try {
             newAccessToken = jwtService.generateAccessToken(userId, email, roles);
-            newRefreshToken = jwtService.generateRefreshToken(userId, email);
         } catch (JOSEException ex) {
-            log.error("(login)Error when generate tokens", ex);
+            log.error("(refreshToken) generate access token failed. userId={}", userId, ex);
             throw new InternalErrorException();
         }
+
+        String newRefreshToken = refreshTokenService.rotate(rawToken);
 
         return RefreshTokenResponse.builder()
                 .accessToken(newAccessToken)
