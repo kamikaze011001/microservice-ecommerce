@@ -44,4 +44,16 @@ helm upgrade --install mysql bitnami/mysql \
 
 kubectl apply -f k8s/infra/manifests/mysql-replica-service.yaml
 
-echo "ingress-nginx + metrics-server + kps + mysql installed"
+helm upgrade --install mongodb bitnami/mongodb \
+  --namespace infra --version 15.6.0 \
+  -f k8s/infra/values/mongodb.yaml --wait --timeout 5m
+
+helm upgrade --install redis bitnami/redis \
+  --namespace infra --version 19.5.0 \
+  -f k8s/infra/values/redis.yaml --wait --timeout 3m
+
+helm upgrade --install minio bitnami/minio \
+  --namespace infra --version 14.6.0 \
+  -f k8s/infra/values/minio.yaml --wait --timeout 5m
+
+echo "ingress-nginx + metrics-server + kps + mysql + mongodb + redis + minio installed"
