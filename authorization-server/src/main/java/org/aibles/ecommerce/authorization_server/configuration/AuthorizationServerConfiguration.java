@@ -27,6 +27,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -79,6 +80,11 @@ public class AuthorizationServerConfiguration {
     @Bean
     public RoleService roleService(SlaveRoleRepository slaveRoleRepository) {
         return new RoleServiceImpl(slaveRoleRepository);
+    }
+
+    @Bean
+    public RefreshTokenService refreshTokenService(RedisTemplate<String, Object> redisTemplate) {
+        return new RefreshTokenServiceImpl(redisTemplate, refreshTokenLifetime.longValue());
     }
 
     @Bean
