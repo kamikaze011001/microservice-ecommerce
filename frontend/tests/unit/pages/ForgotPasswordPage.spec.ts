@@ -147,4 +147,59 @@ describe('ForgotPasswordPage', () => {
     await flushPromises();
     expect(btn).not.toBeDisabled();
   });
+
+  async function advanceToStep3() {
+    verifyMutateAsync.mockResolvedValueOnce({ reset_password_key: 'rpk-abc' });
+    await advanceToStep2();
+    await user.type(screen.getByLabelText(/code/i), '123456');
+    await user.click(screen.getByRole('button', { name: /^verify$/i }));
+    vi.advanceTimersByTime(10);
+    await flushPromises();
+    await waitFor(() => expect(screen.getByText(/step 3 of 3/i)).toBeInTheDocument());
+  }
+
+  it('step 3: submitting matching password calls reset and redirects to /login?reset=ok', async () => {
+    resetMutateAsync.mockResolvedValueOnce(undefined);
+    await advanceToStep3();
+    await user.type(screen.getByLabelText(/^new password$/i), 'NewAa1!');
+    await user.type(screen.getByLabelText(/confirm password/i), 'NewAa1!');
+    await user.click(screen.getByRole('button', { name: /^update password$/i }));
+    vi.advanceTimersByTime(10);
+    await flushPromises();
+    expect(resetMutateAsync).toHaveBeenCalledWith({
+      resetPasswordKey: 'rpk-abc',
+      email: 'son@example.com',
+      password: 'NewAa1!',
+      confirmPassword: 'NewAa1!',
+    });
+    await waitFor(() => expect(router.currentRoute.value.path).toBe('/login'));
+    expect(router.currentRoute.value.query.reset).toBe('ok');
+  });
+
+  it('step 3: mismatched passwords block submit (no mutation call)', async () => {
+    await advanceToStep3();
+    await user.type(screen.getByLabelText(/^new password$/i), 'NewAa1!');
+    await user.type(screen.getByLabelText(/confirm password/i), 'OtherAa1!');
+    await user.click(screen.getByRole('button', { name: /^update password$/i }));
+    vi.advanceTimersByTime(10);
+    await flushPromises();
+    await waitFor(() => expect(screen.getByText(/passwords do not match/i)).toBeInTheDocument());
+    expect(resetMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('step 3: expired reset key surfaces "Start over" affordance that returns to step 1', async () => {
+    resetMutateAsync.mockRejectedValueOnce(
+      Object.assign(new Error('Reset link expired. Start over.'), { status: 400 }),
+    );
+    await advanceToStep3();
+    await user.type(screen.getByLabelText(/^new password$/i), 'NewAa1!');
+    await user.type(screen.getByLabelText(/confirm password/i), 'NewAa1!');
+    await user.click(screen.getByRole('button', { name: /^update password$/i }));
+    vi.advanceTimersByTime(10);
+    await flushPromises();
+    await waitFor(() => expect(screen.getByText(/reset link expired/i)).toBeInTheDocument());
+    const startOver = screen.getByRole('button', { name: /start over/i });
+    await user.click(startOver);
+    await waitFor(() => expect(screen.getByText(/step 1 of 3/i)).toBeInTheDocument());
+  });
 });

@@ -4,11 +4,12 @@ import { useForm } from 'vee-validate';
 import { toTypedSchema } from '@vee-validate/zod';
 import { useRouter } from 'vue-router';
 import { z } from 'zod';
-import { forgotPasswordSchema } from '@/lib/zod-schemas';
+import { forgotPasswordSchema, resetPasswordSchema } from '@/lib/zod-schemas';
 import {
   useForgotPasswordMutation,
   useVerifyForgotOtpMutation,
   useResendOtpMutation,
+  useResetPasswordMutation,
 } from '@/api/queries/auth';
 
 const otpOnlySchema = z.object({
@@ -17,7 +18,6 @@ const otpOnlySchema = z.object({
 import { BButton, BInput } from '@/components/primitives';
 
 const router = useRouter();
-void router; // wired in later steps
 
 const step = ref<1 | 2 | 3>(1);
 const email = ref('');
@@ -113,6 +113,54 @@ async function onResend() {
     step2.setErrors({ otp: e?.message ?? 'Resend failed' });
   }
 }
+
+// ── Step 3: reset password ───────────────────────────────────────────────
+const reset = useResetPasswordMutation();
+const step3 = useForm({
+  validationSchema: toTypedSchema(resetPasswordSchema),
+  initialValues: { password: '', confirmPassword: '' },
+});
+const [pwModel, pwAttrs] = step3.defineField('password');
+const [confirmModel, confirmAttrs] = step3.defineField('confirmPassword');
+const passwordField = computed({
+  get: () => pwModel.value ?? '',
+  set: (v) => {
+    pwModel.value = v;
+  },
+});
+const confirmField = computed({
+  get: () => confirmModel.value ?? '',
+  set: (v) => {
+    confirmModel.value = v;
+  },
+});
+
+const onSubmitReset = step3.handleSubmit(async (values) => {
+  try {
+    await reset.mutateAsync({
+      resetPasswordKey: resetPasswordKey.value,
+      email: email.value,
+      password: values.password,
+      confirmPassword: values.confirmPassword,
+    });
+    await router.push({ path: '/login', query: { reset: 'ok' } });
+  } catch (err) {
+    const e = err as { message?: string };
+    step3.setErrors({
+      confirmPassword: e?.message ?? 'Reset failed. Try starting over.',
+    });
+  }
+});
+const pending3 = computed(() => reset.isPending?.value === true);
+
+function startOver() {
+  step3.resetForm();
+  step2.resetForm();
+  step1.resetForm();
+  email.value = '';
+  resetPasswordKey.value = '';
+  step.value = 1;
+}
 </script>
 
 <template>
@@ -152,6 +200,29 @@ async function onResend() {
       <BButton type="button" variant="ghost" :disabled="resendCooldown > 0" @click="onResend">
         {{ resendCooldown > 0 ? `RESEND IN ${resendCooldown}s` : 'RESEND CODE' }}
       </BButton>
+    </form>
+
+    <form v-if="step === 3" novalidate class="forgot__form" @submit.prevent="onSubmitReset">
+      <BInput
+        v-model="passwordField"
+        v-bind="pwAttrs"
+        :error="step3.errors.value.password"
+        type="password"
+        label="New password"
+        autocomplete="new-password"
+      />
+      <BInput
+        v-model="confirmField"
+        v-bind="confirmAttrs"
+        :error="step3.errors.value.confirmPassword"
+        type="password"
+        label="Confirm password"
+        autocomplete="new-password"
+      />
+      <BButton type="submit" variant="spot" :disabled="pending3">
+        {{ pending3 ? 'UPDATING…' : 'UPDATE PASSWORD' }}
+      </BButton>
+      <BButton type="button" variant="ghost" @click="startOver">START OVER</BButton>
     </form>
 
     <p class="forgot__alt">Remember it? <RouterLink to="/login">BACK TO LOG IN</RouterLink></p>
