@@ -56,4 +56,8 @@ helm upgrade --install minio bitnami/minio \
   --namespace infra --version 14.6.0 \
   -f k8s/infra/values/minio.yaml --wait --timeout 5m
 
-echo "ingress-nginx + metrics-server + kps + mysql + mongodb + redis + minio installed"
+helm upgrade --install kafka bitnami/kafka \
+  --namespace infra --version 29.2.0 \
+  -f k8s/infra/values/kafka.yaml --wait --timeout 8m
+
+echo "ingress-nginx + metrics-server + kps + mysql + mongodb + redis + minio + kafka installed"
