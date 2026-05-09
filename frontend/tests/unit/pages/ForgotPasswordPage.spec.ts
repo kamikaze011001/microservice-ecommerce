@@ -91,4 +91,60 @@ describe('ForgotPasswordPage', () => {
     await waitFor(() => expect(screen.getByText(/no account found/i)).toBeInTheDocument());
     expect(screen.getByText(/step 1 of 3/i)).toBeInTheDocument();
   });
+
+  async function advanceToStep2(emailValue = 'son@example.com') {
+    forgotMutateAsync.mockResolvedValueOnce(undefined);
+    mount();
+    await user.type(screen.getByLabelText(/email/i), emailValue);
+    await user.click(screen.getByRole('button', { name: /send code/i }));
+    vi.advanceTimersByTime(10);
+    await flushPromises();
+    await waitFor(() => expect(screen.getByText(/step 2 of 3/i)).toBeInTheDocument());
+  }
+
+  it('step 2: submitting a valid OTP calls verify mutation and moves to step 3', async () => {
+    verifyMutateAsync.mockResolvedValueOnce({ reset_password_key: 'rpk-abc' });
+    await advanceToStep2();
+    await user.type(screen.getByLabelText(/code/i), '123456');
+    await user.click(screen.getByRole('button', { name: /^verify$/i }));
+    vi.advanceTimersByTime(10);
+    await flushPromises();
+    expect(verifyMutateAsync).toHaveBeenCalledWith({
+      email: 'son@example.com',
+      otp: '123456',
+    });
+    await waitFor(() => expect(screen.getByText(/step 3 of 3/i)).toBeInTheDocument());
+  });
+
+  it('step 2: invalid OTP surfaces inline error and clears the input', async () => {
+    verifyMutateAsync.mockRejectedValueOnce(
+      Object.assign(new Error('Invalid or expired code'), { status: 400 }),
+    );
+    await advanceToStep2();
+    await user.type(screen.getByLabelText(/code/i), '999999');
+    await user.click(screen.getByRole('button', { name: /^verify$/i }));
+    vi.advanceTimersByTime(10);
+    await flushPromises();
+    await waitFor(() => expect(screen.getByText(/invalid or expired code/i)).toBeInTheDocument());
+    expect((screen.getByLabelText(/code/i) as HTMLInputElement).value).toBe('');
+    expect(screen.getByText(/step 2 of 3/i)).toBeInTheDocument();
+  });
+
+  it('step 2: resend triggers mutation and disables button for 30s', async () => {
+    resendMutateAsync.mockResolvedValueOnce(undefined);
+    await advanceToStep2();
+    const btn = screen.getByRole('button', { name: /resend code/i });
+    await user.click(btn);
+    vi.advanceTimersByTime(10);
+    await flushPromises();
+    expect(resendMutateAsync).toHaveBeenCalledWith({
+      type: 'forgot_password',
+      email: 'son@example.com',
+    });
+    expect(btn).toBeDisabled();
+    expect(btn.textContent ?? '').toMatch(/30/);
+    vi.advanceTimersByTime(30_000);
+    await flushPromises();
+    expect(btn).not.toBeDisabled();
+  });
 });

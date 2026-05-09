@@ -1,10 +1,19 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { useForm } from 'vee-validate';
 import { toTypedSchema } from '@vee-validate/zod';
 import { useRouter } from 'vue-router';
+import { z } from 'zod';
 import { forgotPasswordSchema } from '@/lib/zod-schemas';
-import { useForgotPasswordMutation } from '@/api/queries/auth';
+import {
+  useForgotPasswordMutation,
+  useVerifyForgotOtpMutation,
+  useResendOtpMutation,
+} from '@/api/queries/auth';
+
+const otpOnlySchema = z.object({
+  otp: z.string().regex(/^\d{4,8}$/, 'Enter the code from your email'),
+});
 import { BButton, BInput } from '@/components/primitives';
 
 const router = useRouter();
@@ -13,7 +22,6 @@ void router; // wired in later steps
 const step = ref<1 | 2 | 3>(1);
 const email = ref('');
 const resetPasswordKey = ref('');
-void resetPasswordKey.value; // populated in step 2
 
 const stepLabel = computed(() =>
   step.value === 1 ? 'ENTER EMAIL' : step.value === 2 ? 'ENTER CODE' : 'NEW PASSWORD',
@@ -45,6 +53,66 @@ const onSubmitEmail = step1.handleSubmit(async (values) => {
 });
 
 const pending1 = computed(() => forgot.isPending?.value === true);
+
+// ── Step 2: OTP verify ───────────────────────────────────────────────────
+const verify = useVerifyForgotOtpMutation();
+const resend = useResendOtpMutation();
+
+const step2 = useForm({
+  validationSchema: toTypedSchema(otpOnlySchema),
+  initialValues: { otp: '' },
+});
+const [otpModel, otpAttrs] = step2.defineField('otp');
+const otpField = computed({
+  get: () => otpModel.value ?? '',
+  set: (v) => {
+    otpModel.value = v;
+  },
+});
+
+const onSubmitOtp = step2.handleSubmit(async (values) => {
+  try {
+    const data = await verify.mutateAsync({ email: email.value, otp: values.otp });
+    resetPasswordKey.value = data.reset_password_key;
+    step.value = 3;
+  } catch (err) {
+    const e = err as { message?: string };
+    step2.setErrors({ otp: e?.message ?? 'Invalid or expired code' });
+    otpField.value = '';
+  }
+});
+
+const pending2 = computed(() => verify.isPending?.value === true);
+
+const resendCooldown = ref(0);
+let resendTimer: ReturnType<typeof setInterval> | undefined;
+
+function startCooldown() {
+  resendCooldown.value = 30;
+  resendTimer = setInterval(() => {
+    resendCooldown.value -= 1;
+    if (resendCooldown.value <= 0) {
+      clearInterval(resendTimer);
+      resendTimer = undefined;
+    }
+  }, 1000);
+}
+
+onBeforeUnmount(() => {
+  if (resendTimer) clearInterval(resendTimer);
+});
+
+async function onResend() {
+  if (resendCooldown.value > 0) return;
+  if (!email.value) return;
+  try {
+    await resend.mutateAsync({ type: 'forgot_password', email: email.value });
+    startCooldown();
+  } catch (err) {
+    const e = err as { message?: string };
+    step2.setErrors({ otp: e?.message ?? 'Resend failed' });
+  }
+}
 </script>
 
 <template>
@@ -62,6 +130,27 @@ const pending1 = computed(() => forgot.isPending?.value === true);
       />
       <BButton type="submit" variant="spot" :disabled="pending1">
         {{ pending1 ? 'SENDING…' : 'SEND CODE' }}
+      </BButton>
+    </form>
+
+    <form v-if="step === 2" novalidate class="forgot__form" @submit.prevent="onSubmitOtp">
+      <p class="forgot__hint">
+        We sent a code to <strong>{{ email }}</strong
+        >.
+      </p>
+      <BInput
+        v-model="otpField"
+        v-bind="otpAttrs"
+        :error="step2.errors.value.otp"
+        label="Code"
+        autocomplete="one-time-code"
+        inputmode="numeric"
+      />
+      <BButton type="submit" variant="spot" :disabled="pending2">
+        {{ pending2 ? 'VERIFYING…' : 'VERIFY' }}
+      </BButton>
+      <BButton type="button" variant="ghost" :disabled="resendCooldown > 0" @click="onResend">
+        {{ resendCooldown > 0 ? `RESEND IN ${resendCooldown}s` : 'RESEND CODE' }}
       </BButton>
     </form>
 
@@ -92,6 +181,11 @@ const pending1 = computed(() => forgot.isPending?.value === true);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+.forgot__hint {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  color: var(--muted-ink);
 }
 .forgot__alt {
   font-family: var(--font-body);
