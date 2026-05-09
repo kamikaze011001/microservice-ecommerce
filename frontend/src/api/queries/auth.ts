@@ -1,7 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/vue-query';
+import { useRouter } from 'vue-router';
 import { apiFetchUnsafe } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 import type { LoginInput, RegisterInput, ActivateInput, ResendOtpInput } from '@/lib/zod-schemas';
+
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:6868';
 
 interface LoginResponseData {
   access_token: string;
@@ -75,4 +78,54 @@ export function useLogout() {
     auth.clear();
     qc.clear();
   };
+}
+
+export function useLogoutMutation() {
+  const auth = useAuthStore();
+  const qc = useQueryClient();
+  const router = useRouter();
+  return useMutation({
+    mutationFn: async () => {
+      const rt = auth.refreshToken;
+      if (!rt) return;
+      try {
+        await fetch(`${BASE_URL}/authorization-server/v1/auth:logout`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${rt}` },
+        });
+      } catch {
+        /* network failure — local clear still proceeds */
+      }
+    },
+    onSettled: () => {
+      auth.clear();
+      qc.clear();
+      router.replace('/login');
+    },
+  });
+}
+
+export function useLogoutAllMutation() {
+  const auth = useAuthStore();
+  const qc = useQueryClient();
+  const router = useRouter();
+  return useMutation({
+    mutationFn: async () => {
+      const at = auth.accessToken;
+      if (!at) return;
+      try {
+        await fetch(`${BASE_URL}/authorization-server/v1/auth:logout-all`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${at}` },
+        });
+      } catch {
+        /* network failure — local clear still proceeds */
+      }
+    },
+    onSettled: () => {
+      auth.clear();
+      qc.clear();
+      router.replace('/login');
+    },
+  });
 }

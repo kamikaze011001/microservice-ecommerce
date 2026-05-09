@@ -9,6 +9,7 @@ import {
   useAvatarPresignMutation,
   useAttachAvatarMutation,
 } from '@/api/queries/profile';
+import { useLogoutAllMutation } from '@/api/queries/auth';
 import { profileSchema, changePasswordSchema } from '@/lib/zod-schemas';
 import { useToast } from '@/composables/useToast';
 import { BButton, BCard, BInput, BSelect, type BSelectOption } from '@/components/primitives';
@@ -20,6 +21,15 @@ const updateM = useUpdateProfileMutation();
 const passwordM = useChangePasswordMutation();
 const presignM = useAvatarPresignMutation();
 const attachM = useAttachAvatarMutation();
+const logoutAllM = useLogoutAllMutation();
+
+function onLogoutAll() {
+  const ok = window.confirm(
+    'Sign out of every device where you are logged in? You will need to log back in here.',
+  );
+  if (!ok) return;
+  logoutAllM.mutate();
+}
 
 // ── Section 02 — COLOPHON (profile form) ─────────────────────────────────────
 const {
@@ -313,6 +323,32 @@ async function onFileChange(e: Event) {
         </form>
       </BCard>
     </section>
+
+    <section class="profile__section">
+      <header class="profile__section-header">
+        <span class="profile__numeral" aria-hidden="true">04</span>
+        <p class="profile__kicker">SESSIONS</p>
+      </header>
+
+      <BCard as="div" class="profile__card">
+        <p class="profile__danger-copy">
+          Sign out of every device where you are currently logged in. Other browsers and tabs will
+          be kicked back to the login screen on their next request.
+        </p>
+        <div class="profile__form-footer">
+          <BButton
+            type="button"
+            variant="ghost"
+            data-testid="logout-all"
+            :loading="logoutAllM.isPending.value"
+            :disabled="logoutAllM.isPending.value"
+            @click="onLogoutAll"
+          >
+            LOG OUT ALL DEVICES
+          </BButton>
+        </div>
+      </BCard>
+    </section>
   </div>
 </template>
 
@@ -470,6 +506,13 @@ async function onFileChange(e: Event) {
   margin-top: var(--space-6);
   display: flex;
   justify-content: flex-end;
+}
+
+.profile__danger-copy {
+  font-family: var(--font-body);
+  font-size: var(--type-body);
+  color: var(--muted-ink);
+  margin: 0;
 }
 
 @media (max-width: 47.99rem) {

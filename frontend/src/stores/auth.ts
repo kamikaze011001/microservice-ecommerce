@@ -44,9 +44,20 @@ export const useAuthStore = defineStore('auth', () => {
 
   if (typeof window !== 'undefined') {
     window.addEventListener('storage', (e) => {
-      if (e.key === AUTH_STORAGE_KEY && e.newValue === null) {
+      if (e.key !== AUTH_STORAGE_KEY) return;
+      if (e.newValue === null) {
         accessToken.value = null;
         refreshToken.value = null;
+        return;
+      }
+      try {
+        const next = JSON.parse(e.newValue) as AuthRecord;
+        if (next?.accessToken && next?.refreshToken) {
+          accessToken.value = next.accessToken;
+          refreshToken.value = next.refreshToken;
+        }
+      } catch {
+        /* malformed payload from another tab — ignore */
       }
     });
   }
