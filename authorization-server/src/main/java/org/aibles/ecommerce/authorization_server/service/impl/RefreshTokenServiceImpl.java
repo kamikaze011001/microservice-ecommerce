@@ -31,6 +31,7 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
 
     @Override
     public String issueForUser(String userId) {
+        log.info("(issueForUser)userId: {}", userId);
         String rawToken = randomOpaqueToken();
         String familyId = UUID.randomUUID().toString();
         long now = System.currentTimeMillis();
@@ -49,8 +50,7 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         redis.opsForHash().putAll(familyKey, familyHash);
         redis.expire(familyKey, refreshTokenLifetimeMs, TimeUnit.MILLISECONDS);
 
-        // user:{userId}:families set
-        String userFamiliesKey = userFamiliesKey(userId);
+        String userFamiliesKey = USER_FAMILIES_PREFIX + userId + USER_FAMILIES_SUFFIX;
         redis.opsForSet().add(userFamiliesKey, familyId);
         redis.expire(userFamiliesKey, refreshTokenLifetimeMs, TimeUnit.MILLISECONDS);
 
@@ -71,7 +71,14 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
 
         String currentToken = (String) familyHash.get("currentToken");
         if (!incomingToken.equals(currentToken)) {
-            // TASK 4 — reuse detection branch goes here (handoff point).
+            String userId = (String) familyHash.get("userId");
+            log.warn("(rotate) refresh-token reuse detected, revoking family. userId={} familyId={}", userId, familyId);
+            redis.delete(familyKey);
+            redis.opsForValue().getAndDelete(RT_PREFIX + incomingToken);
+            if (userId != null) {
+                String userFamiliesKey = USER_FAMILIES_PREFIX + userId + USER_FAMILIES_SUFFIX;
+                redis.opsForSet().remove(userFamiliesKey, familyId);
+            }
             throw new TokenInvalidException();
         }
 
@@ -97,9 +104,5 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         byte[] buf = new byte[32];
         random.nextBytes(buf);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
-    }
-
-    private String userFamiliesKey(String userId) {
-        return USER_FAMILIES_PREFIX + userId + USER_FAMILIES_SUFFIX;
     }
 }

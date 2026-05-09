@@ -1,5 +1,6 @@
 package org.aibles.ecommerce.authorization_server.service;
 
+import org.aibles.ecommerce.authorization_server.exception.TokenInvalidException;
 import org.aibles.ecommerce.authorization_server.service.impl.RefreshTokenServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -72,5 +74,23 @@ class RefreshTokenServiceImplTest {
         assertThat(newToken).isNotBlank().isNotEqualTo(oldToken);
         verify(valueOps).set(eq("rt:" + newToken), eq(familyId), anyLong(), eq(TimeUnit.MILLISECONDS));
         verify(hashOps).put("family:" + familyId, "currentToken", newToken);
+    }
+
+    @Test
+    void rotate_reuse_detection_branch() {
+        String oldToken = "old-token";
+        String familyId = "fam-1";
+        when(valueOps.get("rt:" + oldToken)).thenReturn(familyId);
+        Map<Object, Object> familyHash = new HashMap<>();
+        familyHash.put("userId", "user-1");
+        familyHash.put("currentToken", "newer-token");
+        familyHash.put("createdAt", 1L);
+        familyHash.put("expiresAt", System.currentTimeMillis() + 60_000L);
+        when(hashOps.entries("family:" + familyId)).thenReturn(familyHash);
+
+        assertThatThrownBy(() -> service.rotate(oldToken))
+                .isInstanceOf(TokenInvalidException.class);
+        verify(redis).delete("family:" + familyId);
+        verify(setOps).remove("user:user-1:families", familyId);
     }
 }
