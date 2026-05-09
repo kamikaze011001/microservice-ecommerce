@@ -1,0 +1,32 @@
+listeners:
+  client:
+    protocol: PLAINTEXT
+controller:
+  replicaCount: 1
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: 1000m, memory: 1Gi }
+broker:
+  replicaCount: 0   # combined controller+broker mode
+provisioning:
+  enabled: true
+  topics:
+    - name: payment-success
+      partitions: 1
+      replicationFactor: 1
+    - name: payment-failed
+      partitions: 1
+      replicationFactor: 1
+    - name: product-update
+      partitions: 1
+      replicationFactor: 1
+    - name: product-quantity-updated
+      partitions: 1
+      replicationFactor: 1
+    - name: mongo-saved
+      partitions: 1
+      replicationFactor: 1
+kraft:
+  enabled: true
+zookeeper:
+  enabled: false
