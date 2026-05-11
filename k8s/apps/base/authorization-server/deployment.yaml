@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authorization-server
+  namespace: apps
+  labels:
+    app: authorization-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authorization-server
+  template:
+    metadata:
+      labels:
+        app: authorization-server
+    spec:
+      containers:
+        - name: authorization-server
+          image: localhost:5001/authorization-server:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 6666
+            - name: management
+              containerPort: 19091
+          env:
+            # Vault dev mode — the token is `root` (set in vault values.yaml).
+            # AWS overlay swaps this for AppRole + KMS-unsealed Vault; the env
+            # var goes away entirely (Spring Cloud Vault uses AppRole login).
+            - name: VAULT_TOKEN
+              value: root
+            - name: SPRING_CLOUD_VAULT_URI
+              value: http://vault.infra.svc.cluster.local:8200
+            # Memory caps for the kind cluster. -XX:MaxRAMPercentage tells the
+            # JVM to size heap as a fraction of the cgroup limit (memory.limits
+            # below), so heap auto-adapts if we bump the limit.
+            - name: JAVA_OPTS
+              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+UseStringDeduplication"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 768Mi
+          # Liveness: just "is the JVM alive?" — checks management port so we
+          # don't get false negatives from a busy http thread pool.
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 4
+          # Readiness: gated on db, redis, mail (see readiness.include in
+          # application.yml). Long initialDelay because Spring Cloud Vault
+          # blocks startup on vault.fail-fast=true.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: management
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6

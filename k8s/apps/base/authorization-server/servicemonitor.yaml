@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: authorization-server
+  namespace: apps
+  labels:
+    app: authorization-server
+    # kube-prometheus-stack's Prometheus instance selects ServiceMonitors
+    # across all namespaces (selectorNilUsesHelmValues=false in values),
+    # so no `release: kps` label is required.
+spec:
+  selector:
+    matchLabels:
+      app: authorization-server
+  namespaceSelector:
+    matchNames: [apps]
+  endpoints:
+    - port: management
+      path: /actuator/prometheus
+      interval: 30s
