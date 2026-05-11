@@ -60,11 +60,63 @@ put_if_missing ecommerce \
   spring.data.mongodb.uri="mongodb://ecommerce:ecommerce123@mongodb.infra.svc.cluster.local:27017/ecommerce_inventory?authSource=admin" \
   spring.kafka.bootstrap-servers="kafka.infra.svc.cluster.local:9092"
 
-# ── authorization-server (jwt) ─────────────────────────────────────────────
-put_if_missing authorization-server \
-  server.port="6666" \
-  application.access-token.life-time="900000" \
-  application.refresh-token.life-time="604800000" \
-  application.authentication-key-id="ecommerce-auth-key-2026"
+put_if_missing gateway \
+  server.port="6868" \
+  application.jwk-set-uri="http://authorization-server/authorization-server/.well-known/jwks.json" \
+  jwt.token.retry.max-attempts="3" \
+  jwt.token.retry.delay="500" \
+  jwt.token.cache.refresh-minutes="30" \
+  jwt.token.cache.force-refresh-threshold="5"
+
+put_if_missing product-service \
+  server.port="7777" \
+  application.kafka.topics.inventory-service.product.update="inventory-service.product.update" \
+  application.kafka.topics.product-service.product.update-quantity="product-service.product.update-quantity" \
+  application.kafka.group-id.product-service.product.update-quantity="product-service.product.update-quantity"
+
+put_if_missing inventory-service \
+  server.port="6969" \
+  grpc.server.port="9090" \
+  application.kafka.topics.inventory-service.product.update="inventory-service.product.update" \
+  application.kafka.topics.inventory-service.inventory-product.update-quantity="inventory-service.inventory-product.update-quantity" \
+  application.kafka.group-id.product.update="product-update-group" \
+  application.kafka.group-id.payment.success="payment-success-group"
+
+# order-service: grpc host swapped from localhost to in-cluster inventory Service DNS.
+put_if_missing order-service \
+  server.port="9696" \
+  grpc.server.host="inventory-service.apps.svc.cluster.local" \
+  grpc.server.port="9090" \
+  application.kafka.topics.order-service.order.success-status="order-service.order.success-status" \
+  application.kafka.topics.order-service.order.failed-status="order-service.order.failed-status" \
+  application.kafka.topics.order-service.order.canceled-status="order-service.order.canceled-status" \
+  application.kafka.group-id.order.update-status="order.update-status"
+
+# orchestrator-service: datasource host localhost->mysql Service DNS, password
+# normalised to root (matches the kind cluster's mysql chart rootPassword).
+put_if_missing orchestrator-service \
+  server.port="9999" \
+  spring.datasource.url="jdbc:mysql://mysql.infra.svc.cluster.local:3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" \
+  spring.datasource.username="root" \
+  spring.datasource.password="root" \
+  spring.datasource.driver-class-name="com.mysql.cj.jdbc.Driver" \
+  application.kafka.topics.mongo.event="ecommerce_db.ecommerce_inventory.event" \
+  application.kafka.topics.product-service.product.update-quantity="product-service.product.update-quantity" \
+  application.kafka.topics.order-service.order.success-status="order-service.order.success-status" \
+  application.kafka.topics.order-service.order.failed-status="order-service.order.failed-status" \
+  application.kafka.topics.order-service.order.canceled-status="order-service.order.canceled-status" \
+  application.kafka.topics.inventory-service.inventory-product.update-quantity="inventory-service.inventory-product.update-quantity" \
+  application.kafka.topics.inventory-service.product.update="inventory-service.product.update" \
+  application.kafka.group-id.mongo.event="mongo-event-group" \
+  application.saga.timeout-check-interval="60000" \
+  application.saga.compensation-max-retries="3" \
+  application.saga.saga-ttl-minutes="30"
+
+# bff-service: eureka.* keys omitted — k8s uses Service DNS, not Eureka.
+# inventory.grpc.host swapped to in-cluster Service DNS.
+put_if_missing bff-service \
+  server.port="8087" \
+  inventory.grpc.host="inventory-service.apps.svc.cluster.local" \
+  inventory.grpc.port="9090"
 
 echo "vault baseline seed complete"
