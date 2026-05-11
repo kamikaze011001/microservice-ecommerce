@@ -200,3 +200,20 @@ k8s-seed:
 	  kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/$$job; \
 	done
 	@echo "k8s-seed complete"
+
+.PHONY: k8s-apps k8s-apps-down k8s-status
+
+# Apply all 8 service Deployments via the local overlay.
+k8s-apps:
+	@kubectl apply -k k8s/apps/overlays/local
+	@kubectl -n apps rollout status deployment --timeout=10m
+
+k8s-apps-down:
+	@kubectl delete -k k8s/apps/overlays/local --ignore-not-found
+
+# Quick health dashboard for the cluster.
+k8s-status:
+	@echo "== nodes =="; kubectl get nodes
+	@echo "== infra =="; kubectl -n infra get pods
+	@echo "== bootstrap jobs =="; kubectl -n bootstrap get jobs
+	@echo "== apps =="; kubectl -n apps get pods
