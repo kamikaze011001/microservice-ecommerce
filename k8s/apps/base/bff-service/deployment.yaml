@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bff-service
+  namespace: apps
+  labels: { app: bff-service }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: bff-service }
+  template:
+    metadata:
+      labels: { app: bff-service }
+    spec:
+      containers:
+        - name: bff-service
+          image: localhost:5001/bff-service:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8087 }
+            - { name: management, containerPort: 18087 }
+          env:
+            - { name: VAULT_TOKEN, value: root }
+            - { name: SPRING_CLOUD_VAULT_URI, value: http://vault.infra.svc.cluster.local:8200 }
+            - { name: JAVA_OPTS, value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC" }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 1000m, memory: 384Mi }
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: management }
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 4
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: management }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
