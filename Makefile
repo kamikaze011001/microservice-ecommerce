@@ -180,7 +180,23 @@ k8s-rebuild:
 	@SVC=$(svc) SKIP_CORES=1 k8s/images/build.sh
 	@kubectl -n apps rollout restart deployment/$(svc)
 
-.PHONY: k8s-infra
+.PHONY: k8s-infra k8s-seed
 
 k8s-infra:
 	@k8s/infra/install.sh
+
+# k8s-seed: run bootstrap Jobs in fixed dependency order. Each Job is
+# idempotent (see seed.sh in each dir) so re-running is safe.
+# Order matters: vault must be seeded before any app that imports its
+# Spring config from vault, and minio before any storefront image
+# upload. Kafka Connect registration runs last because Connect itself
+# (Deployment) is started by k8s-infra.
+k8s-seed:
+	@for d in 01-mysql-seed 02-mongo-seed 03-vault-seed 05-minio-bootstrap 04-kafka-connect-register; do \
+	  job=$$(echo $$d | sed 's/^[0-9]*-//'); \
+	  echo "==> applying $$d (job/$$job)"; \
+	  kubectl -n bootstrap delete job $$job --ignore-not-found >/dev/null; \
+	  kubectl apply -k k8s/infra/jobs/$$d; \
+	  kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/$$job; \
+	done
+	@echo "k8s-seed complete"
