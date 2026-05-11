@@ -64,6 +64,25 @@ helm upgrade --install vault hashicorp/vault \
   --namespace infra --version 0.27.0 \
   -f k8s/infra/values/vault.yaml --wait --timeout 5m
 
+# Sensitive creds (PayPal, mail) come from k8s/.env (gitignored, not in
+# any committed values.yaml or seed.sh). The vault-seed Job mounts this
+# Secret via envFrom and references the keys from inside seed.sh.
+# If k8s/.env is missing we still create an empty Secret so the Job's
+# envFrom resolves — the put_if_missing blocks that reference these env
+# vars will just write empty strings (acceptable for a smoke install
+# without a working PayPal sandbox account).
+if [ -f k8s/.env ]; then
+  kubectl create secret generic vault-seed-env \
+    --namespace bootstrap \
+    --from-env-file=k8s/.env \
+    --dry-run=client -o yaml | kubectl apply -f -
+else
+  echo "warn: k8s/.env missing — creating empty vault-seed-env Secret. Copy k8s/.env.example to k8s/.env and re-run for working mail/PayPal."
+  kubectl create secret generic vault-seed-env \
+    --namespace bootstrap \
+    --dry-run=client -o yaml | kubectl apply -f -
+fi
+
 # Kafka Connect — long-running Deployment hosting source/sink connectors.
 # Connector registration is a separate Job (k8s/infra/jobs/04-kafka-connect-register).
 kubectl apply -f k8s/infra/manifests/kafka-connect.yaml

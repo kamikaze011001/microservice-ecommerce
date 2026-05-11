@@ -58,7 +58,14 @@ put_if_missing ecommerce \
   spring.data.redis.password="" \
   spring.data.redis.database="0" \
   spring.data.mongodb.uri="mongodb://ecommerce:ecommerce123@mongodb.infra.svc.cluster.local:27017/ecommerce_inventory?authSource=admin" \
-  spring.kafka.bootstrap-servers="kafka.infra.svc.cluster.local:9092"
+  spring.kafka.bootstrap-servers="kafka.infra.svc.cluster.local:9092" \
+  spring.mail.host="smtp.gmail.com" \
+  spring.mail.port="587" \
+  spring.mail.protocol="smtp" \
+  spring.mail.properties.mail.smtp.auth="true" \
+  spring.mail.properties.mail.smtp.starttls.enable="true" \
+  spring.mail.username="${APPLICATION_MAIL_USERNAME:-}" \
+  spring.mail.password="${APPLICATION_MAIL_PASSWORD:-}"
 
 put_if_missing gateway \
   server.port="6868" \
@@ -111,6 +118,19 @@ put_if_missing orchestrator-service \
   application.saga.timeout-check-interval="60000" \
   application.saga.compensation-max-retries="3" \
   application.saga.saga-ttl-minutes="30"
+
+# payment-service: PayPal client-id, client-secret, and tunnel-url come
+# from envFrom (k8s Secret built from k8s/.env). frontend base-url points
+# at the in-cluster frontend Pod (or replaced by the ALB hostname in AWS).
+put_if_missing payment-service \
+  server.port="8484" \
+  application.frontend.base-url="http://frontend.apps.svc.cluster.local" \
+  application.paypal.base-url="https://api-m.sandbox.paypal.com" \
+  application.paypal.success-path="/payment-service/v1/paypal:success" \
+  application.paypal.cancel-path="/payment-service/v1/paypal:cancel" \
+  application.paypal.client-id="${PAYPAL_CLIENT_ID:-}" \
+  application.paypal.client-secret="${PAYPAL_CLIENT_SECRET:-}" \
+  application.paypal.tunnel-url="${PAYPAL_TUNNEL_URL:-}"
 
 # bff-service: eureka.* keys omitted — k8s uses Service DNS, not Eureka.
 # inventory.grpc.host swapped to in-cluster Service DNS.
