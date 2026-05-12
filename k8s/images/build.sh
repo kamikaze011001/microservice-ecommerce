@@ -55,10 +55,27 @@ if [ -z "${SKIP_CORES:-}" ]; then
   build_cores
 fi
 
+build_frontend() {
+  echo "==> building frontend"
+  # VITE_API_BASE_URL is inlined at build time. Browser calls hit the
+  # api.* Ingress; the SPA itself is served from microecom.local.
+  docker build \
+    -f frontend/Dockerfile \
+    --build-arg "VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://api.microecom.local}" \
+    -t "${REGISTRY}/frontend:${TAG}" \
+    frontend
+  docker push "${REGISTRY}/frontend:${TAG}"
+}
+
 if [ -n "${SVC:-}" ]; then
-  build_service "$SVC"
+  if [ "$SVC" = "frontend" ]; then
+    build_frontend
+  else
+    build_service "$SVC"
+  fi
 else
   for svc in "${SERVICES[@]}"; do
     build_service "$svc"
   done
+  build_frontend
 fi
