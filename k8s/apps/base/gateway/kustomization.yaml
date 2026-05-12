@@ -6,3 +6,4 @@ resources:
   - service.yaml
   - servicemonitor.yaml
   - hpa.yaml
+  - ingress.yaml
