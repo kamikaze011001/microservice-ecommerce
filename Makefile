@@ -201,7 +201,7 @@ k8s-seed:
 	done
 	@echo "k8s-seed complete"
 
-.PHONY: k8s-apps k8s-apps-down k8s-status
+.PHONY: k8s-apps k8s-apps-down k8s-status k8s-stress k8s-stress-logs
 
 # Apply all 8 service Deployments via the local overlay.
 k8s-apps:
@@ -217,3 +217,14 @@ k8s-status:
 	@echo "== infra =="; kubectl -n infra get pods
 	@echo "== bootstrap jobs =="; kubectl -n bootstrap get jobs
 	@echo "== apps =="; kubectl -n apps get pods
+
+# Fire the k6 stress Job. Opt-in (NOT part of k8s-apps) so `make k8s-apps`
+# doesn't trigger load. Re-runnable — deletes the previous Job first.
+k8s-stress:
+	@kubectl -n apps delete job k6-stress --ignore-not-found
+	@kubectl apply -k k8s/apps/base/k6-stress
+	@echo "k6 stress running. Watch with: make k8s-stress-logs"
+	@echo "Watch HPA: kubectl -n apps get hpa -w"
+
+k8s-stress-logs:
+	@kubectl -n apps logs -f -l app=k6-stress --tail=-1
