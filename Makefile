@@ -32,6 +32,15 @@ help:
 	@echo "Building blocks:"
 	@echo "  make infra-up / infra-down / vault-init / vault-unseal / vault-import"
 	@echo "  make kafka-topics / mongo-connector / seed-data"
+	@echo ""
+	@echo "Kubernetes (local kind cluster):"
+	@echo "  make k8s-bootstrap    — one-shot: cluster + infra + images + seed + apps"
+	@echo "  make k8s-down         — tear down apps + cluster"
+	@echo "  make k8s-status       — pods across nodes/infra/bootstrap/apps"
+	@echo "  make k8s-apps         — re-apply just the service overlay"
+	@echo "  make k8s-rebuild svc=NAME — rebuild one image + rollout restart"
+	@echo "  make k8s-stress       — fire k6 load Job (opt-in)"
+	@echo "  make k8s-stress-logs  — tail k6 output"
 
 # ============================================================================
 # First-run / daily loop
@@ -228,3 +237,17 @@ k8s-stress:
 
 k8s-stress-logs:
 	@kubectl -n apps logs -f -l app=k6-stress --tail=-1
+
+.PHONY: k8s-bootstrap k8s-down
+
+# One-shot: cluster -> infra -> images -> seed -> apps. Idempotent —
+# safe to re-run after editing manifests or pulling new code. Mirrors
+# the docker-compose `make bootstrap` flow but for the kind cluster.
+k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build k8s-seed k8s-apps
+	@echo "==> k8s bootstrap complete"
+	@$(MAKE) k8s-status
+
+# Tear it ALL down — apps, infra, and the kind cluster itself.
+# Use k8s-apps-down for a softer reset (keeps infra/data).
+k8s-down: k8s-apps-down k8s-cluster-down
+	@echo "==> k8s cluster destroyed"
