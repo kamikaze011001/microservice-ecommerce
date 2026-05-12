@@ -142,4 +142,14 @@ put_if_missing bff-service \
   feign.client.order-service.url="http://order-service.apps.svc.cluster.local:9696" \
   feign.client.payment-service.url="http://payment-service.apps.svc.cluster.local:8484"
 
+# gateway: replace lb://NAME (Eureka load-balancer scheme) with in-cluster
+# Service DNS. Each route resolves via kube-dns; kube-proxy fans to Pods.
+put_if_missing gateway \
+  gateway.routes.authorization-server.uri="http://authorization-server.apps.svc.cluster.local:6666" \
+  gateway.routes.inventory-service.uri="http://inventory-service.apps.svc.cluster.local:6969" \
+  gateway.routes.product-service.uri="http://product-service.apps.svc.cluster.local:7777" \
+  gateway.routes.order-service.uri="http://order-service.apps.svc.cluster.local:9696" \
+  gateway.routes.payment-service.uri="http://payment-service.apps.svc.cluster.local:8484" \
+  gateway.routes.bff-service.uri="http://bff-service.apps.svc.cluster.local:8087"
+
 echo "vault baseline seed complete"
