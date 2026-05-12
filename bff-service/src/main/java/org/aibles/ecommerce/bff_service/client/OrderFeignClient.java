@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.Map;
 
-@FeignClient(name = "order-service")
+@FeignClient(name = "order-service", url = "${feign.client.order-service.url:}")
 public interface OrderFeignClient {
 
     @GetMapping("/order-service/v1/orders/{orderId}")

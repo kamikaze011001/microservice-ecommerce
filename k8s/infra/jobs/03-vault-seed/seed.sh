@@ -137,6 +137,9 @@ put_if_missing payment-service \
 put_if_missing bff-service \
   server.port="8087" \
   inventory.grpc.host="inventory-service.apps.svc.cluster.local" \
-  inventory.grpc.port="9090"
+  inventory.grpc.port="9090" \
+  feign.client.product-service.url="http://product-service.apps.svc.cluster.local:7777" \
+  feign.client.order-service.url="http://order-service.apps.svc.cluster.local:9696" \
+  feign.client.payment-service.url="http://payment-service.apps.svc.cluster.local:8484"
 
 echo "vault baseline seed complete"
