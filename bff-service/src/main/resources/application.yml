@@ -11,6 +11,9 @@ spring:
         backend: secret
         default-context: ecommerce
         application-name: bff-service
+    openfeign:
+      okhttp:
+        enabled: true
   config:
     import: optional:vault://
 server:
