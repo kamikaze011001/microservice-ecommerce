@@ -7,27 +7,27 @@ spring:
     gateway:
       routes:
         - id: authorization-server
-          uri: lb://AUTHORIZATION-SERVER
+          uri: ${gateway.routes.authorization-server.uri:lb://AUTHORIZATION-SERVER}
           predicates:
             - Path=/authorization-server/**
         - id: inventory-service
-          uri: lb://INVENTORY-SERVICE
+          uri: ${gateway.routes.inventory-service.uri:lb://INVENTORY-SERVICE}
           predicates:
             - Path=/inventory-service/**
         - id: product-service
-          uri: lb://PRODUCT-SERVICE
+          uri: ${gateway.routes.product-service.uri:lb://PRODUCT-SERVICE}
           predicates:
             - Path=/product-service/**
         - id: order-service
-          uri: lb://ORDER-SERVICE
+          uri: ${gateway.routes.order-service.uri:lb://ORDER-SERVICE}
           predicates:
             - Path=/order-service/**
         - id: payment-service
-          uri: lb://PAYMENT-SERVICE
+          uri: ${gateway.routes.payment-service.uri:lb://PAYMENT-SERVICE}
           predicates:
             - Path=/payment-service/**
         - id: bff-service
-          uri: lb://BFF-SERVICE
+          uri: ${gateway.routes.bff-service.uri:lb://BFF-SERVICE}
           predicates:
             - Path=/bff-service/**
     vault:

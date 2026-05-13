@@ -52,7 +52,7 @@ management:
         liveness:
           include: livenessState
         readiness:
-          include: readinessState,mongo
+          include: readinessState,mongo,kafka
   metrics:
     tags:
       application: ${spring.application.name}

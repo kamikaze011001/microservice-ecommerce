@@ -53,7 +53,7 @@ management:
         liveness:
           include: livenessState
         readiness:
-          include: readinessState,db,redis
+          include: readinessState,db,redis,kafka
   metrics:
     tags:
       application: ${spring.application.name}
