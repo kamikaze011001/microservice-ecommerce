@@ -1,0 +1,14 @@
+mode: standalone
+# LOCAL-DEV ONLY. See note in mysql.yaml — same pattern applies.
+# AWS overlay must replace with auth.existingSecret backed by
+# ExternalSecrets + AWS Secrets Manager. (In real AWS you'd use
+# managed S3 instead of MinIO entirely — this whole block goes away.)
+auth:
+  rootUser: minioadmin
+  rootPassword: minioadmin
+defaultBuckets: "products,avatars"
+persistence:
+  size: 4Gi
+resources:
+  requests: { cpu: 50m, memory: 256Mi }
+  limits:   { cpu: 500m, memory: 512Mi }

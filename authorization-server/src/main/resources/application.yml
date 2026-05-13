@@ -46,7 +46,7 @@ management:
         liveness:
           include: livenessState
         readiness:
-          include: readinessState,db,redis,mail
+          include: readinessState,db,redis
   metrics:
     tags:
       application: ${spring.application.name}

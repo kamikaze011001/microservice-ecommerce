@@ -1,0 +1,17 @@
+# Per-service image. Inherits the maven local repo populated by Dockerfile.cores
+# so the service `mvn package` resolves core/* modules instantly.
+ARG CORES_IMAGE=localhost:5001/maven-cores:dev
+
+FROM ${CORES_IMAGE} AS builder
+ARG SERVICE
+WORKDIR /workspace
+COPY ${SERVICE}/ ./${SERVICE}/
+RUN cd ${SERVICE} && mvn -B -DskipTests package
+
+FROM eclipse-temurin:17-jre AS runtime
+ARG SERVICE
+ENV SERVICE=${SERVICE}
+WORKDIR /app
+COPY --from=builder /workspace/${SERVICE}/target/*.jar /app/app.jar
+EXPOSE 8080 9091
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

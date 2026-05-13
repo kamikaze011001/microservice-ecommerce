@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: apps
+# Extends the local overlay with the frontend Pod. Used by storefront
+# QA / dogfooding flows where you want the Vue SPA to talk to the
+# in-cluster gateway. The frontend manifest is scaffolded in Task 28.
+resources:
+  - ../local
+  # - ../../base/frontend           # uncomment once Task 28 lands

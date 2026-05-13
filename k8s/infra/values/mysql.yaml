@@ -1,0 +1,25 @@
+# LOCAL-DEV ONLY. Plaintext credentials below are kind-cluster defaults
+# bound to 127.0.0.1 — knowing them buys nothing. The AWS overlay
+# (k8s/infra/overlays/aws/) replaces these with `auth.existingSecret`
+# backed by ExternalSecrets pulling from AWS Secrets Manager. See
+# k8s/infra/overlays/aws/README.md before deploying anywhere reachable.
+auth:
+  rootPassword: root
+  database: ecommerce_dev
+  username: ecommerce
+  password: ecommerce
+architecture: standalone
+primary:
+  persistence:
+    size: 4Gi
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: 1000m, memory: 1Gi }
+  service:
+    type: ClusterIP
+    ports:
+      mysql: 3306
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true

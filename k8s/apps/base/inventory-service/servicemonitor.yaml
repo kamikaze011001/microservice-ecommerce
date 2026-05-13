@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: inventory-service
+  namespace: apps
+  labels: { app: inventory-service }
+spec:
+  selector:
+    matchLabels: { app: inventory-service }
+  namespaceSelector:
+    matchNames: [apps]
+  endpoints:
+    - port: management
+      path: /actuator/prometheus
+      interval: 30s

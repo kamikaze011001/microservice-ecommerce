@@ -299,6 +299,29 @@ The gateway intentionally does not route `/actuator/**`. The management port
 is internal-only — protect it at the network level (k8s NetworkPolicy, AWS SG)
 when deploying.
 
+
+## Coworking style — handoff format
+
+When the user is in a coworking / learning flow (brainstorming with checkpoints,
+plans with `[CHECKPOINT — HUMAN]` tasks), every handoff back to the user MUST
+lead with this header before any context, options, or rationale:
+
+```
+## What I did
+- <file>          — <what's there>
+
+## What YOU need to write
+- <file>          — <function/section>: <one-line goal>
+```
+
+Only after that header should you discuss tradeoffs, list option A/B/C, or
+provide background. If you find yourself writing more than ~5 lines before the
+boundary is named, stop and restructure.
+
+If the user pushes back with "this is unclear" or similar, do NOT add more
+prose — restructure with the AI/HUMAN boundary at the top. The fix is always
+clearer scaffolding, never longer explanation.
+
 ## Known scars (rough edges)
 
 ### No project-wide logging convention
