@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { RouterLink, useRouter, useRoute } from 'vue-router';
+import { RouterLink, useRoute } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '@/stores/auth';
-import { useLogout } from '@/api/queries/auth';
+import { useLogoutMutation } from '@/api/queries/auth';
 import { useProfileQuery } from '@/api/queries/profile';
 import { useCartQuery } from '@/api/queries/cart';
 import { BButton } from '@/components/primitives';
 
 const auth = useAuthStore();
 const { isLoggedIn } = storeToRefs(auth);
-const logout = useLogout();
-const router = useRouter();
+const logoutMutation = useLogoutMutation();
 const route = useRoute();
 
 const profile = useProfileQuery({ enabled: isLoggedIn });
@@ -38,9 +37,8 @@ watch(
 );
 
 function onLogout() {
-  logout();
   menuOpen.value = false;
-  router.push('/');
+  logoutMutation.mutate();
 }
 </script>
 

@@ -52,4 +52,27 @@ describe('storage event sync', () => {
     window.dispatchEvent(new StorageEvent('storage', { key: AUTH_STORAGE_KEY, newValue: null }));
     expect(auth.isLoggedIn).toBe(false);
   });
+
+  it('syncs new tokens when another tab refreshes', () => {
+    const auth = useAuthStore();
+    auth.login({ accessToken: 'old-at', refreshToken: 'old-rt' });
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: AUTH_STORAGE_KEY,
+        newValue: JSON.stringify({ accessToken: 'new-at', refreshToken: 'new-rt' }),
+      }),
+    );
+    expect(auth.accessToken).toBe('new-at');
+    expect(auth.refreshToken).toBe('new-rt');
+  });
+
+  it('ignores malformed payloads from another tab', () => {
+    const auth = useAuthStore();
+    auth.login({ accessToken: 'old-at', refreshToken: 'old-rt' });
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: AUTH_STORAGE_KEY, newValue: 'not-json' }),
+    );
+    expect(auth.accessToken).toBe('old-at');
+    expect(auth.refreshToken).toBe('old-rt');
+  });
 });

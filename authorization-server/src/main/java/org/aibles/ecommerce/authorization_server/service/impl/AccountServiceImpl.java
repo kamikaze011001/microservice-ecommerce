@@ -11,6 +11,7 @@ import org.aibles.ecommerce.authorization_server.repository.master.MasterAccount
 import org.aibles.ecommerce.authorization_server.repository.projection.AccountUserProjection;
 import org.aibles.ecommerce.authorization_server.repository.slave.SlaveAccountRepository;
 import org.aibles.ecommerce.authorization_server.service.AccountService;
+import org.aibles.ecommerce.authorization_server.service.RefreshTokenService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,11 +30,14 @@ public class AccountServiceImpl implements AccountService {
 
     private final PasswordEncoder passwordEncoder;
 
-    public AccountServiceImpl(MasterAccountRepository masterAccountRepository, SlaveAccountRepository slaveAccountRepository, MasterAccountRoleRepository masterAccountRoleRepository, PasswordEncoder passwordEncoder) {
+    private final RefreshTokenService refreshTokenService;
+
+    public AccountServiceImpl(MasterAccountRepository masterAccountRepository, SlaveAccountRepository slaveAccountRepository, MasterAccountRoleRepository masterAccountRoleRepository, PasswordEncoder passwordEncoder, RefreshTokenService refreshTokenService) {
         this.masterAccountRepository = masterAccountRepository;
         this.slaveAccountRepository = slaveAccountRepository;
         this.masterAccountRoleRepository = masterAccountRoleRepository;
         this.passwordEncoder = passwordEncoder;
+        this.refreshTokenService = refreshTokenService;
     }
 
     @Override
@@ -146,5 +150,15 @@ public class AccountServiceImpl implements AccountService {
         account.setPassword(passwordEncoder.encode(newPassword));
 
         masterAccountRepository.save(account);
+
+        log.info("revoked all refresh-token families on password change. userId={}", userId);
+        refreshTokenService.revokeAllForUser(userId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String getUserIdByEmail(String email) {
+        return slaveAccountRepository.findUserIdByEmail(email)
+                .orElseThrow(() -> new EmailNotFoundException(email));
     }
 }

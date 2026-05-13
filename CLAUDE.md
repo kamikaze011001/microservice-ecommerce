@@ -299,6 +299,7 @@ The gateway intentionally does not route `/actuator/**`. The management port
 is internal-only — protect it at the network level (k8s NetworkPolicy, AWS SG)
 when deploying.
 
+
 ## Coworking style — handoff format
 
 When the user is in a coworking / learning flow (brainstorming with checkpoints,

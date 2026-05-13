@@ -6,6 +6,7 @@ import RegisterPage from '@/pages/RegisterPage.vue';
 import CartPage from '@/pages/CartPage.vue';
 import CheckoutPage from '@/pages/CheckoutPage.vue';
 import ActivatePage from '@/pages/ActivatePage.vue';
+import ForgotPasswordPage from '@/pages/ForgotPasswordPage.vue';
 import ProductDetailPage from '@/pages/ProductDetailPage.vue';
 import NotFoundPage from '@/pages/NotFoundPage.vue';
 import PaymentResultPage from '@/pages/PaymentResultPage.vue';
@@ -23,6 +24,7 @@ export const router = createRouter({
     { path: '/login', component: LoginPage, meta: { guestOnly: true } },
     { path: '/register', component: RegisterPage, meta: { guestOnly: true } },
     { path: '/activate', component: ActivatePage, meta: { guestOnly: true } },
+    { path: '/forgot-password', component: ForgotPasswordPage, meta: { guestOnly: true } },
     { path: '/cart', component: CartPage, meta: { requiresAuth: true } },
     { path: '/checkout', component: CheckoutPage, meta: { requiresAuth: true } },
     { path: '/payment/success', component: PaymentResultPage },

@@ -98,4 +98,19 @@ describe('LoginPage', () => {
       expect(link.getAttribute('href')).toBe('/activate');
     });
   });
+
+  it('shows "Forgot password?" link pointing to /forgot-password', () => {
+    mount();
+    const link = screen.getByRole('link', { name: /forgot password/i });
+    expect(link.getAttribute('href')).toBe('/forgot-password');
+  });
+
+  it('shows reset banner when ?reset=ok is present, and hides it on first keystroke', async () => {
+    await router.push('/login?reset=ok');
+    await router.isReady();
+    mount();
+    expect(screen.getByText(/password updated/i)).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/username/i), 's');
+    expect(screen.queryByText(/password updated/i)).toBeNull();
+  });
 });

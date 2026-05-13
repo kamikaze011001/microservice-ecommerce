@@ -39,6 +39,7 @@ public class SecurityConfiguration {
                                         "/v1/auth:register",
                                         "/v1/auth:login",
                                         "/v1/auth:refresh-token",
+                                        "/v1/auth:logout",
                                         "/v1/auth:activate",
                                         "/v1/auth:resend-otp",
                                         "/v1/auth:forgot-password",

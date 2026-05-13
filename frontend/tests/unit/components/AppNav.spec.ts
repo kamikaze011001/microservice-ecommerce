@@ -20,7 +20,9 @@ vi.mock('@/api/queries/profile', () => ({
     isError: ref(false),
   }),
 }));
-vi.mock('@/api/queries/auth', () => ({ useLogout: () => () => {} }));
+vi.mock('@/api/queries/auth', () => ({
+  useLogoutMutation: () => ({ mutate: () => {} }),
+}));
 
 const router = createRouter({
   history: createMemoryHistory(),

@@ -50,6 +50,20 @@ public class AuthUserController {
         return BaseResponse.ok(response);
     }
 
+    @PostMapping("/auth:logout")
+    @ResponseStatus(HttpStatus.OK)
+    public BaseResponse logout(@RequestHeader(HttpHeaders.AUTHORIZATION) String refreshToken) {
+        authFacadeService.logout(refreshToken);
+        return BaseResponse.ok("");
+    }
+
+    @PostMapping("/auth:logout-all")
+    @ResponseStatus(HttpStatus.OK)
+    public BaseResponse logoutAll(@RequestHeader("X-User-Id") String userId) {
+        authFacadeService.logoutAll(userId);
+        return BaseResponse.ok("");
+    }
+
     @PostMapping("/auth:forgot-password")
     @ResponseStatus(HttpStatus.OK)
     public BaseResponse forgotPassword(@RequestBody @Valid ForgotPasswordRequest request) {

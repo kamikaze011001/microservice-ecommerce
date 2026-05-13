@@ -27,6 +27,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -72,13 +73,19 @@ public class AuthorizationServerConfiguration {
     public AccountService accountService(MasterAccountRepository masterAccountRepository,
                                          SlaveAccountRepository slaveAccountRepository,
                                          MasterAccountRoleRepository masterAccountRoleRepository,
-                                         PasswordEncoder passwordEncoder) {
-        return new AccountServiceImpl(masterAccountRepository, slaveAccountRepository, masterAccountRoleRepository, passwordEncoder);
+                                         PasswordEncoder passwordEncoder,
+                                         RefreshTokenService refreshTokenService) {
+        return new AccountServiceImpl(masterAccountRepository, slaveAccountRepository, masterAccountRoleRepository, passwordEncoder, refreshTokenService);
     }
 
     @Bean
     public RoleService roleService(SlaveRoleRepository slaveRoleRepository) {
         return new RoleServiceImpl(slaveRoleRepository);
+    }
+
+    @Bean
+    public RefreshTokenService refreshTokenService(RedisTemplate<String, Object> redisTemplate) {
+        return new RefreshTokenServiceImpl(redisTemplate, refreshTokenLifetime.longValue());
     }
 
     @Bean
@@ -102,7 +109,7 @@ public class AuthorizationServerConfiguration {
                                                PasswordEncoder passwordEncoder,
                                                JWTService jwtService,
                                                RoleService roleService,
-                                               JWKSet jwkSet) {
-        return new AuthFacadeServiceImpl(accountService, userService, redisRepository, emailHelper, passwordEncoder, jwtService, roleService, jwkSet);
+                                               RefreshTokenService refreshTokenService) {
+        return new AuthFacadeServiceImpl(accountService, userService, redisRepository, emailHelper, passwordEncoder, jwtService, roleService, refreshTokenService);
     }
 }

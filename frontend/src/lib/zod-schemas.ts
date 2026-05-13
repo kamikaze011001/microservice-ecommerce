@@ -42,6 +42,28 @@ export const resendOtpSchema = z.object({
 });
 export type ResendOtpInput = z.infer<typeof resendOtpSchema>;
 
+export const forgotPasswordSchema = z.object({
+  email: emailSchema,
+});
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+export const verifyForgotOtpSchema = z.object({
+  email: emailSchema,
+  otp: z.string().regex(/^\d{4,8}$/, 'Enter the code from your email'),
+});
+export type VerifyForgotOtpInput = z.infer<typeof verifyForgotOtpSchema>;
+
+export const resetPasswordSchema = z
+  .object({
+    password: passwordSchema,
+    confirmPassword: z.string(),
+  })
+  .refine((d) => d.password === d.confirmPassword, {
+    path: ['confirmPassword'],
+    message: 'Passwords do not match',
+  });
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
 export const addressSchema = z.object({
   street: z.string().min(3, 'Street is required'),
   city: z.string().min(2, 'City is required'),
