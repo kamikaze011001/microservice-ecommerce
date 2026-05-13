@@ -68,6 +68,7 @@ application:
       allowed-origins:
         - http://localhost:3000        # Vite/CRA dev
         - http://localhost:5173        # Vite default
+        - http://microecom.local       # k8s local: SPA host (browser dials api.microecom.local)
       allowed-methods:
         - GET
         - POST

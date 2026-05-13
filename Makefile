@@ -246,6 +246,17 @@ k8s-stress-logs:
 k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build k8s-seed k8s-apps
 	@echo "==> k8s bootstrap complete"
 	@$(MAKE) k8s-status
+	@echo ""
+	@echo "================================================================"
+	@echo "  Final step: add these lines to /etc/hosts (one-time):"
+	@echo ""
+	@echo "    127.0.0.1 microecom.local"
+	@echo "    127.0.0.1 api.microecom.local"
+	@echo ""
+	@echo "  Then verify:"
+	@echo "    curl -i http://api.microecom.local/authorization-server/actuator/health/liveness"
+	@echo "    open http://microecom.local"
+	@echo "================================================================"
 
 # Tear it ALL down — apps, infra, and the kind cluster itself.
 # Use k8s-apps-down for a softer reset (keeps infra/data).
