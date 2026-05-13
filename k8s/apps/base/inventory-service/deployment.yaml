@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-service
+  namespace: apps
+  labels: { app: inventory-service }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: inventory-service }
+  template:
+    metadata:
+      labels: { app: inventory-service }
+    spec:
+      containers:
+        - name: inventory-service
+          image: localhost:5001/inventory-service:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 6969 }
+            - { name: management, containerPort: 16969 }
+            - { name: grpc, containerPort: 9090 }
+          env:
+            - { name: VAULT_TOKEN, value: root }
+            - { name: SPRING_CLOUD_VAULT_URI, value: http://vault.infra.svc.cluster.local:8200 }
+            - { name: JAVA_OPTS, value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC" }
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits:   { cpu: 1500m, memory: 768Mi }
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: management }
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 4
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: management }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6

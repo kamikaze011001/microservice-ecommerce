@@ -1,0 +1,42 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: order-service
+  namespace: apps
+  labels: { app: order-service }
+spec:
+  # scaleTargetRef = the Deployment we're scaling, NOT the metric.
+  # Name must match k8s/apps/base/order-service/deployment.yaml metadata.name.
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: order-service
+  minReplicas: 1
+  maxReplicas: 3
+  # metrics[] = what the controller watches to decide whether to scale.
+  # averageUtilization is a percentage of the Pod's `requests.cpu` (200m
+  # in deployment.yaml). So 60% means: when avg CPU across order-service
+  # Pods exceeds 120m, add a replica.
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  # behavior = damping so k6 spikes don't cause replica thrashing.
+  # Without this, default scale-down is "remove all unneeded replicas
+  # after 5min stable" — usually fine, but explicit is safer.
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

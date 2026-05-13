@@ -1,0 +1,13 @@
+architecture: standalone
+# LOCAL-DEV ONLY. auth.enabled=false is intentional for kind on 127.0.0.1.
+# AWS overlay sets auth.enabled=true with auth.existingSecret backed by
+# ExternalSecrets + AWS Secrets Manager. ElastiCache is also a valid AWS
+# replacement that retires this chart entirely.
+auth:
+  enabled: false
+master:
+  persistence:
+    enabled: false
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 300m, memory: 256Mi }

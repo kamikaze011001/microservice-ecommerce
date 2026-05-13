@@ -299,6 +299,82 @@ The gateway intentionally does not route `/actuator/**`. The management port
 is internal-only — protect it at the network level (k8s NetworkPolicy, AWS SG)
 when deploying.
 
+## Coworking style — handoff format
+
+When the user is in a coworking / learning flow (brainstorming with checkpoints,
+plans with `[CHECKPOINT — HUMAN]` tasks), every handoff back to the user MUST
+lead with this header before any context, options, or rationale:
+
+```
+## What I did
+- <file>          — <what's there>
+
+## What YOU need to write
+- <file>          — <function/section>: <one-line goal>
+```
+
+Only after that header should you discuss tradeoffs, list option A/B/C, or
+provide background. If you find yourself writing more than ~5 lines before the
+boundary is named, stop and restructure.
+
+If the user pushes back with "this is unclear" or similar, do NOT add more
+prose — restructure with the AI/HUMAN boundary at the top. The fix is always
+clearer scaffolding, never longer explanation.
+
+## Known scars (rough edges)
+
+### No project-wide logging convention
+There is no shared rule for log levels, message structure, or which fields to
+include. The prevailing pattern across services is `log.info("(method) field: {}", value)`
+— useful as a method-entry breadcrumb, useless for ops triage.
+
+This is a documented gap, **not an active cleanup target** — don't refactor
+existing logs proactively. Only fix what's in the file you're already touching.
+Until a real convention is adopted, use the rules below for any **new** logs you
+write.
+
+#### Message shape
+
+- **Name the event, not the call site.** `"refresh-token reuse detected, revoking family"` beats `"(rotate) rotate token detection"`. Past-you understood the call site; on-call you won't.
+- **Include the actor and the resource.** `userId`, plus whatever ID the event hangs off (`familyId`, `orderId`, `requestId`). One log line should answer *who, what, which*.
+- **Use parameter substitution, never string concatenation.** `log.warn("reuse detected userId={}", userId)`, not `log.warn("reuse detected userId=" + userId)` — keeps the format string greppable and skips the toString cost when the level is disabled.
+- **Don't log secrets.** Tokens, passwords, OTP codes, full JWTs, signed S3 URLs. Log a hash, last 4 chars, or just the userId.
+
+#### When to use each level
+
+- `log.error` — something failed and we couldn't recover. Operations need to investigate.
+  - Use for: unhandled exceptions at a boundary you own, downstream service unreachable, data integrity violation, money/state already changed and can't be unwound.
+  - **Do not** `log.error` and rethrow the same exception — the global handler will log it again. Pick one layer to log at.
+  - **Do not** `log.error` for expected business outcomes (wrong password, item out of stock). Those are normal flow.
+
+- `log.warn` — abnormal but the system handled it. Humans should look eventually, no page.
+  - Use for: security events that aren't fatal (token reuse, repeated 401s, suspicious payloads), recoverable failures after retry, degraded behavior (cache miss when it shouldn't have been), feature-flag fallbacks that fired.
+  - **Do not** `log.warn` for routine breadcrumbs — that's `DEBUG`. Warnings should be rare enough that a spike means something.
+
+- `log.info` — significant lifecycle events. Sparing in hot paths.
+  - Use for: service startup/shutdown messages, scheduled job started/finished with summary stats, major state transitions that ops dashboards care about.
+  - **Do not** sprinkle `log.info("(method) field: {}", value)` in every method — that's `DEBUG`. Method-entry breadcrumbs at INFO drown out the genuinely useful events.
+
+- `log.debug` / `log.trace` — internal flow, only on when troubleshooting. Free-text, no rules.
+
+#### Examples from this codebase
+
+```java
+// GOOD — names the event, includes actors, single line
+log.warn("refresh-token reuse detected, revoking family. userId={} familyId={}",
+         userId, familyId);
+
+// GOOD — error at the boundary we own; don't rethrow + log again upstream
+log.error("failed to issue access token. userId={}", userId, ex);
+throw new InternalErrorException();
+
+// BAD — call-site noun, no actor, INFO when it should be DEBUG
+log.info("(rotate)rotate token detection for user: {}", userId);
+
+// BAD — concatenation defeats the point of placeholders
+log.warn("payment retry exhausted for orderId=" + orderId);
+```
+
 ## Development Notes
 - **Maven build order matters**: core modules must be installed before services — use `make build` (wraps `scripts/maven/install-modules.sh`)
 - **Vault secrets required at startup**: each service fetches config from Vault on boot; if Vault is sealed, services crash on startup

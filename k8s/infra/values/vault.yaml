@@ -1,0 +1,19 @@
+server:
+  # LOCAL-DEV ONLY. Dev mode keeps Vault unsealed with an in-memory
+  # backend and a hardcoded root token — perfect for kind, fatal for
+  # anywhere reachable. AWS overlay disables dev mode and configures:
+  #   - HA storage (DynamoDB or integrated Raft)
+  #   - auto-unseal via AWS KMS
+  #   - AppRole auth (no root token in prod)
+  # See k8s/infra/overlays/aws/README.md before deploying.
+  dev:
+    enabled: true
+    devRootToken: "root"
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 200m, memory: 256Mi }
+injector:
+  enabled: true
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 100m, memory: 128Mi }

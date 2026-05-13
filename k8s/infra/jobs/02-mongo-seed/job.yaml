@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongo-seed
+  namespace: bootstrap
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: seed
+          image: bitnami/mongodb:7.0
+          env:
+            - name: MONGO_URI
+              value: "mongodb://ecommerce:ecommerce123@mongodb.infra.svc.cluster.local:27017/ecommerce_inventory?authSource=admin"
+            - name: MONGO_DB
+              value: ecommerce_inventory
+          command: ["/bin/sh", "/scripts/seed.sh"]
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: data
+              mountPath: /seed
+      volumes:
+        - name: scripts
+          configMap:
+            name: mongo-seed-scripts
+            defaultMode: 0755
+        - name: data
+          configMap:
+            name: mongo-seed-data

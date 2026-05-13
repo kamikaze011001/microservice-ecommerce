@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: bootstrap
+resources:
+  - job.yaml
+configMapGenerator:
+  - name: kafka-connect-register-scripts
+    files:
+      - seed.sh
+generatorOptions:
+  disableNameSuffixHash: true

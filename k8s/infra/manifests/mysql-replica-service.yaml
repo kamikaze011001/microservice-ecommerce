@@ -1,0 +1,17 @@
+# Aliased Service so app DSNs use mysql-primary (writes) and mysql-replica (reads).
+# Today both point at the same Pod. When we add a true replica, we change the
+# selector on this Service without touching app config.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-replica
+  namespace: infra
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mysql
+    app.kubernetes.io/component: primary
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql

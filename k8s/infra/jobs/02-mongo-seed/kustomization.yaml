@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: bootstrap
+resources:
+  - job.yaml
+configMapGenerator:
+  - name: mongo-seed-scripts
+    files:
+      - seed.sh
+  - name: mongo-seed-data
+    files:
+      - ../../../../docker/api_role.json
+      - ../../../../docker/product.json
+      - ../../../../docker/product-quantity-history.json
+generatorOptions:
+  disableNameSuffixHash: true

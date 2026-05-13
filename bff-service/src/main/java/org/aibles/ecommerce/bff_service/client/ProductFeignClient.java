@@ -8,7 +8,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.Set;
 
-@FeignClient(name = "product-service")
+// url is optional. When empty (docker-compose), Feign falls back to
+// LoadBalancerClient + Eureka via `name`. When set (k8s, via vault
+// `secret/bff-service`), Feign uses the URL directly — Eureka not needed.
+@FeignClient(name = "product-service", url = "${feign.client.product-service.url:}")
 public interface ProductFeignClient {
 
     @GetMapping("/product-service/v1/products/{id}")
