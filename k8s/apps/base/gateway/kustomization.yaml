@@ -4,6 +4,5 @@ namespace: apps
 resources:
   - deployment.yaml
   - service.yaml
-  - servicemonitor.yaml
   - hpa.yaml
   - ingress.yaml
