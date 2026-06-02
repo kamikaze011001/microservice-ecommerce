@@ -80,3 +80,30 @@ server:
             - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
               action: keep
               regex: kube-state-metrics
+
+# The chart's ClusterRole grants nodes + nodes/metrics but NOT nodes/proxy. The
+# kubelet-cadvisor job scrapes /metrics/cadvisor THROUGH the API server proxy
+# (/api/v1/nodes/<node>/proxy/...), which requires `get` on the nodes/proxy
+# subresource — without it every cadvisor scrape 403s and no pod/node CPU/mem is
+# collected. Grant it via a supplementary ClusterRole bound to the chart's SA.
+extraObjects:
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: vmsingle-nodes-proxy
+    rules:
+      - apiGroups: [""]
+        resources: [nodes/proxy]
+        verbs: [get]
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: vmsingle-nodes-proxy
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: vmsingle-nodes-proxy
+    subjects:
+      - kind: ServiceAccount
+        name: vmsingle
+        namespace: monitoring
