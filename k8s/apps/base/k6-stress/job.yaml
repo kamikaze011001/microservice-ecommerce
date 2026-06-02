@@ -17,12 +17,17 @@ spec:
       containers:
         - name: k6
           image: grafana/k6:0.54.0
-          args: ["run", "/scripts/script.js"]
+          args: ["run", "-o", "experimental-prometheus-rw", "/scripts/script.js"]
           env:
             # In-cluster Service DNS — skips Ingress so we measure the
             # backend, not nginx. Point at api.microecom.local instead if
             # you want to include the Ingress in the load path.
             - { name: BASE_URL, value: "http://gateway.apps.svc.cluster.local:8080" }
+            # Stream k6 client metrics into VictoriaMetrics for the Grafana
+            # k6 dashboard (grafana.com #19665). VM accepts Prometheus
+            # remote-write natively at /api/v1/write.
+            - { name: K6_PROMETHEUS_RW_SERVER_URL, value: "http://vmsingle.monitoring.svc.cluster.local:8428/api/v1/write" }
+            - { name: K6_PROMETHEUS_RW_TREND_STATS, value: "p(95),p(99),avg,min,max" }
           resources:
             requests: { cpu: "200m", memory: "128Mi" }
             limits:   { cpu: "1000m", memory: "256Mi" }
