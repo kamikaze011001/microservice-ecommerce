@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>microecom — Service Architecture (detailed)</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2a3340;
+    --txt:#e6edf3; --muted:#9aa7b4; --faint:#6b7785;
+    --rest:#58a6ff; --grpc:#bc8cff; --kafka:#f0a330; --data:#39c5cf; --vault:#ff7b72;
+    --good:#3fb950; --bad:#f85149; --warn:#d29922;
+    --radius:12px; --shadow:0 8px 26px rgba(0,0,0,.5);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.5}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;background:#0b0f14;border:1px solid var(--line);
+    border-radius:5px;padding:.05em .35em;font-size:.85em}
+  a{color:var(--rest)}
+
+  header.top{position:sticky;top:0;z-index:40;background:linear-gradient(180deg,#0d1117 72%,rgba(13,17,23,.85));
+    border-bottom:1px solid var(--line);padding:14px 22px;backdrop-filter:blur(6px)}
+  header.top h1{margin:0;font-size:18px}
+  header.top h1 .sub{color:var(--muted);font-weight:500;font-size:13px}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:11px}
+  .toggle{font:inherit;font-size:12.5px;color:var(--txt);background:var(--panel2);border:1px solid var(--line);
+    border-radius:999px;padding:6px 13px;cursor:pointer;display:flex;align-items:center;gap:7px;transition:.14s;user-select:none}
+  .toggle .dot{width:11px;height:11px;border-radius:3px;display:inline-block;opacity:.35;transition:.14s}
+  .toggle.on{border-color:currentColor;background:#101722}
+  .toggle.on .dot{opacity:1}
+  .toggle.rest.on{color:var(--rest)} .toggle.rest .dot{background:var(--rest)}
+  .toggle.grpc.on{color:var(--grpc)} .toggle.grpc .dot{background:var(--grpc)}
+  .toggle.kafka.on{color:var(--kafka)} .toggle.kafka .dot{background:var(--kafka)}
+  .toggle.data.on{color:var(--data)} .toggle.data .dot{background:var(--data)}
+  .toggle.vault.on{color:var(--vault)} .toggle.vault .dot{background:var(--vault)}
+  .btn{font:inherit;font-size:12.5px;color:var(--txt);background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:6px 12px;cursor:pointer}
+  .btn:hover{border-color:var(--rest)}
+  .btn.saga{margin-left:auto;border-color:var(--kafka);color:var(--kafka)}
+  .hint{margin-top:9px;color:var(--muted);font-size:13px;min-height:20px}
+  .hint b{color:var(--txt)} .hint .st{color:var(--kafka);font-weight:700}
+
+  main{max-width:1320px;margin:0 auto;padding:18px}
+  .scroller{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);
+    background:radial-gradient(1200px 500px at 50% -10%,#121722,#0d1117)}
+  .canvas{position:relative;width:1240px;height:880px;margin:0 auto}
+  svg.edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:1}
+
+  .node{position:absolute;z-index:2;width:158px;background:var(--panel2);border:1px solid var(--line);
+    border-top:3px solid var(--rest);border-radius:11px;padding:8px 10px;cursor:pointer;
+    transition:transform .12s,box-shadow .12s,border-color .12s}
+  .node:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:#fff}
+  .node .nm{font-weight:650;font-size:13px;display:flex;align-items:center;gap:6px;justify-content:space-between}
+  .node .nm .port{font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--faint);font-weight:500}
+  .node .tag{font-size:10px;color:var(--muted);margin-top:2px}
+  .node.svc{border-top-color:var(--rest)}
+  .node.gw{border-top-color:var(--good);width:200px}
+  .node.infra{border-top-color:var(--data);width:120px;background:#13202a}
+  .node.bus{border-top-color:var(--kafka);width:560px;background:#1d1a12;text-align:center}
+  .node.ext{border-top-color:var(--faint);width:130px;background:#181b20;border-style:dashed}
+  .node.client{border-top-color:#e6edf3;width:140px}
+  .node.dim{opacity:.22;filter:saturate(.4)}
+  .node.hot{border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.22),var(--shadow);z-index:5}
+  .node .seq{position:absolute;top:-10px;left:-10px;width:21px;height:21px;border-radius:50%;
+    background:var(--kafka);color:#1a1206;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg)}
+
+  .packet{position:absolute;z-index:6;width:13px;height:13px;border-radius:50%;
+    background:radial-gradient(circle at 35% 35%,#fff,var(--kafka));box-shadow:0 0 13px 3px rgba(240,163,48,.85);opacity:0;pointer-events:none}
+
+  /* saga state strip */
+  .saga{margin:16px 0 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .ss{font-size:12px;border:1px solid var(--line);border-radius:8px;padding:5px 11px;color:var(--muted);background:var(--panel)}
+  .ss.on{border-color:var(--kafka);color:var(--kafka);background:#1d1a12;font-weight:700}
+  .ss.bad{border-color:var(--bad);color:var(--bad)}
+  .arrow{color:var(--faint)}
+
+  /* drawer */
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);opacity:0;pointer-events:none;transition:.2s;z-index:50}
+  .scrim.on{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;top:0;right:0;height:100%;width:min(470px,93vw);background:var(--panel);
+    border-left:1px solid var(--line);box-shadow:var(--shadow);z-index:60;transform:translateX(102%);
+    transition:transform .22s ease;overflow-y:auto;padding:22px}
+  .drawer.on{transform:none}
+  .closeX{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:23px;cursor:pointer}
+  .drawer h2{margin:.1em 0;font-size:19px;display:flex;align-items:center;gap:9px}
+  .drawer .role{color:var(--muted);font-size:13.5px;margin:4px 0 12px}
+  .drawer h3{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin:16px 0 6px;
+    display:flex;align-items:center;gap:7px}
+  .drawer h3 .pin{width:9px;height:9px;border-radius:2px;display:inline-block}
+  .drawer ul{margin:.2em 0;padding-left:18px;font-size:13.3px}
+  .drawer li{margin:2px 0}
+  .drawer .ep{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+  .meth{font-weight:700;font-size:10px;padding:1px 5px;border-radius:4px;margin-right:5px;color:#0d1117}
+  .m-get{background:#3fb950}.m-post{background:#58a6ff}.m-put{background:#d29922}.m-patch{background:#bc8cff}.m-del{background:#f85149}.m-grpc{background:var(--grpc)}
+  .pill2{display:inline-block;font-size:11px;border:1px solid var(--line);border-radius:6px;padding:1px 7px;margin:2px 4px 2px 0;color:var(--muted);background:var(--panel2)}
+
+  /* legend + topic table */
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin:14px 2px;font-size:12.5px;color:var(--muted)}
+  .legend .lg{display:flex;align-items:center;gap:7px}
+  .legend .ln{width:26px;height:0;border-top:3px solid}
+  section.tbl{margin-top:30px}
+  section.tbl h2{font-size:19px;margin:0 0 4px}
+  section.tbl p.lead{color:var(--muted);font-size:14px;margin:0 0 14px;max-width:820px}
+  table{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--panel2);color:var(--muted);font-size:11px;letter-spacing:.05em;text-transform:uppercase}
+  td code{font-size:11.5px}
+  tr:last-child td{border-bottom:none}
+  .who{color:var(--kafka);font-weight:600}
+  footer{color:var(--faint);font-size:12px;border-top:1px solid var(--line);margin-top:34px;padding:18px 0 40px;max-width:1320px;margin-inline:auto}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>microecom — Service Architecture <span class="sub">· the application layer: REST · gRPC · Kafka events · data · secrets</span></h1>
+  <div class="bar">
+    <span style="font-size:12px;color:var(--faint)">show layers:</span>
+    <div class="toggle rest on" data-layer="rest"><span class="dot"></span>REST / HTTP</div>
+    <div class="toggle grpc on" data-layer="grpc"><span class="dot"></span>gRPC</div>
+    <div class="toggle kafka" data-layer="kafka"><span class="dot"></span>Kafka events</div>
+    <div class="toggle data" data-layer="data"><span class="dot"></span>Data stores</div>
+    <div class="toggle vault" data-layer="vault"><span class="dot"></span>Vault @ boot</div>
+    <button class="btn saga" id="sagaBtn">▶ Walk the Order Saga</button>
+  </div>
+  <div class="hint" id="hint">Toggle layers above. Click any box for full detail. The backend is mostly <b>async</b> — turn on “Kafka events” to see the real backbone.</div>
+</header>
+
+<main>
+  <div class="scroller">
+    <div class="canvas" id="canvas">
+      <svg class="edges" id="edges"><defs>
+        <marker id="ar-rest" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--rest)"/></marker>
+        <marker id="ar-grpc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--grpc)"/></marker>
+        <marker id="ar-kafka" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--kafka)"/></marker>
+        <marker id="ar-data" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--data)"/></marker>
+        <marker id="ar-vault" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--vault)"/></marker>
+      </defs></svg>
+      <div class="packet" id="packet"></div>
+    </div>
+  </div>
+
+  <div class="saga" id="sagaStrip"></div>
+
+  <div class="legend">
+    <span class="lg"><span class="ln" style="border-color:var(--rest)"></span>REST/HTTP (sync)</span>
+    <span class="lg"><span class="ln" style="border-color:var(--grpc);border-top-style:dashed"></span>gRPC (sync, internal)</span>
+    <span class="lg"><span class="ln" style="border-color:var(--kafka);border-top-style:dotted"></span>Kafka event (async)</span>
+    <span class="lg"><span class="ln" style="border-color:var(--data)"></span>data store</span>
+    <span class="lg"><span class="ln" style="border-color:var(--vault)"></span>Vault config @ boot</span>
+  </div>
+
+  <section class="tbl">
+    <h2>Kafka topic reference</h2>
+    <p class="lead">The event backbone. Producers write a domain event to a Mongo <b>outbox</b> (collection <code>event</code>); Debezium <code>MongoSourceConnector</code> (Kafka Connect) encodes it as <b>Avro</b> via <code>AvroConverter</code> + <b>Confluent Schema Registry</b> (<code>schema-registry.infra.svc:8081</code>, required) with <code>output.format.value=schema</code> and publishes to the CDC topic; the <b>orchestrator</b> deserializes with <code>KafkaAvroDeserializer</code> (<code>@Payload GenericRecord</code>, reads <code>fullDocument</code>), drives the saga, and fans out Avro commands (serialized with <code>KafkaAvroSerializer</code>) to the per-service topics below. Schema Registry backs all inter-service Kafka events and the CDC connector — it must be running before the connector is registered or the orchestrator starts.</p>
+    <table id="topicTable"><thead><tr><th>Topic</th><th>Producer</th><th>Consumer</th><th>Carries / does</th></tr></thead><tbody></tbody></table>
+  </section>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer"><button class="closeX" id="closeX">×</button><div id="dbody"></div></aside>
+
+<footer>Application-layer companion to <code>docs/k8s-architecture.html</code>. Wiring verified from source: <code>@FeignClient</code>, <code>@KafkaListener</code>/<code>KafkaTemplate</code>, the <code>inventory_service.proto</code> gRPC contract, and <code>SagaOrchestrationServiceImpl</code>. Open directly in any browser.</footer>
+
+<script>
+const $=s=>document.querySelector(s);
+/* ───── nodes (fixed layout, px in 1240×880 canvas) ───── */
+const NODES=[
+  {id:"browser",cls:"client",x:24,y:24,nm:"Browser",port:"SPA + XHR",tag:"your machine"},
+  {id:"frontend",cls:"client",x:24,y:120,nm:"frontend",port:":80",tag:"Vue 3 SPA"},
+  {id:"gateway",cls:"gw",x:340,y:40,nm:"gateway",port:":6868",tag:"Spring Cloud Gateway · JWT + RBAC"},
+  {id:"bff",cls:"svc",x:610,y:128,nm:"bff-service",port:":8087",tag:"aggregator (BFF)"},
+  {id:"paypal",cls:"ext",x:1080,y:128,nm:"PayPal",port:"sandbox",tag:"external REST"},
+  // services
+  {id:"auth",cls:"svc",x:24,y:262,nm:"authorization-server",port:":6666",tag:"identity / JWT / OTP"},
+  {id:"product",cls:"svc",x:232,y:262,nm:"product-service",port:":7777",tag:"catalog (Mongo)"},
+  {id:"inventory",cls:"svc",x:440,y:262,nm:"inventory-service",port:":6969 · gRPC 9090",tag:"stock"},
+  {id:"order",cls:"svc",x:660,y:262,nm:"order-service",port:":9696",tag:"cart + orders"},
+  {id:"payment",cls:"svc",x:880,y:262,nm:"payment-service",port:":8484",tag:"PayPal payments"},
+  {id:"orchestrator",cls:"svc",x:880,y:388,nm:"orchestrator-service",port:":9999",tag:"Saga state machine"},
+  // event backbone
+  {id:"connect",cls:"infra",x:24,y:520,nm:"Kafka Connect",port:"Debezium",tag:"Mongo CDC source"},
+  {id:"schema_registry",cls:"infra",x:24,y:620,nm:"Schema Registry",port:"8081",tag:"Confluent · Avro schemas"},
+  {id:"kafka",cls:"bus",x:300,y:520,nm:"Kafka bus",port:"KRaft · Avro + Schema Registry",tag:""},
+  // data stores
+  {id:"mysql",cls:"infra",x:120,y:680,nm:"MySQL",port:"master/slave",tag:"3306/3307"},
+  {id:"mongodb",cls:"infra",x:320,y:680,nm:"MongoDB",port:"rs0",tag:"catalog + outbox + api_role"},
+  {id:"redis",cls:"infra",x:520,y:680,nm:"Redis",port:"6379",tag:"OTP · cache · locks"},
+  {id:"minio",cls:"infra",x:720,y:680,nm:"MinIO (S3)",port:"9000",tag:"images / avatars"},
+  {id:"vault",cls:"infra",x:1000,y:680,nm:"Vault",port:"8200",tag:"all config @ boot"},
+];
+const byId=Object.fromEntries(NODES.map(n=>[n.id,n]));
+
+/* ───── edges by protocol ───── */
+const EDGES=[
+  // REST / HTTP
+  {f:"browser",t:"frontend",p:"rest",l:"loads SPA"},
+  {f:"frontend",t:"gateway",p:"rest",l:"all XHR → api.*"},
+  {f:"gateway",t:"auth",p:"rest",l:"route + JWKS"},
+  {f:"gateway",t:"product",p:"rest",l:"route"},
+  {f:"gateway",t:"inventory",p:"rest",l:"route"},
+  {f:"gateway",t:"order",p:"rest",l:"route"},
+  {f:"gateway",t:"payment",p:"rest",l:"route"},
+  {f:"gateway",t:"bff",p:"rest",l:"route"},
+  {f:"bff",t:"product",p:"rest",l:"Feign"},
+  {f:"bff",t:"order",p:"rest",l:"Feign"},
+  {f:"bff",t:"payment",p:"rest",l:"Feign"},
+  {f:"payment",t:"paypal",p:"rest",l:"create/capture"},
+  // gRPC
+  {f:"order",t:"inventory",p:"grpc",l:"stock check (CB)"},
+  {f:"bff",t:"inventory",p:"grpc",l:"enrich detail"},
+  // Kafka (outbox → CDC → orchestrator, then fan-out)
+  {f:"order",t:"connect",p:"kafka",l:"outbox"},
+  {f:"payment",t:"connect",p:"kafka",l:"outbox"},
+  {f:"inventory",t:"connect",p:"kafka",l:"outbox"},
+  {f:"connect",t:"kafka",p:"kafka",l:"CDC topic"},
+  {f:"kafka",t:"orchestrator",p:"kafka",l:"consume CDC"},
+  {f:"orchestrator",t:"kafka",p:"kafka",l:"fan-out commands"},
+  {f:"kafka",t:"order",p:"kafka",l:"success/failed/canceled"},
+  {f:"kafka",t:"inventory",p:"kafka",l:"deduct + product.update"},
+  {f:"kafka",t:"product",p:"kafka",l:"update-quantity"},
+  // data
+  {f:"auth",t:"mysql",p:"data"},{f:"auth",t:"redis",p:"data"},{f:"auth",t:"minio",p:"data"},
+  {f:"product",t:"mongodb",p:"data"},{f:"product",t:"minio",p:"data"},
+  {f:"inventory",t:"mysql",p:"data"},{f:"inventory",t:"mongodb",p:"data"},{f:"inventory",t:"redis",p:"data"},
+  {f:"order",t:"mysql",p:"data"},{f:"order",t:"mongodb",p:"data"},{f:"order",t:"redis",p:"data"},
+  {f:"payment",t:"mysql",p:"data"},{f:"payment",t:"mongodb",p:"data"},{f:"payment",t:"redis",p:"data"},
+  {f:"orchestrator",t:"mysql",p:"data"},{f:"orchestrator",t:"redis",p:"data"},
+  {f:"gateway",t:"mongodb",p:"data"},
+  {f:"connect",t:"mongodb",p:"data"},
+  {f:"connect",t:"schema_registry",p:"kafka",l:"AvroConverter"},
+  {f:"orchestrator",t:"schema_registry",p:"kafka",l:"KafkaAvro(De)Serializer"},
+  // vault @ boot
+  ...["gateway","auth","product","inventory","order","payment","orchestrator","bff"].map(s=>({f:s,t:"vault",p:"vault"})),
+];
+
+/* ───── per-service detail ───── */
+const DETAIL={
+  gateway:{role:"Single ingress. Validates RS256 JWTs (JWK fetched & cached from auth-server), enforces per-route RBAC, then proxies by path prefix. No StripPrefix — downstreams own their context-path.",
+    ep:[["route","/authorization-server/** · /product-service/** · /inventory-service/**"],["route","/order-service/** · /payment-service/** · /bff-service/**"],["GET","/.well-known/jwks.json (fetched from auth)"]],
+    stores:["MongoDB: <code>api_role</code> collection → per-route required roles (AuthorizationFilter)"],
+    sync:["WebClient → authorization-server JWKS"],evt:[],vault:["secret/ecommerce","secret/gateway"],
+    note:"In k8s, Eureka is OFF. The gateway runs the <code>k8s</code> Spring profile: <code>spring-cloud-starter-kubernetes-client-loadbalancer</code> enables Spring Cloud Kubernetes discovery (backed by k8s Services/Endpoints via a dedicated ServiceAccount + RBAC). The <code>@LoadBalanced</code> JWKS fetch resolves <code>authorization-server</code> through this discovery client. Direct-DNS Vault route overrides (<code>http://&lt;svc&gt;.apps.svc.cluster.local:&lt;port&gt;</code>) are kept as a belt-and-suspenders fallback — a plain <code>http://</code> route URI bypasses the LB entirely."},
+  auth:{role:"Identity provider: register/activate (OTP), login, JWT issuance + refresh-token rotation, password reset, profile & avatar.",
+    ep:[["POST","/v1/auth:register · :activate · :login"],["POST","/v1/auth:refresh-token · :forgot-password"],["GET","/v1/users/self"],["POST","/v1/users/self/avatar/presign"],["PATCH","/v1/admin:update-role"]],
+    stores:["MySQL master/slave: <code>account, user, role, account_role</code>","Redis: OTP codes (<code>&lt;email&gt;_active_account</code>) + refresh tokens","MinIO (core-s3): user avatars"],
+    sync:["SMTP mail (core-email) → OTP/activation"],evt:[],vault:["secret/ecommerce","secret/authorization-server","secret/core-s3"]},
+  product:{role:"Product catalog CRUD in MongoDB; presigned image upload; consumes quantity-update events.",
+    ep:[["POST","/v1/products"],["GET","/v1/products · /v1/products/{id}"],["PUT","/v1/products/{id}"],["DELETE","/v1/products/{id}"],["POST","/v1/products/{id}/image/presign"]],
+    stores:["MongoDB: <code>product, event, product_quantity_history</code>","MinIO (core-s3): product images"],
+    sync:[],evt:["SUB ← product-service.product.update-quantity → save ProductQuantityHistory"],
+    vault:["secret/ecommerce","secret/product-service","secret/core-s3"]},
+  inventory:{role:"Stock levels. Serves a gRPC bulk-quantity query; consumes events to mirror products and deduct stock on payment success. Redisson locks guard reservations.",
+    ep:[["PATCH","/v1/inventories/{id}"],["GET","/v1/inventories"],["grpc","ListInventoryProducts(ids[]) → InventoryProduct[]  (:9090)"]],
+    stores:["MySQL master/slave: <code>inventory_product, product_quantity_history, processed_payment_events</code>","MongoDB: <code>event</code> outbox","Redis + Redisson: <code>lock:productQueue:&lt;id&gt;</code>"],
+    sync:["gRPC SERVER (called by order-service + bff-service)"],
+    evt:["SUB ← inventory-service.product.update → save()","SUB ← inventory-service.inventory-product.update-quantity → handleSuccessPayment()"],
+    vault:["secret/ecommerce","secret/inventory-service"]},
+  order:{role:"Shopping cart + order lifecycle. Validates stock via gRPC, caches pending orders in Redis (TTL sweep), reacts to saga outcome events.",
+    ep:[["POST","/v1/orders"],["GET","/v1/orders · /v1/orders/{orderId}"],["PATCH","/v1/orders/{orderId}:cancel"],["POST","/v1/shopping-carts:add-item"],["GET","/v1/shopping-carts"],["PATCH/DELETE","/v1/shopping-carts:update-item / :delete-item"]],
+    stores:["MySQL master/slave: <code>order, order_item, shopping_cart, shopping_cart_item</code>","MongoDB: <code>event</code> outbox + <code>processed_payment_events</code>","Redis + Redisson: pending-order ZSET, locks; ExpiredOrderCleanupJob"],
+    sync:["gRPC CLIENT → inventory-service (Resilience4j circuit breaker)"],
+    evt:["PUB → writes Order.Created to outbox (starts saga)","SUB ← order.success-status → handleSuccessOrder()","SUB ← order.failed-status → handleFailedOrder()","SUB ← order.canceled-status → handleCanceledOrder()"],
+    vault:["secret/ecommerce","secret/order-service"]},
+  payment:{role:"PayPal payment lifecycle: create order, capture on return, handle IPN, emit payment outcome events to the outbox.",
+    ep:[["POST","/v1/payments"],["GET","/v1/payments/by-order/{orderId}"],["GET","/v1/paypal:success"],["GET","/v1/paypal:cancel"]],
+    stores:["MySQL: <code>payment</code>","MongoDB: <code>event</code> outbox","Redis (core-order-cache)"],
+    sync:["RestTemplate → PayPal sandbox REST API (core-paypal)"],
+    evt:["PUB → writes Payment.Success / Failed / Canceled to outbox"],
+    vault:["secret/ecommerce","secret/payment-service (PayPal creds)"]},
+  orchestrator:{role:"Saga orchestrator. Pure event-driven (no HTTP). Consumes the Mongo CDC stream (Avro via <code>KafkaAvroDeserializer</code>, <code>@Payload GenericRecord</code>), drives the saga state machine, fans out Avro commands (<code>KafkaAvroSerializer</code>), compensates on failure, times out after 30 min. Requires schema-registry (<code>schema-registry.infra.svc:8081</code>) for both deserialization of the CDC topic and serialization of all outbound command/status topics.",
+    ep:[["—","no REST controllers — Kafka only"]],
+    stores:["MySQL: <code>saga_instance</code> (state machine persistence)","Redis/Redisson: SagaTimeoutScheduler lock","consumes MongoDB CDC via Kafka"],
+    sync:[],
+    evt:["SUB ← ecommerce_db.ecommerce_inventory.event (Avro CDC, KafkaAvroDeserializer) → MongoEventListener reads fullDocument","PUB → order.{success,failed,canceled}-status (Avro, KafkaAvroSerializer)","PUB → inventory-product.update-quantity","PUB → product.update-quantity · inventory-service.product.update"],
+    vault:["secret/ecommerce","secret/orchestrator-service"],
+    note:"States: STARTED → AWAITING_PAYMENT → CONFIRMING → COMPLETED · failure: COMPENSATING → COMPENSATED / FAILED. 3 compensation retries. CDC deserialization failure (Unknown magic byte) means the connector is still using JsonConverter — flip to AvroConverter + restart schema-registry."},
+  bff:{role:"Backend-for-Frontend. Stateless aggregator: product+inventory and order+payment into one response; proxies cart ops. No database.",
+    ep:[["GET","/v1/products/{productId}  (product + inventory via gRPC)"],["GET","/v1/orders/{orderId}  (order + payment)"],["GET","/v1/cart"],["POST/PATCH/DELETE","/v1/cart:add-item / :update-item / :delete-item"]],
+    stores:["none — fully stateless"],
+    sync:["Feign → product / order / payment","gRPC CLIENT → inventory-service"],evt:[],
+    vault:["secret/ecommerce","secret/bff-service"]},
+  frontend:{role:"Vue 3 + Vite + TypeScript SPA. Pinia stores, Vue Router. Talks to the backend only through the gateway (api.microecom.local).",
+    ep:[["—","static SPA, no server endpoints"]],stores:["none"],sync:["all API calls → gateway"],evt:[],vault:[]},
+  // infra
+  browser:{role:"Your machine. /etc/hosts maps *.microecom.local → 127.0.0.1.",ep:[],stores:[],sync:[],evt:[],vault:[]},
+  paypal:{role:"External PayPal sandbox REST API. payment-service creates & captures orders here; creds live in Vault secret/payment-service.",ep:[],stores:[],sync:[],evt:[],vault:[]},
+  kafka:{role:"KRaft Kafka — the async backbone. Messages are Avro, schemas in the Confluent Schema Registry. One CDC topic in, seven command/status topics out.",ep:[],stores:[],sync:[],evt:[],vault:[]},
+  schema_registry:{role:"Confluent Schema Registry deployed in the <code>infra</code> namespace (<code>schema-registry.infra.svc.cluster.local:8081</code>). Mandatory for all Avro (de)serialization in this cluster: backs the Debezium AvroConverter (CDC connector), the orchestrator KafkaAvroDeserializer (inbound CDC) and KafkaAvroSerializer (outbound saga commands/status topics), and all other inter-service Kafka events. Must be running before the Kafka Connect connector is registered and before the orchestrator starts. A missing or stopped schema-registry causes <code>RecordDeserializationException: Unknown magic byte</code> on the CDC topic, stalling the saga permanently.",ep:[],stores:[],sync:[],evt:[],vault:[]},
+  connect:{role:"Kafka Connect running the Debezium <code>MongoSourceConnector</code>. Watches the <code>ecommerce_inventory.event</code> outbox collection and streams changes to <code>ecommerce_db.ecommerce_inventory.event</code> using <b>Avro encoding</b>: <code>value.converter=io.confluent.connect.avro.AvroConverter</code>, <code>value.converter.schema.registry.url=http://schema-registry.infra.svc.cluster.local:8081</code>, and <code>output.format.value=schema</code> (required so the connector emits a structured record with a <code>fullDocument</code> field instead of a raw JSON string). Without <code>output.format.value=schema</code> the orchestrator's <code>genericRecord.get(\"fullDocument\")</code> returns null. Schema registry is mandatory — omitting it leaves the consumer stuck on a poison record at offset 0.",ep:[],stores:[],sync:[],evt:[],vault:[]},
+  mysql:{role:"MySQL master/slave. Writes → master (3306), reads → replica. JPA services split repository/master & repository/slave packages.",ep:[],stores:[],sync:[],evt:[],vault:[]},
+  mongodb:{role:"MongoDB replica set rs0. Holds the product catalog, the gateway's api_role rules, and every service's event outbox (the CDC source).",ep:[],stores:[],sync:[],evt:[],vault:[]},
+  redis:{role:"Redis (+ Redisson). OTP codes & refresh tokens (auth), pending-order cache (order), and distributed locks for stock reservation.",ep:[],stores:[],sync:[],evt:[],vault:[]},
+  minio:{role:"S3-compatible object store. Product images & user avatars via presigned URLs (core-s3) — the JVM never touches the bytes.",ep:[],stores:[],sync:[],evt:[],vault:[]},
+  vault:{role:"HashiCorp Vault. Every service reads secret/ecommerce (common) + secret/<service> at boot via Spring Cloud Vault. Sealed Vault = services crashloop.",ep:[],stores:[],sync:[],evt:[],vault:[]},
+};
+
+/* topic table */
+const TOPICS=[
+  ["ecommerce_db.ecommerce_inventory.event","CDC (Debezium MongoSourceConnector ← Mongo outbox, Avro + schema-registry, output.format.value=schema)","orchestrator","MongoEventListener (KafkaAvroDeserializer, GenericRecord): Order.Created → startSaga; Payment.* → handlePaymentReply"],
+  ["order-service.order.success-status","orchestrator (KafkaAvroSerializer)","order-service","Avro: mark order completed (handleSuccessOrder) → order reaches COMPLETED"],
+  ["order-service.order.failed-status","orchestrator (KafkaAvroSerializer)","order-service","Avro: mark order failed (compensation)"],
+  ["order-service.order.canceled-status","orchestrator (KafkaAvroSerializer)","order-service","Avro: mark order canceled"],
+  ["inventory-service.inventory-product.update-quantity","orchestrator","inventory-service","deduct reserved stock on success"],
+  ["inventory-service.product.update","orchestrator","inventory-service","mirror product create/update into inventory"],
+  ["product-service.product.update-quantity","orchestrator","product-service","append ProductQuantityHistory"],
+];
+
+/* ───── render nodes ───── */
+const canvas=$("#canvas");
+NODES.forEach(n=>{
+  const el=document.createElement("div");
+  el.className="node "+n.cls; el.id="n-"+n.id; el.dataset.id=n.id;
+  el.style.left=n.x+"px"; el.style.top=n.y+"px";
+  el.innerHTML=`<div class="nm"><span>${n.nm}</span><span class="port">${n.port||""}</span></div>`+(n.tag?`<div class="tag">${n.tag}</div>`:"");
+  canvas.appendChild(el);
+});
+
+/* topic table */
+$("#topicTable tbody").innerHTML=TOPICS.map(t=>
+  `<tr><td><code>${t[0]}</code></td><td class="who">${t[1]}</td><td class="who">${t[2]}</td><td>${t[3]}</td></tr>`).join("");
+
+/* ───── edges ───── */
+const svg=$("#edges");
+const layers={rest:true,grpc:true,kafka:false,data:false,vault:false};
+function centerOf(id){const el=$("#n-"+id);const r=el.getBoundingClientRect(),c=canvas.getBoundingClientRect();
+  return {x:r.left-c.left+r.width/2,y:r.top-c.top+r.height/2,w:r.width,h:r.height};}
+function anchor(a,b){ // exit/enter on nearest edge of card
+  const dx=b.x-a.x,dy=b.y-a.y;
+  const out={x:a.x,y:a.y},inn={x:b.x,y:b.y};
+  if(Math.abs(dx)>Math.abs(dy)){out.x=a.x+Math.sign(dx)*a.w/2;inn.x=b.x-Math.sign(dx)*b.w/2;}
+  else{out.y=a.y+Math.sign(dy)*a.h/2;inn.y=b.y-Math.sign(dy)*b.h/2;}
+  return [out,inn];
+}
+function drawEdges(){
+  [...svg.querySelectorAll("path.e")].forEach(p=>p.remove());
+  EDGES.filter(e=>layers[e.p]).forEach(e=>{
+    const a=centerOf(e.f),b=centerOf(e.t);const [o,i]=anchor(a,b);
+    const mx=(o.x+i.x)/2,my=(o.y+i.y)/2;
+    const d=`M ${o.x} ${o.y} C ${mx} ${o.y}, ${mx} ${i.y}, ${i.x} ${i.y}`;
+    const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("d",d);path.setAttribute("class","e e-"+e.p);
+    path.setAttribute("fill","none");path.setAttribute("stroke",`var(--${e.p})`);
+    path.setAttribute("stroke-width","2");path.setAttribute("opacity",".75");
+    path.setAttribute("marker-end",`url(#ar-${e.p})`);
+    if(e.p==="grpc")path.setAttribute("stroke-dasharray","7 4");
+    if(e.p==="kafka")path.setAttribute("stroke-dasharray","2 4");
+    if(e.p==="vault"){path.setAttribute("stroke-dasharray","1 5");path.setAttribute("opacity",".4");}
+    if(e.p==="data")path.setAttribute("opacity",".5");
+    path.dataset.f=e.f;path.dataset.t=e.t;
+    svg.appendChild(path);
+  });
+}
+drawEdges();
+window.addEventListener("resize",drawEdges);
+
+/* layer toggles */
+document.querySelectorAll(".toggle").forEach(t=>t.addEventListener("click",()=>{
+  const k=t.dataset.layer;layers[k]=!layers[k];t.classList.toggle("on",layers[k]);drawEdges();
+}));
+
+/* ───── drawer ───── */
+function meth(m){const k=m.toLowerCase().replace(/[^a-z]/g,"").slice(0,4);
+  const map={get:"m-get",post:"m-post",put:"m-put",patc:"m-patch",dele:"m-del",grpc:"m-grpc",rout:"m-get"};
+  return `<span class="meth ${map[k]||'m-get'}">${m}</span>`;}
+function section(title,color,items,render){
+  if(!items||!items.length)return"";
+  return `<h3><span class="pin" style="background:${color}"></span>${title}</h3>`+render(items);
+}
+function openDrawer(id){
+  const n=byId[id],d=DETAIL[id]||{};
+  $("#dbody").innerHTML=`
+    <h2>${n.nm}</h2>
+    <div class="role">${d.role||n.tag||""}</div>
+    ${d.note?`<div class="role" style="color:var(--kafka)">▸ ${d.note}</div>`:""}
+    ${section("Endpoints","var(--rest)",d.ep,it=>`<ul style="list-style:none;padding-left:0">`+it.map(e=>`<li class="ep">${meth(e[0])}${e[1]}</li>`).join("")+`</ul>`)}
+    ${section("Sync calls (REST/gRPC)","var(--grpc)",d.sync,it=>`<ul>`+it.map(x=>`<li>${x}</li>`).join("")+`</ul>`)}
+    ${section("Kafka events","var(--kafka)",d.evt,it=>`<ul>`+it.map(x=>`<li>${x}</li>`).join("")+`</ul>`)}
+    ${section("Data stores","var(--data)",d.stores,it=>`<ul>`+it.map(x=>`<li>${x}</li>`).join("")+`</ul>`)}
+    ${section("Vault paths","var(--vault)",d.vault,it=>it.map(v=>`<span class="pill2">${v}</span>`).join(""))}
+  `;
+  $("#scrim").classList.add("on");$("#drawer").classList.add("on");
+}
+function closeDrawer(){$("#scrim").classList.remove("on");$("#drawer").classList.remove("on");}
+$("#closeX").onclick=closeDrawer;$("#scrim").onclick=closeDrawer;
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeDrawer();});
+canvas.addEventListener("click",e=>{const c=e.target.closest(".node");if(c)openDrawer(c.dataset.id);});
+
+/* ───── saga walkthrough ───── */
+const STATES=["STARTED","AWAITING_PAYMENT","CONFIRMING","COMPLETED"];
+$("#sagaStrip").innerHTML = STATES.map((s,i)=>
+  `<span class="ss" data-st="${s}">${s}</span>${i<STATES.length-1?'<span class="arrow">→</span>':''}`).join("")
+  + `<span class="arrow" style="margin:0 6px">·  on failure:</span>`
+  + ["COMPENSATING","COMPENSATED","FAILED"].map((s,i)=>
+      `<span class="ss bad" data-st="${s}">${s}</span>${i<2?'<span class="arrow">→</span>':''}`).join("");
+
+const SAGA=[
+  {n:"order",st:null,txt:"order-service writes the Order + an <b>Order.Created</b> event to its Mongo <b>outbox</b>"},
+  {n:"connect",st:null,txt:"Debezium <code>MongoSourceConnector</code> captures the outbox insert and encodes it as <b>Avro</b> (<code>AvroConverter</code> + schema-registry, <code>output.format.value=schema</code>)"},
+  {n:"kafka",st:null,txt:"…and publishes the Avro record to <code>ecommerce_db.ecommerce_inventory.event</code>"},
+  {n:"orchestrator",st:"AWAITING_PAYMENT",txt:"orchestrator <code>MongoEventListener</code> deserializes with <code>KafkaAvroDeserializer</code> (<code>@Payload GenericRecord</code>, reads <code>fullDocument</code>): <b>Order.Created → startSaga()</b>, persists a SagaInstance"},
+  {n:"payment",st:"AWAITING_PAYMENT",txt:"user pays (PayPal); payment-service writes <b>Payment.Success</b> to its outbox"},
+  {n:"kafka",st:"AWAITING_PAYMENT",txt:"the Payment.Success CDC event flows back through Kafka as an Avro record (same AvroConverter + schema-registry path)"},
+  {n:"orchestrator",st:"CONFIRMING",txt:"<code>MongoEventListener</code> (<code>KafkaAvroDeserializer</code>) reads <code>fullDocument</code>: <b>handlePaymentReply → handleSuccess()</b>: state → CONFIRMING"},
+  {n:"order",st:"CONFIRMING",txt:"fan-out: <code>order.success-status</code> (Avro, <code>KafkaAvroSerializer</code>) → order-service consumes → order marked COMPLETED"},
+  {n:"inventory",st:"COMPLETED",txt:"fan-out: <code>inventory-product.update-quantity</code> → stock deducted · saga <b>COMPLETED</b>"},
+];
+let sagaRun=false;
+function setState(s){document.querySelectorAll(".ss").forEach(e=>e.classList.toggle("on",e.dataset.st===s));}
+function clearHot(){NODES.forEach(n=>{const el=$("#n-"+n.id);el.classList.remove("hot","dim");const q=el.querySelector(".seq");if(q)q.remove();});}
+async function walkSaga(){
+  if(sagaRun)return;sagaRun=true;
+  // force kafka layer on
+  layers.kafka=true;document.querySelector('.toggle.kafka').classList.add("on");drawEdges();
+  clearHot();setState("STARTED");
+  const used=[...new Set(SAGA.map(s=>s.n))];
+  NODES.forEach(n=>{if(!used.includes(n.id)&&!["kafka","connect"].includes(n.id))$("#n-"+n.id).classList.add("dim");});
+  for(let i=0;i<SAGA.length;i++){
+    const step=SAGA[i],el=$("#n-"+step.n);
+    el.classList.add("hot");
+    if(!el.querySelector(".seq")){const s=document.createElement("div");s.className="seq";s.textContent=i+1;el.appendChild(s);}
+    if(step.st)setState(step.st);
+    $("#hint").innerHTML=`<span class="st">Saga step ${i+1}/${SAGA.length}:</span> ${step.txt}`;
+    if(i>0)await movePacket(SAGA[i-1].n,step.n);
+    await sleep(620);
+    el.classList.remove("hot");
+  }
+  $("#hint").innerHTML+=`  &nbsp;·&nbsp; <span style="color:var(--bad)">Compensation:</span> Payment.Failed/Canceled → <code>compensate()</code> → order.failed/canceled-status, retry ×3 → COMPENSATED, else FAILED.`;
+  sagaRun=false;
+}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+function movePacket(fromId,toId){
+  return new Promise(res=>{
+    const a=centerOf(fromId),b=centerOf(toId),[o,i]=anchor(a,b);
+    const mx=(o.x+i.x)/2,p=$("#packet");p.style.opacity=1;
+    const dur=560,start=performance.now();
+    function f(now){let t=Math.min(1,(now-start)/dur);
+      const x=cube(t,o.x,mx,mx,i.x),y=cube(t,o.y,o.y,i.y,i.y);
+      p.style.left=(x-6.5)+"px";p.style.top=(y-6.5)+"px";
+      if(t<1)requestAnimationFrame(f);else{p.style.opacity=0;res();}}
+    requestAnimationFrame(f);
+  });
+}
+function cube(t,p0,p1,p2,p3){const u=1-t;return u*u*u*p0+3*u*u*t*p1+3*u*t*t*p2+t*t*t*p3;}
+$("#sagaBtn").onclick=()=>{clearHot();setState(null);walkSaga();};
+</script>
+</body>
+</html>

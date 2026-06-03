@@ -5,6 +5,117 @@ usage/command reference and `../CLAUDE.md` for project-wide conventions.
 
 ## Known scars (rough edges & hard-won lessons)
 
+### SCAR (2026-06-03): gateway `lb://` + the `@LoadBalanced` JWKS fetch need real discovery — Spring Cloud Kubernetes, not Eureka
+
+**Symptom:** every authenticated route 500s with
+`{"error_code":"unexpected_error","message":"Unexpected authentication error"}`
+— **including `GET /product-service/v1/products`, which is `PERMIT_ALL`**: a
+logged-in browser attaches its `Bearer` token to every request, so the gateway
+tries to validate it. Gateway log: `RetryExhaustedException`, and underneath
+`RoundRobinLoadBalancer: No servers available for service: authorization-server`.
+
+**Root cause:** the gateway validates JWTs by fetching the JWKS through a
+`@LoadBalanced` `WebClient` (`http://authorization-server/...`). `@LoadBalanced`
+resolves the host through Spring Cloud LoadBalancer → a discovery client. Eureka
+isn't deployed in k8s, so the registry is empty → 503 → `RetryExhausted` → the
+JWT filter's catch-all 500. The direct-DNS `gateway.routes.<svc>.uri` overrides
+work because a **plain `http://` route URI bypasses the LB** — but a
+`@LoadBalanced` call (the JWKS fetch) **always** goes through discovery and
+cannot bypass it.
+
+**Fix:** give the gateway a real in-cluster discovery client. Added
+`spring-cloud-starter-kubernetes-client-loadbalancer` + a `k8s` Spring profile
+(`gateway/.../application-k8s.yml`): `eureka.client.enabled=false`,
+`spring.cloud.kubernetes.discovery.enabled=true`, `primary-port-name: http`
+(services expose `http`+`management`; this pins the app port, not 19091),
+`loadbalancer.mode: SERVICE`. Activated via `SPRING_PROFILES_ACTIVE=k8s` on the
+Deployment + a dedicated `gateway` ServiceAccount with RBAC `get/list/watch` on
+`services`, `endpoints`, **`pods`** (Spring Cloud Kubernetes reads its own pod at
+startup even in SERVICE mode — without `pods` the context fails to refresh and
+the app never boots). Default profile keeps Eureka for docker-compose.
+
+### SCAR (2026-06-03): order stuck at PROCESSING — Mongo-CDC connector must emit Avro to match the orchestrator
+
+**Symptom:** payment captures (`payment.status=SUCCESS`) but the order stays
+`PROCESSING` forever. orchestrator log crash-loops:
+`RecordDeserializationException ... ecommerce_db.ecommerce_inventory.event-0 at
+offset 0` → `SerializationException: Unknown magic byte!`.
+
+**Root cause:** the saga driver (`MongoEventListener`) consumes the Debezium CDC
+topic with `KafkaAvroDeserializer` (`@Payload GenericRecord`), but the k8s
+connector was set to `JsonConverter` (a stopgap "to avoid the schema-registry
+dependency"). JSON bytes carry no Confluent magic byte → the consumer is stuck on
+the poison record at offset 0 → the saga never runs the step that produces
+`order.success-status` → the order never reaches `COMPLETED`. schema-registry was
+never deployed, so the whole Avro path was broken anyway (orchestrator *produces*
+success-status with `KafkaAvroSerializer`; order-service consumes it).
+
+**Fix:** deploy schema-registry (`k8s/infra/manifests/schema-registry.yaml`
+existed but was never wired) — added to `install.sh` after Kafka. Flip the
+connector (`04-kafka-connect-register/seed.sh`) to
+`io.confluent.connect.avro.AvroConverter`, set
+`value.converter.schema.registry.url=http://schema-registry.infra.svc.cluster.local:8081`,
+and add **`output.format.value=schema`** (matching docker-compose's
+`scripts/kafka/mongo-connector.sh`). Without `output.format.value=schema` the
+MongoSourceConnector emits a JSON *string*, not a structured record with a
+`fullDocument` field, and the orchestrator's `genericRecord.get("fullDocument")`
+breaks — so the converter flip alone is not enough. On an already-running
+cluster the old JSON records are a poison pill: delete the connector → delete the
+topic → re-register → restart orchestrator.
+
+### SCAR (2026-06-03): cart "0 available" — inventory tables aren't seeded by bootstrap
+
+**Symptom:** every cart line shows "0 AVAILABLE" even though products browse fine.
+
+**Root cause:** the bff cart reads stock via inventory-service gRPC `list`, which
+needs an `inventory_product` row (for the product to appear) AND
+`SUM(product_quantity_history.quantity)` (for the number). Both tables are written
+**reactively** — `inventory_product` by the Kafka `ProductUpdate` listener (only
+on a real product *save*), `product_quantity_history` by admin stock ops /
+`PaymentSuccess`. A Mongo-seed bootstrap inserts the catalog straight into
+MongoDB, bypassing the save path, so both MySQL tables stay empty → gRPC returns
+0. The k8s `mysql-seed` job only loads `docker/ecommerce.sql` (no inventory rows).
+See [[project_inventory_seed]].
+
+**Fix:** `make k8s-seed-inventory` (`scripts/seed/k8s-inventory.sh`) generates the
+INSERTs from `docker/product.json` + `docker/product-quantity-history.json` and
+pipes them into `mysql-0`; idempotent; wired into `k8s-bootstrap` **after**
+`k8s-apps` (the tables exist only once inventory-service's Hibernate `ddl-auto`
+creates them at startup). It applies the same `localhost:9000 →
+media.microecom.local` `image_url` rewrite as 02-mongo-seed — order-service
+snapshots `inventory_product.image_url` into `order_item` at order-create, so a
+docker-host value there ends up in saved orders and 404s in the browser.
+
+### SCAR (2026-06-03): internal cluster DNS must never appear in a browser-facing artifact
+
+Several bring-up bugs share one shape: a value the **browser** must reach was set
+to an in-cluster Service DNS name (`*.svc.cluster.local`), which only resolves
+inside the cluster → `ERR_NAME_NOT_RESOLVED` / `DNS_PROBE_FINISHED_NXDOMAIN`. The
+browser reaches the cluster only through the ingress hosts (`microecom.local`,
+`api.microecom.local`, `media.microecom.local`). Offenders fixed:
+
+- **payment-service `application.frontend.base-url`** — `IPNPaypalController`
+  302-redirects the browser to `${base-url}/payment/success` after PayPal. Was
+  `http://frontend.apps.svc.cluster.local` → NXDOMAIN. Fix: `http://microecom.local`
+  (Vault `secret/payment-service`).
+- **core-s3 presigned upload URLs** — the avatar/product-image presign was signed
+  against `s3.endpoint` (`minio.infra.svc.cluster.local:9000`). The host is part
+  of the **SigV4 signature**, so it cannot be rewritten after signing. Fix: a new
+  `s3.public-endpoint` (browser-facing) that the `S3Presigner` signs against,
+  while the server-side `S3Client` keeps the internal `s3.endpoint` for its
+  post-upload HEAD check. Vault: `s3.public-endpoint=http://media.microecom.local`.
+- **stored `image_url`** — see the inventory-seed SCAR above.
+
+Contrast: the JWKS fetch and the post-upload HEAD check are **server-side** (JVM →
+auth-server / MinIO), so internal DNS is correct there — do **not** "fix" those to
+ingress hosts.
+
+Sub-note: the SPA is served over plain **http://** (the ingress isn't TLS), so
+browser **secure-context-only** APIs are unavailable — `crypto.randomUUID()` is
+`undefined` and throws. Guard such calls or provide a fallback;
+`frontend/src/stores/toast.ts` hit this and broke every toast. Serving the SPA
+over HTTPS would also resolve it.
+
 ### SCAR: master+slave XA self-deadlock on one MySQL (load-slave / mutate / save-master)
 
 **Symptom (2026-06-01):** `POST /authorization-server/v1/auth:activate` hung ~50s
@@ -81,6 +192,11 @@ Two storefront bugs found smoke-testing the running cluster:
   (`scripts/seed/k8s-placeholder-images.sh`) generates+uploads placeholders.
   Needs `/etc/hosts`: `127.0.0.1 media.microecom.local`.
 
+  The **same `localhost:9000` rewrite** is needed for inventory-service's
+  `inventory_product.image_url` (snapshotted into `order_item`) — handled by
+  `make k8s-seed-inventory`; see the "cart 0 available" and "internal cluster DNS"
+  SCARs above.
+
 ### SCAR: 02-mongo-seed/seed.sh had a stray trailing backtick (parse error)
 
 `k8s/infra/jobs/02-mongo-seed/seed.sh` ended with a lone `` ` `` →
@@ -127,6 +243,13 @@ for a service into a single call. The gateway needs jwt/jwk config AND its
 in the same block. Those route URIs are mandatory in k8s because Eureka is off;
 without them gateway routes resolve to `lb://` and fail. (Live repair:
 `vault kv patch secret/gateway gateway.routes.<svc>.uri=…` then restart gateway.)
+
+**Update (2026-06-03):** the gateway now has a real discovery client
+(Spring Cloud Kubernetes under the `k8s` profile — see the discovery SCAR above),
+so `lb://` actually resolves in-cluster. The direct-DNS route overrides are kept
+as a belt-and-suspenders fallback (a plain `http://` route URI bypasses the LB
+entirely), but they are no longer the *only* thing making routing work — and the
+`@LoadBalanced` JWKS fetch, which can't use a plain route URI, now works too.
 
 ### SCAR: gateway ingress backend port must match the Service port (6868, not 8080)
 
@@ -384,3 +507,17 @@ The ingress-nginx controller reaches the host on 80/443 through **hostPort**
 `service.type: NodePort` with ports 80/443 — NodePort only allows 30000–32767,
 so the chart's server-side apply is rejected
 ("provided port is not in the valid range"). See `infra/values/ingress-nginx.yaml`.
+
+### Teardown is comprehensive — `make k8s-down` rarely needs touching
+
+`make k8s-down` runs `k8s-apps-down` (`kubectl delete -k k8s/apps/overlays/local`)
+then `k8s-cluster-down` (`kind delete cluster` + remove the local registry).
+Because the second step **destroys the whole cluster**, anything added to the `infra`
+namespace (schema-registry, kafka-connect, ingresses, vault) is wiped regardless
+of whether teardown names it — so adding an infra manifest does **not** require a
+`k8s-down` change. Adding an *app-layer* resource only needs care if it lives
+**outside** `k8s/apps/overlays/local` (which `delete -k` already cleans): e.g. the
+`gateway` ServiceAccount + RBAC are inside the gateway kustomization, so they're
+removed by `k8s-apps-down`. (Verified 2026-06-03: the gateway-discovery,
+schema-registry, and inventory-seed changes all tear down cleanly with no
+`k8s-down` edit.)
