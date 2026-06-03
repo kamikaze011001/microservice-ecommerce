@@ -31,6 +31,8 @@ public class SecurityConfiguration {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(authorizeRequest ->
                         authorizeRequest.requestMatchers(
+                                        "/actuator/**",
+                                        "/error",
                                         "/v3/api-docs**",
                                         "/v3/api-docs/**",
                                         "/.well-known/jwks.json",

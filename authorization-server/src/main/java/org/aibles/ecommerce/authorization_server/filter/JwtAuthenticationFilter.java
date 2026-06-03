@@ -37,6 +37,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         log.info("(doFilterInternal)path: {}", request.getRequestURI());
+        // Skip actuator endpoints (k8s probes / prometheus) — internal-only,
+        // never carry a JWT. This @Component OncePerRequestFilter applies on the
+        // management port too. See k8s/CLAUDE.md.
+        if (request.getRequestURI().startsWith("/actuator")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
         String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);

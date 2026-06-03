@@ -41,6 +41,15 @@ public class AuthorizationFilter implements WebFilter {
         String method = exchange.getRequest().getMethod().toString();
         log.info("(filter)path: {}, method: {}", path, method);
 
+        // Actuator endpoints (k8s liveness/readiness probes, prometheus scrape)
+        // are internal-only and not in the api_role registry. Skip them here —
+        // this filter is a global WebFilter that runs on the management port too,
+        // and would otherwise 403 the probes ("path not registered"), failing
+        // liveness and getting the pod killed in a loop. See k8s/CLAUDE.md.
+        if (path.startsWith("/actuator")) {
+            return chain.filter(exchange);
+        }
+
         return apiRoleRepository.findAll()
                 .filter(apiRole -> pathMatcher.match(apiRole.getPath(), path))
                 .filter(apiRole -> apiRole.getMethod() == null || apiRole.getMethod().contains(method))
