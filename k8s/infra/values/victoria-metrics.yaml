@@ -23,6 +23,18 @@ server:
     type: ClusterIP
     servicePort: 8428
 
+  # Browser access via ingress-nginx. VM UI at http://vm.microecom.local/vmui,
+  # scrape health at /targets. Add `127.0.0.1 vm.microecom.local` to /etc/hosts.
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    pathType: Prefix
+    hosts:
+      - name: vm.microecom.local
+        path:
+          - /
+        port: http
+
   # Built-in scraper — replaces the per-service Prometheus-Operator ServiceMonitors.
   scrape:
     enabled: true

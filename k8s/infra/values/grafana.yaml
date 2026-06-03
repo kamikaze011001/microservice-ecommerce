@@ -9,6 +9,18 @@ adminPassword: admin
 service:
   type: ClusterIP
 
+# Browser access via ingress-nginx (maps host :80 → cluster). Mirrors the
+# existing host split: microecom.local (SPA) / api.microecom.local (gateway) /
+# media.microecom.local (minio). Add `127.0.0.1 grafana.microecom.local` to
+# /etc/hosts. Dedicated host (root path) → no grafana.ini sub-path config needed.
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  path: /
+  pathType: Prefix
+  hosts:
+    - grafana.microecom.local
+
 persistence:
   enabled: false        # dashboards are provisioned from code; no PVC needed locally
 
