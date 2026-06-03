@@ -35,8 +35,13 @@ public class S3Config {
             .region(Region.of(props.getRegion()))
             .credentialsProvider(credentials(props))
             .serviceConfiguration(serviceConfig(props));
-        if (hasEndpoint(props)) {
-            b.endpointOverride(URI.create(props.getEndpoint()));
+        // Presigned URLs are handed to the browser, so they must be signed
+        // against the public endpoint (the host is part of the SigV4 signature
+        // and can't be swapped afterward). Falls back to the internal endpoint
+        // when no separate public endpoint is configured (e.g. real AWS S3).
+        String presignEndpoint = presignEndpoint(props);
+        if (presignEndpoint != null) {
+            b.endpointOverride(URI.create(presignEndpoint));
         }
         return b.build();
     }
@@ -59,5 +64,16 @@ public class S3Config {
 
     private static boolean hasEndpoint(S3Properties props) {
         return props.getEndpoint() != null && !props.getEndpoint().isBlank();
+    }
+
+    /**
+     * Endpoint to sign presigned URLs against: the public endpoint if set,
+     * otherwise the internal endpoint, otherwise null (AWS SDK default).
+     */
+    private static String presignEndpoint(S3Properties props) {
+        if (props.getPublicEndpoint() != null && !props.getPublicEndpoint().isBlank()) {
+            return props.getPublicEndpoint();
+        }
+        return hasEndpoint(props) ? props.getEndpoint() : null;
     }
 }
