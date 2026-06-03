@@ -3,9 +3,11 @@
 # Deployment. Idempotent: PUT /connectors/<name>/config replaces existing
 # config or creates new — same call either way.
 #
-# Mirrors the existing docker compose flow (scripts/kafka/mongo-connector.sh)
-# but targets in-cluster Service DNS and uses JSON value converter (no
-# Schema Registry dependency).
+# Mirrors the existing docker compose flow (scripts/kafka/mongo-connector.sh):
+# targets in-cluster Service DNS and uses the Confluent Avro value converter with
+# `output.format.value=schema`, so the orchestrator's KafkaAvroDeserializer reads
+# the change-stream event as a GenericRecord (with a `fullDocument` field).
+# Requires the schema-registry Deployment (k8s/infra/manifests/schema-registry.yaml).
 set -eu
 
 CONNECT="${CONNECT_URL:-http://kafka-connect.infra.svc.cluster.local:8083}"
@@ -49,8 +51,10 @@ cat >/tmp/connector.json <<'JSON'
   "publish.full.document.only": "false",
   "change.stream.full.document": "updateLookup",
   "key.converter": "org.apache.kafka.connect.storage.StringConverter",
-  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-  "value.converter.schemas.enable": "false",
+  "value.converter": "io.confluent.connect.avro.AvroConverter",
+  "value.converter.schema.registry.url": "http://schema-registry.infra.svc.cluster.local:8081",
+  "output.format.key": "json",
+  "output.format.value": "schema",
   "copy.existing": "true",
   "copy.existing.pipeline": "[]",
   "errors.tolerance": "all",
