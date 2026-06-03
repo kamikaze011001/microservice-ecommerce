@@ -24,7 +24,8 @@ public class SlaveDatasourceConfiguration {
         factory.setPackagesToScan("org.aibles.ecommerce.inventory_service.entity");
         factory.setJtaDataSource(slaveDatasource);
         factory.setPersistenceUnitName("inventoryServiceSlave");
-        factory.setJpaPropertyMap(CommonJPAProperties.getProperties());
+        // Query-only slave EMF (ReadOnlySlaveInterceptor) — never emits a stray UPDATE.
+        factory.setJpaPropertyMap(CommonJPAProperties.getSlaveProperties());
         factory.afterPropertiesSet();
         return factory.getObject();
     }

@@ -24,7 +24,8 @@ public class SlaveEntityFactoryConfiguration {
         factory.setPackagesToScan("org.aibles.order_service.entity");
         factory.setJtaDataSource(slaveDatasource);
         factory.setPersistenceUnitName("orderServiceSlave");
-        factory.setJpaPropertyMap(CommonJPAProperties.getProperties());
+        // Query-only slave EMF (ReadOnlySlaveInterceptor) — never emits a stray UPDATE.
+        factory.setJpaPropertyMap(CommonJPAProperties.getSlaveProperties());
         factory.afterPropertiesSet();
         return factory.getObject();
     }

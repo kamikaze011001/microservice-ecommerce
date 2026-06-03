@@ -24,7 +24,9 @@ public class SlaveEntityFactoryConfiguration {
         factory.setPackagesToScan("org.aibles.ecommerce.authorization_server.entity");
         factory.setJtaDataSource(slaveDatasource);
         factory.setPersistenceUnitName("authorizationServerSlave");
-        factory.setJpaPropertyMap(CommonJPAProperties.getProperties());
+        // Slave persistence context is query-only (see CommonJPAProperties.getSlaveProperties
+        // / ReadOnlySlaveInterceptor) so it never emits a stray UPDATE.
+        factory.setJpaPropertyMap(CommonJPAProperties.getSlaveProperties());
         factory.afterPropertiesSet();
         return factory.getObject();
     }
