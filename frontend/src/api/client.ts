@@ -9,6 +9,25 @@ import { refreshAccessToken } from './refresh';
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:6868';
 const REFRESH_PATH = '/authorization-server/v1/auth:refresh-token';
 
+// Pre-login / PERMIT_ALL auth endpoints. These must NOT carry an Authorization
+// header: the gateway's JwtAuthenticationFilter validates any token present
+// BEFORE the PERMIT_ALL check, so a stale access token left in the store 401s the
+// request before it reaches the controller (e.g. activate after a prior session).
+// (refresh-token is excluded — it sends the REFRESH token deliberately via refresh.ts.)
+const NO_AUTH_PATHS = [
+  '/authorization-server/v1/auth:login',
+  '/authorization-server/v1/auth:register',
+  '/authorization-server/v1/auth:activate',
+  '/authorization-server/v1/auth:resend-otp',
+  '/authorization-server/v1/auth:forgot-password',
+  '/authorization-server/v1/auth:verify-forgot-pass-otp',
+  '/authorization-server/v1/auth:reset-password',
+];
+
+function isPublicAuthUrl(url: string): boolean {
+  return NO_AUTH_PATHS.some((p) => url.includes(p));
+}
+
 function isRefreshUrl(url: string): boolean {
   return url.endsWith(REFRESH_PATH);
 }
@@ -29,7 +48,8 @@ interface BaseResponse<T> {
 const authMiddleware: Middleware = {
   async onRequest({ request }) {
     const auth = useAuthStore();
-    if (auth.accessToken) {
+    // Skip public auth routes — sending a stale token there 401s at the gateway.
+    if (auth.accessToken && !isPublicAuthUrl(request.url)) {
       request.headers.set('Authorization', `Bearer ${auth.accessToken}`);
     }
     return request;
@@ -93,7 +113,9 @@ export async function apiFetchUnsafe<T = unknown>(path: string, init: RequestIni
   const auth = useAuthStore();
   const headers = new Headers(init.headers ?? {});
   headers.set('content-type', headers.get('content-type') ?? 'application/json');
-  if (auth.accessToken) headers.set('authorization', `Bearer ${auth.accessToken}`);
+  // Same rule as authMiddleware: never attach a token to public auth routes.
+  if (auth.accessToken && !isPublicAuthUrl(path))
+    headers.set('authorization', `Bearer ${auth.accessToken}`);
 
   let response: Response;
   try {

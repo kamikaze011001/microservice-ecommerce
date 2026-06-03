@@ -12,14 +12,23 @@ spec:
     metadata:
       labels: { app: gateway }
     spec:
+      # Dedicated SA bound to read-only Services/Endpoints RBAC (rbac.yaml) so
+      # Spring Cloud Kubernetes discovery can resolve service-ids under the k8s
+      # profile.
+      serviceAccountName: gateway
       containers:
         - name: gateway
           image: localhost:5001/gateway:dev
-          imagePullPolicy: IfNotPresent
+          # Always re-pull: :dev is a MUTABLE tag rebuilt in place by
+          # k8s/images/build.sh. With IfNotPresent, kind nodes serve the stale
+          # cached layer and code changes never reach the pod. Always forces a
+          # registry pull each start (cheap — local registry). See k8s/CLAUDE.md.
+          imagePullPolicy: Always
           ports:
             - { name: http, containerPort: 6868 }
             - { name: management, containerPort: 19093 }
           env:
+            - { name: SPRING_PROFILES_ACTIVE, value: k8s }
             - { name: VAULT_TOKEN, value: root }
             - { name: SPRING_CLOUD_VAULT_URI, value: http://vault.infra.svc.cluster.local:8200 }
             - { name: JAVA_OPTS, value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC" }

@@ -63,6 +63,15 @@
 			<groupId>org.springframework.cloud</groupId>
 			<artifactId>spring-cloud-starter-loadbalancer</artifactId>
 		</dependency>
+		<!-- k8s-native service discovery for Spring Cloud LoadBalancer. Active only
+		     under the `k8s` profile (see application-k8s.yml): lets `lb://` and the
+		     @LoadBalanced WebClient resolve services via the k8s API instead of
+		     Eureka, which isn't deployed in-cluster. Version managed by the
+		     spring-cloud BOM (2023.0.3). -->
+		<dependency>
+			<groupId>org.springframework.cloud</groupId>
+			<artifactId>spring-cloud-starter-kubernetes-client-loadbalancer</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.aibles.ecommerce</groupId>
 			<artifactId>common-dto</artifactId>
