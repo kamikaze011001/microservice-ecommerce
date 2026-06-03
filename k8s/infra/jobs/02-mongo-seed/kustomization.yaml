@@ -7,10 +7,12 @@ configMapGenerator:
   - name: mongo-seed-scripts
     files:
       - seed.sh
-  - name: mongo-seed-data
-    files:
-      - ../../../../docker/api_role.json
-      - ../../../../docker/product.json
-      - ../../../../docker/product-quantity-history.json
+  # NOTE: the seed DATA configmap (mongo-seed-data, from docker/*.json) is NOT
+  # generated here. kubectl's embedded kustomize hardcodes the root-only load
+  # restrictor and exposes no --load-restrictor flag, so a configMapGenerator
+  # cannot read files outside this dir ("not in or below"). The docker/*.json
+  # files are the single source of truth (shared with docker-compose) and must
+  # not be duplicated, so `make k8s-seed` creates mongo-seed-data imperatively
+  # (kubectl create configmap has no path restriction) before applying this.
 generatorOptions:
   disableNameSuffixHash: true

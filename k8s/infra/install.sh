@@ -114,6 +114,14 @@ else
     --dry-run=client -o yaml | kubectl apply -f -
 fi
 
+# Schema Registry — the JPA services use Confluent Avro (de)serializers and the
+# Debezium Mongo connector publishes Avro, both of which require a reachable
+# registry (services are Vault-pointed at schema-registry.infra.svc:8081).
+# Depends on Kafka (KRaft) being Ready above — it stores subjects in a compacted
+# _schemas topic. Must be up before the JVM services and the connector job.
+kubectl apply -f "$MANIFESTS/schema-registry.yaml"
+kubectl -n infra rollout status deployment/schema-registry --timeout=5m
+
 # Kafka Connect — long-running Deployment hosting source/sink connectors.
 # Connector registration is a separate Job (k8s/infra/jobs/04-kafka-connect-register).
 kubectl apply -f k8s/infra/manifests/kafka-connect.yaml

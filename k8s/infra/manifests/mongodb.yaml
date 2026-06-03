@@ -1,0 +1,235 @@
+# MongoDB — Docker Official Image (mongo:7.0), single-node REPLICA SET (rs0).
+# Replaces the Bitnami chart (docker.io/bitnami/mongodb deleted 2025-09-29).
+#
+# Why a replica set with ONE member: the Kafka Connect MongoDB source connector
+# (k8s/infra/jobs/04-kafka-connect-register) uses Change Streams to feed the
+# order Saga via CDC. Change Streams require a replica set or sharded cluster —
+# a standalone mongod rejects them. So even locally we run --replSet rs0.
+#
+# Auth + replica set together require an internal keyFile. The keyFile Secret
+# (mongodb-keyfile) is created idempotently by install.sh (create-if-missing so
+# re-runs don't rotate it). An init container copies it to an emptyDir and
+# chowns it to the mongodb uid (999) with mode 0400 — mongod refuses a keyFile
+# that is group/world-readable or not owned by the running user.
+#
+# The replica set is initiated and users are created by an in-pod `bootstrap`
+# sidecar (see below), NOT a separate Job and NOT MONGO_INITDB_* :
+#   - MongoDB's localhost exception (which lets you create the FIRST user with
+#     no auth) keys off the connection's SOURCE being loopback. A separate Job
+#     pod always connects from a different pod IP via the Service DNS, so the
+#     exception NEVER applies — replSetInitiate/createUser fail "requires
+#     authentication". A sidecar shares this pod's network namespace, so its
+#     127.0.0.1 connection IS loopback to mongod and the exception applies.
+#   - MONGO_INITDB_* is processed by docker-entrypoint.sh, which we bypass by
+#     overriding `command:` to run mongod with --replSet directly.
+#   - The headless Service sets publishNotReadyAddresses (see its comment): the
+#     rs member host is this Service DNS, and on restart mongod must resolve it
+#     to rejoin BEFORE becoming PRIMARY — but readiness is gated on the bootstrap
+#     sidecar waiting for PRIMARY. Without the flag that's a restart deadlock.
+#   root/root              — admin (used by 02-mongo-seed)
+#   ecommerce/ecommerce123 — admin, authSource=admin (used by the app +
+#                            04-kafka-connect-register connector)
+#
+# LOCAL-DEV ONLY: plaintext creds bound to the kind cluster. AWS overlay uses
+# DocumentDB/Atlas + ExternalSecrets.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: mongodb
+spec:
+  clusterIP: None            # headless: mongodb.infra.svc... resolves to the pod
+  # MUST publish DNS even before the pod is Ready, or we deadlock: the rs config
+  # member host is this Service DNS name; on restart mongod must resolve it to
+  # confirm membership before it can become PRIMARY; pod-readiness is gated on
+  # the bootstrap sidecar, which waits for PRIMARY. Without this flag a headless
+  # Service only publishes ready endpoints → name never resolves → never PRIMARY
+  # → never Ready. (Standard single-node StatefulSet replica-set pattern.)
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: mongodb
+  ports:
+    - name: mongodb
+      port: 27017
+      targetPort: mongodb
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: mongodb
+spec:
+  serviceName: mongodb
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mongodb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mongodb
+    spec:
+      securityContext:
+        runAsUser: 999        # mongodb user in the official image
+        runAsGroup: 999
+        fsGroup: 999          # makes the data PVC writable by mongod
+      initContainers:
+        # Copy the keyFile to an emptyDir, owned 999:999 mode 0400. A Secret
+        # mount alone can't satisfy "owned by 999 AND not group-readable".
+        - name: prepare-keyfile
+          image: mongo:7.0
+          securityContext:
+            runAsUser: 0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              cp /secret/keyfile /keyfile/keyfile
+              chmod 0400 /keyfile/keyfile
+              chown 999:999 /keyfile/keyfile
+          volumeMounts:
+            - name: keyfile-secret
+              mountPath: /secret
+            - name: keyfile
+              mountPath: /keyfile
+      containers:
+        - name: mongodb
+          image: mongo:7.0
+          command:
+            - mongod
+            - --replSet
+            - rs0
+            - --bind_ip_all
+            - --auth
+            - --keyFile
+            - /keyfile/keyfile
+          ports:
+            - name: mongodb
+              containerPort: 27017
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+            - name: keyfile
+              mountPath: /keyfile
+          resources:
+            requests: { cpu: 100m, memory: 384Mi }
+            limits:   { cpu: 800m, memory: 1Gi }
+          readinessProbe:
+            exec:
+              command:
+                - mongosh
+                - --quiet
+                - --eval
+                - "db.adminCommand('ping').ok"
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - mongosh
+                - --quiet
+                - --eval
+                - "db.adminCommand('ping').ok"
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+        # Bootstrap sidecar: initiates the single-member RS and creates users
+        # over the pod's loopback (127.0.0.1), where the localhost exception
+        # applies. Idempotent — re-runs harmlessly on every pod restart. Logs:
+        #   kubectl -n infra logs mongodb-0 -c bootstrap
+        - name: bootstrap
+          image: mongo:7.0
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -u
+              MEMBER="mongodb.infra.svc.cluster.local:27017"
+
+              echo "(bootstrap) waiting for mongod on 127.0.0.1:27017 ..."
+              until mongosh --host 127.0.0.1 --quiet --eval 'db.adminCommand("ping").ok' >/dev/null 2>&1; do
+                sleep 2
+              done
+
+              echo "(bootstrap) ensuring replica set rs0 ..."
+              # rs.status throws (NotYetInitialized) before initiate.
+              if ! mongosh --host 127.0.0.1 --quiet --eval 'rs.status().ok' >/dev/null 2>&1; then
+                # Member host = Service DNS so consumers connect to the name the
+                # RS advertises (a hostname mismatch would break the connector).
+                mongosh --host 127.0.0.1 --quiet --eval \
+                  'rs.initiate({_id:"rs0", members:[{_id:0, host:"'"${MEMBER}"'"}]})'
+                echo "(bootstrap) rs.initiate issued, waiting for PRIMARY ..."
+                until mongosh --host 127.0.0.1 --quiet --eval 'db.hello().isWritablePrimary' 2>/dev/null | grep -q true; do
+                  sleep 2
+                done
+              else
+                echo "(bootstrap) replica set already initialized."
+              fi
+
+              # Root: localhost exception lets us create the FIRST user with no
+              # auth, but ONLY over loopback and ONLY while zero users exist.
+              # After root exists the exception closes and this throws — caught.
+              echo "(bootstrap) ensuring root user ..."
+              mongosh --host 127.0.0.1 --quiet --eval '
+                const admin = db.getSiblingDB("admin");
+                try {
+                  admin.createUser({user:"root", pwd:"root", roles:[{role:"root", db:"admin"}]});
+                  print("created root");
+                } catch (e) { print("root skipped: " + e.codeName); }
+              ' || true
+
+              # ecommerce app user — authenticated as root. readWriteAnyDatabase
+              # + clusterMonitor cover the connector's Change Stream needs.
+              echo "(bootstrap) ensuring ecommerce user ..."
+              mongosh --host 127.0.0.1 -u root -p root --authenticationDatabase admin --quiet --eval '
+                const admin = db.getSiblingDB("admin");
+                if (admin.getUser("ecommerce")) { print("ecommerce exists"); }
+                else {
+                  admin.createUser({
+                    user:"ecommerce", pwd:"ecommerce123",
+                    roles:[
+                      {role:"readWriteAnyDatabase", db:"admin"},
+                      {role:"clusterMonitor", db:"admin"}
+                    ]
+                  });
+                  print("created ecommerce");
+                }
+              '
+              echo "(bootstrap) done. idling."
+              touch /tmp/bootstrap-done   # sentinel: gates pod readiness below
+              sleep infinity
+          # Pod readiness waits on this sidecar finishing so `kubectl rollout
+          # status` (in install.sh) doesn't return before users exist — else the
+          # seed jobs would race ahead and fail to auth as ecommerce.
+          readinessProbe:
+            exec:
+              command: ["cat", "/tmp/bootstrap-done"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            # mongosh is a Node.js/V8 CLI — baseline RSS is ~150-200Mi, so a
+            # 128Mi cap OOMKills it mid-createUser. Give it real headroom.
+            requests: { cpu: 10m, memory: 64Mi }
+            limits:   { cpu: 200m, memory: 512Mi }
+      volumes:
+        - name: keyfile-secret
+          secret:
+            secretName: mongodb-keyfile
+            defaultMode: 0400
+        - name: keyfile
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 4Gi

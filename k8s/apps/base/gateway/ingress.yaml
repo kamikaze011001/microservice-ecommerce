@@ -31,5 +31,9 @@ spec:
             backend:
               service:
                 name: gateway
+                # Gateway Service exposes the app on port 6868 (named "http").
+                # Was 8080 (the docker-compose external port) → nginx had no
+                # matching endpoint → every request 503'd. Reference the named
+                # port so it tracks the Service definition.
                 port:
-                  number: 8080
+                  name: http

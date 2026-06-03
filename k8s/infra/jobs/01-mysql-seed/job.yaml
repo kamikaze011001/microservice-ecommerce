@@ -11,7 +11,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: seed
-          image: bitnami/mysql:8.0
+          image: mysql:8.0
           env:
             - name: MYSQL_ROOT_PASSWORD
               value: root
@@ -22,6 +22,12 @@ spec:
             - name: sql
               mountPath: /seed
       volumes:
+        # Both configMaps are created imperatively by `make k8s-seed` (NOT a
+        # kustomize generator): docker/ecommerce.sql is out-of-tree and kubectl's
+        # embedded kustomize forbids out-of-tree generator sources. This Job is
+        # applied with plain `kubectl apply -f`, bypassing kustomize — its
+        # nameReference transformer otherwise rewrites the sql volume's configMap
+        # to mysql-seed-scripts. See Makefile k8s-seed + SCAR in k8s/CLAUDE.md.
         - name: scripts
           configMap:
             name: mysql-seed-scripts

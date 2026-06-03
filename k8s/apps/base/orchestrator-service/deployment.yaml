@@ -24,8 +24,8 @@ spec:
             - { name: SPRING_CLOUD_VAULT_URI, value: http://vault.infra.svc.cluster.local:8200 }
             - { name: JAVA_OPTS, value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC" }
           resources:
-            requests: { cpu: 100m, memory: 384Mi }
-            limits:   { cpu: 1000m, memory: 512Mi }
+            requests: { cpu: 100m, memory: 512Mi }
+            limits:   { cpu: 1000m, memory: 768Mi }   # 512Mi OOMKilled at startup (JVM non-heap)
           livenessProbe:
             httpGet: { path: /actuator/health/liveness, port: management }
             initialDelaySeconds: 60

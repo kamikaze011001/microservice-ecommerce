@@ -1,0 +1,101 @@
+# MySQL — Docker Official Image (mysql:8.0.40), single node.
+# Replaces the Bitnami chart (docker.io/bitnami/mysql deleted 2025-09-29).
+# Pinned to 8.0.40 to match the version in the project CLAUDE.md.
+#
+# Topology: ONE pod. The app's core-routing-db wires master + slave1/slave2
+# datasources, but the slaves resolve via the `mysql-replica` Service which
+# (today) selects this same pod — no real replication locally. The `mysql`
+# Service (writes) and `mysql-replica` Service (reads, in
+# mysql-replica-service.yaml) both target the label
+# app.kubernetes.io/name=mysql,component=primary below.
+#
+# LOCAL-DEV ONLY: plaintext creds bound to the kind cluster. The AWS overlay
+# (k8s/infra/overlays/aws/) replaces MySQL with RDS + ExternalSecrets.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-credentials
+  namespace: infra
+type: Opaque
+stringData:
+  MYSQL_ROOT_PASSWORD: root
+  MYSQL_DATABASE: ecommerce_dev
+  MYSQL_USER: ecommerce
+  MYSQL_PASSWORD: ecommerce
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: mysql
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mysql
+    app.kubernetes.io/component: primary
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: mysql
+    app.kubernetes.io/component: primary
+spec:
+  serviceName: mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mysql
+      app.kubernetes.io/component: primary
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mysql
+        app.kubernetes.io/component: primary
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0.40
+          ports:
+            - name: mysql
+              containerPort: 3306
+          envFrom:
+            - secretRef:
+                name: mysql-credentials
+          args:
+            - --default-authentication-plugin=mysql_native_password
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits:   { cpu: 1000m, memory: 1Gi }
+          livenessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-uroot", "-proot"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-uroot", "-proot"]
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 3
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 4Gi

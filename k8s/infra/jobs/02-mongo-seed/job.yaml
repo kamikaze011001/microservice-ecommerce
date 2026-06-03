@@ -11,7 +11,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: seed
-          image: bitnami/mongodb:7.0
+          image: mongo:7.0
           env:
             - name: MONGO_URI
               value: "mongodb://ecommerce:ecommerce123@mongodb.infra.svc.cluster.local:27017/ecommerce_inventory?authSource=admin"
@@ -24,6 +24,11 @@ spec:
             - name: data
               mountPath: /seed
       volumes:
+        # Both configMaps are created imperatively by `make k8s-seed` (NOT a
+        # kustomize generator): the data files live in ../../../../docker and
+        # kubectl's embedded kustomize forbids out-of-tree configMapGenerator
+        # sources. This Job is applied with plain `kubectl apply -f`, bypassing
+        # kustomize entirely — see Makefile k8s-seed and the SCAR in k8s/CLAUDE.md.
         - name: scripts
           configMap:
             name: mongo-seed-scripts
