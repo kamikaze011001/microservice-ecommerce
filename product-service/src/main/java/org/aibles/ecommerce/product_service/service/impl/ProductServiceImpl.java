@@ -61,8 +61,12 @@ public class ProductServiceImpl implements ProductService {
                 NotFoundException::new
         );
 
-        long quantitySum = productQuantityHistoryRepo.getQuantitySumByProductId(product.getId());
-        return ProductResponse.from(product, quantitySum);
+        // SUM(...) over zero history rows returns null (a product with no
+        // quantity history legitimately has 0 available). Null-coalesce like
+        // list()/listByIds() below — unboxing null into `long` here 500'd every
+        // product-detail request.
+        Long quantitySum = productQuantityHistoryRepo.getQuantitySumByProductId(product.getId());
+        return ProductResponse.from(product, quantitySum != null ? quantitySum : 0);
     }
 
     @Override
