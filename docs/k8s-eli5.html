@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Kubernetes, explained like you're five 🧸</title>
+<style>
+  :root{
+    --bg:#fbf6ee; --bg2:#fff;
+    --ink:#2d2a26; --ink2:#5b554d; --faint:#9a9489;
+    --line:#ece3d6; --shadow:0 10px 30px rgba(120,100,70,.13);
+    --c1:#ff8a5c; --c2:#5cc4ff; --c3:#7bd389; --c4:#c08cff; --c5:#ffca3a; --c6:#ff6f91; --c7:#56cfa1;
+    --good:#3fb27f; --bad:#ef5f5f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.6}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;background:#f1e9db;border-radius:6px;padding:.06em .4em;font-size:.86em;color:#7a5a33}
+  a{color:#e2703a;text-decoration:none;font-weight:600}
+  a:hover{text-decoration:underline}
+
+  header.hero{text-align:center;padding:54px 22px 26px;
+    background:radial-gradient(900px 360px at 50% -40%,#fff,transparent)}
+  header.hero .kite{font-size:64px;line-height:1;filter:drop-shadow(0 6px 10px rgba(0,0,0,.12))}
+  header.hero h1{margin:14px 0 6px;font-size:34px;letter-spacing:-.5px}
+  header.hero p{margin:0 auto;max-width:560px;color:var(--ink2);font-size:17px}
+  .levelbar{display:inline-flex;gap:6px;margin-top:22px;background:var(--bg2);border:1px solid var(--line);
+    border-radius:999px;padding:5px;box-shadow:var(--shadow)}
+  .levelbar button{font:inherit;font-size:14px;font-weight:700;border:none;background:none;color:var(--ink2);
+    border-radius:999px;padding:8px 18px;cursor:pointer;transition:.15s}
+  .levelbar button.on{background:var(--ink);color:#fff}
+
+  nav.toc{position:sticky;top:0;z-index:30;background:rgba(251,246,238,.9);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);padding:10px 16px;display:flex;gap:8px;overflow-x:auto;justify-content:center}
+  nav.toc a{font-size:13px;font-weight:600;color:var(--ink2);white-space:nowrap;background:var(--bg2);
+    border:1px solid var(--line);border-radius:999px;padding:5px 12px}
+  nav.toc a:hover{color:var(--ink);text-decoration:none;border-color:var(--c1)}
+
+  main{max-width:760px;margin:0 auto;padding:30px 20px 60px}
+  .bigidea{background:linear-gradient(135deg,#fff,#fff7ee);border:2px solid #ffe2cc;border-radius:22px;
+    padding:24px 26px;margin:8px 0 30px;box-shadow:var(--shadow)}
+  .bigidea h2{margin:.1em 0 .3em;font-size:23px}
+  .bigidea .big{font-size:18px}
+  .bigidea .big b{color:#e2703a}
+
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:20px;padding:20px 22px 22px;
+    margin:16px 0;box-shadow:var(--shadow);cursor:pointer;position:relative;transition:transform .12s}
+  .card:hover{transform:translateY(-2px)}
+  .card .top{display:flex;align-items:center;gap:14px}
+  .card .bubble{width:54px;height:54px;flex:none;border-radius:16px;display:flex;align-items:center;justify-content:center;
+    font-size:30px;box-shadow:inset 0 0 0 2px rgba(255,255,255,.6)}
+  .card h3{margin:0;font-size:20px}
+  .card h3 .tech{display:block;font-size:12px;font-weight:600;color:var(--faint);font-family:ui-monospace,Menlo,monospace;margin-top:1px}
+  .card .num{margin-left:auto;font-size:13px;font-weight:800;color:var(--faint);background:var(--bg);border-radius:999px;
+    width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line)}
+  .card .eli5{font-size:16.5px;margin:14px 2px 0}
+  .card .eli5 .lead{font-weight:700}
+  .card .shop{margin:13px 0 0;background:#f4faff;border:1px solid #dceffd;border-radius:13px;padding:11px 14px;font-size:14.5px}
+  .card .shop b{color:#2a7fc0}
+  .card .grown{margin:12px 0 0;background:#f6f3fb;border:1px dashed #ddd0f0;border-radius:13px;padding:11px 14px;
+    font-size:14.5px;color:#4a4458;display:none}
+  .card .grown b{color:#7a4fd0}
+  .card.open .grown{display:block}
+  .card .flip{margin-top:12px;font-size:13px;font-weight:700;color:#7a4fd0}
+  .card .flip::before{content:"🤓 "}
+  body.show-grown .grown{display:block!important}
+
+  /* self-healing demo */
+  .demo{background:linear-gradient(135deg,#f3fbf4,#fff);border:2px solid #d6f0da;border-radius:20px;
+    padding:20px 22px;margin:22px 0;box-shadow:var(--shadow)}
+  .demo h3{margin:0 0 4px;font-size:18px}
+  .demo p{margin:.2em 0;color:var(--ink2);font-size:14.5px}
+  .pods{display:flex;gap:14px;margin:16px 0;font-size:42px;min-height:56px;align-items:center}
+  .pod{transition:transform .25s,opacity .25s;cursor:pointer;filter:drop-shadow(0 4px 6px rgba(0,0,0,.1))}
+  .pod.dead{opacity:0;transform:scale(.2) rotate(40deg)}
+  .pod.born{animation:pop .4s ease}
+  @keyframes pop{0%{transform:scale(.2)}60%{transform:scale(1.2)}100%{transform:scale(1)}}
+  .demo .mgr{font-size:15px;font-weight:700}
+  .demo button{font:inherit;font-weight:700;font-size:14px;border:none;border-radius:12px;padding:9px 16px;cursor:pointer;
+    background:var(--bad);color:#fff;box-shadow:0 4px 0 #c94b4b}
+  .demo button:active{transform:translateY(2px);box-shadow:0 2px 0 #c94b4b}
+  .demo .say{margin-top:12px;font-size:14.5px;min-height:22px;color:var(--good);font-weight:700}
+
+  .recap{margin-top:40px}
+  .recap h2{font-size:22px;text-align:center}
+  table{width:100%;border-collapse:collapse;background:var(--bg2);border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-top:14px;font-size:14px}
+  td,th{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#fbf2e6;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink2)}
+  tr:last-child td{border-bottom:none}
+  td .em{font-size:18px;margin-right:6px}
+
+  .next{margin-top:38px;text-align:center;background:linear-gradient(135deg,#fff,#fef6ee);border:1px solid var(--line);
+    border-radius:20px;padding:24px;box-shadow:var(--shadow)}
+  .next h2{margin:.1em 0 .4em;font-size:21px}
+  .next .links{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+  .next .links a{background:var(--ink);color:#fff;border-radius:13px;padding:11px 18px;font-weight:700}
+  .next .links a:hover{text-decoration:none;opacity:.9}
+  footer{text-align:center;color:var(--faint);font-size:12.5px;padding:26px}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="kite">🧸🚢</div>
+  <h1>Kubernetes, explained like you're five</h1>
+  <p>It sounds scary. It isn't. It's just a very tireless robot that runs an apartment building full of tiny apps — using <i>our own little shop</i> (microecom) as the example.</p>
+  <div class="levelbar">
+    <button id="lvl5" class="on">🧸 Like I'm 5</button>
+    <button id="lvlGrown">🤓 Grown-up too</button>
+  </div>
+</header>
+
+<nav class="toc" id="toc"></nav>
+
+<main>
+  <div class="bigidea">
+    <h2>🎛️ The one big idea</h2>
+    <p class="big">Kubernetes (people write it <b>k8s</b> — K, then 8 letters, then s) is a <b>wish list, not a to-do list</b>.</p>
+    <p class="big">You don't tell it every little step. You say: <b>“I want 3 copies of my shop running, always.”</b> Then tireless robots keep <b>checking reality and fixing it</b> until it matches your wish — forever. A app crashed at 3am? The robots already replaced it before you woke up. 💤</p>
+    <p class="big" style="margin-bottom:0">Everything below is just <b>different helpers</b> in that building. Tap any card to flip it to the grown-up version. 👇</p>
+  </div>
+  <div id="cards"></div>
+</main>
+
+<script>
+const CONCEPTS=[
+  {emoji:"📦",color:"var(--c1)",name:"Container",tech:"docker image",
+   lead:"A lunchbox with EVERYTHING inside.",
+   eli5:"Imagine packing a toy with all its batteries, pieces, and instructions in one sealed box. Now it works exactly the same at your house, grandma's house, anywhere. No missing parts!",
+   grown:"A container bundles your app with its exact libraries and runtime, so it runs identically on any machine. It kills the classic “but it works on <i>my</i> computer” problem.",
+   shop:"Each microecom service — <code>gateway</code>, <code>order-service</code>, … — is baked into a container image and stored in a little warehouse (a registry)."},
+  {emoji:"🏠",color:"var(--c2)",name:"Pod",tech:"kind: Pod",
+   lead:"The smallest little house an app lives in.",
+   eli5:"A pod is a tiny house where your packed toy lives. Usually one toy per house. Sometimes a little helper roommate moves in to do a chore, then quietly steps aside.",
+   grown:"A Pod is the smallest deployable unit — one (or a few tightly-coupled) containers that share a network address and storage.",
+   shop:"Our <code>mongodb</code> pod has a “bootstrap” roommate that sets the database up on first start, then gets out of the way."},
+  {emoji:"👷",color:"var(--c3)",name:"Deployment",tech:"kind: Deployment",
+   lead:"The grown-up who keeps the houses full — forever.",
+   eli5:"A Deployment promises: “there will ALWAYS be 3 houses with a toy inside.” If one breaks, it instantly builds a new one. You never have to watch it. (Try the game below! 👇)",
+   grown:"A Deployment keeps a set of identical, stateless Pods at the count you asked for — it self-heals crashed pods and rolls out new versions safely.",
+   shop:"<code>gateway</code>, <code>product-service</code>, <code>bff-service</code> and friends are Deployments. Kill one pod and it pops right back."},
+  {emoji:"🐘",color:"var(--c4)",name:"StatefulSet",tech:"kind: StatefulSet",
+   lead:"Like a Deployment, but for apps that REMEMBER.",
+   eli5:"Elephants never forget! These houses are for toys that must remember things. Each house gets its own name tag and a personal toy box that follows it around, so memories are never lost.",
+   grown:"A StatefulSet gives each Pod a stable identity and its own persistent storage — the right tool for databases and other stateful systems.",
+   shop:"<code>MySQL</code>, <code>MongoDB</code>, <code>Kafka</code> and <code>MinIO</code> are StatefulSets, so their data survives restarts."},
+  {emoji:"☎️",color:"var(--c5)",name:"Service",tech:"kind: Service",
+   lead:"One phone number that always reaches whoever's home.",
+   eli5:"Houses get knocked down and rebuilt all the time, so their addresses keep changing. A Service is ONE phone number that always rings whoever lives there right now. You never need to know the new address.",
+   grown:"A Service is a stable virtual IP + DNS name that load-balances across the currently-healthy Pods, hiding all that churn.",
+   shop:"<code>order-service</code> just dials “inventory-service” by name and Kubernetes finds the live pod all by itself — no separate phone-book app needed."},
+  {emoji:"🚪",color:"var(--c6)",name:"Ingress",tech:"kind: Ingress",
+   lead:"The front door + a receptionist who reads addresses.",
+   eli5:"The building's main entrance has a friendly receptionist. She reads the address on your letter and walks it to exactly the right room.",
+   grown:"An Ingress controller is a smart reverse-proxy at the edge; Ingress rules map a web address (host/path) to the right Service.",
+   shop:"<code>api.microecom.local</code> → the gateway, <code>microecom.local</code> → the shop website, <code>media.microecom.local</code> → the image store."},
+  {emoji:"📋",color:"var(--c7)",name:"ConfigMap, Secret & Vault",tech:"ConfigMap · Secret · Vault",
+   lead:"Sticky notes, a locked drawer, and a bank vault.",
+   eli5:"Everyday house rules go on a sticky note on the fridge (ConfigMap). Passwords go in a locked drawer (Secret). And the really precious keys live in a bank vault that each toy opens every morning before work (Vault).",
+   grown:"ConfigMaps hold plain settings; Secrets hold sensitive values; HashiCorp Vault is a separate, stronger secret store the apps read at startup.",
+   shop:"Your real mail & PayPal keys live in a Secret built from a <i>gitignored</i> file (never committed!). Every service reads <code>secret/&lt;name&gt;</code> from Vault when it boots."},
+  {emoji:"🗄️",color:"var(--c1)",name:"Volume / PVC",tech:"PersistentVolumeClaim",
+   lead:"A storage locker that stays, even if the app moves.",
+   eli5:"A storage locker bolted to the wall. Even if a toy moves to a brand-new house, its drawings and toys stay safe in the locker. Nothing important gets thrown away.",
+   grown:"A PersistentVolumeClaim attaches durable storage to a Pod so the data outlives the Pod itself.",
+   shop:"<code>MySQL</code> and <code>MongoDB</code> keep all their data across restarts thanks to their volumes."},
+  {emoji:"🛠️",color:"var(--c2)",name:"Job",tech:"kind: Job",
+   lead:"A handyman who comes once, finishes, and leaves.",
+   eli5:"Not a worker who stays forever — a handyman who shows up ONCE, does a chore (like filling the fridge), and goes home. Done means done.",
+   grown:"A Job runs a Pod until it completes successfully, then stops — unlike a Deployment which runs forever.",
+   shop:"Five seed Jobs run at setup: load demo data, write Vault secrets, register the Kafka connector, make the image bucket — then they exit."},
+  {emoji:"🏘️",color:"var(--c3)",name:"Namespace",tech:"kind: Namespace",
+   lead:"Neighborhoods that keep things tidy.",
+   eli5:"Different streets for different folks. The noisy databases live on one street, the shop apps on another, the security cameras on a third — so nobody trips over anybody.",
+   grown:"Namespaces split one cluster into virtual groups for organization, access control, and isolation.",
+   shop:"<code>infra</code> (databases + vault), <code>apps</code> (the 9 services), <code>monitoring</code> (VictoriaMetrics + Grafana), <code>bootstrap</code> (the seed Jobs)."},
+  {emoji:"📈",color:"var(--c4)",name:"Autoscaler",tech:"HorizontalPodAutoscaler",
+   lead:"Clone more helpers when it's busy.",
+   eli5:"When the shop gets crowded, the manager instantly clones more helpers. When it goes quiet, some go home. You never lift a finger.",
+   grown:"A HorizontalPodAutoscaler adds/removes Pod copies based on load (like CPU). It needs the metrics-server to know how busy things are.",
+   shop:"<code>gateway</code>, <code>product-service</code>, <code>inventory-service</code> and <code>order-service</code> scale out under load — our k6 stress test pushes them on purpose."},
+  {emoji:"🩺",color:"var(--c5)",name:"Health probes",tech:"liveness · readiness",
+   lead:"A nurse asking two simple questions.",
+   eli5:"A nurse pops in and asks: “Are you alive?” — if not, she restarts you. And “Are you ready for customers?” — if not, no visitors are let in yet.",
+   grown:"Liveness probes restart a hung container; readiness probes hold back traffic until the app's dependencies are actually reachable.",
+   shop:"Each service answers on a private little management door: <code>/health/liveness</code> and <code>/health/readiness</code> — never the public one."},
+  {emoji:"🔭",color:"var(--c6)",name:"Monitoring",tech:"VictoriaMetrics + Grafana",
+   lead:"Security cameras and a wall of dashboards.",
+   eli5:"Cameras quietly watch every room, and a big wall of screens shows green lights when all is well — so you spot trouble before customers do.",
+   grown:"VictoriaMetrics is a tiny database that remembers numbers like CPU and memory over time; it collects metrics straight from each app. Grafana draws the dashboards.",
+   shop:"Lives in the <code>monitoring</code> neighborhood; each service exposes metrics on its management door for VictoriaMetrics to collect."},
+  {emoji:"🧸",color:"var(--c7)",name:"The toy box: kind, registry, kustomize",tech:"kind · registry · kustomize",
+   lead:"How we build the whole city inside a laptop.",
+   eli5:"<b>kind</b> builds a whole toy city inside your laptop to practice in (ours is named “microecom”). The <b>registry</b> is the warehouse of building blueprints. <b>kustomize</b> is one base recipe with tiny tweaks per city (home vs cloud).",
+   grown:"kind = Kubernetes-in-Docker for local clusters; a registry stores container images; kustomize layers environment-specific patches over a shared base.",
+   shop:"<code>make k8s-bootstrap</code> builds the kind cluster, pushes images to a local registry, and applies the kustomize <code>local</code> overlay."},
+];
+
+/* render cards */
+const cardsEl=document.getElementById("cards"), tocEl=document.getElementById("toc");
+CONCEPTS.forEach((c,i)=>{
+  const id="c"+i;
+  const a=document.createElement("a");a.href="#"+id;a.textContent=c.emoji+" "+c.name.split(",")[0].split("/")[0].trim();
+  tocEl.appendChild(a);
+  const el=document.createElement("div");el.className="card";el.id=id;
+  el.innerHTML=`
+    <div class="top">
+      <div class="bubble" style="background:${c.color}">${c.emoji}</div>
+      <h3>${c.name}<span class="tech">${c.tech}</span></h3>
+      <div class="num">${i+1}</div>
+    </div>
+    <p class="eli5"><span class="lead">${c.lead}</span> ${c.eli5}</p>
+    <div class="shop">🛒 <b>In our shop:</b> ${c.shop}</div>
+    <div class="grown"><b>🤓 Grown-up version:</b> ${c.grown}</div>
+    <div class="flip">tap for the grown-up version</div>`;
+  el.addEventListener("click",()=>el.classList.toggle("open"));
+  cardsEl.appendChild(el);
+  // insert the self-healing game right after the Deployment card
+  if(c.name==="Deployment") cardsEl.appendChild(makeDemo());
+});
+
+/* self-healing demo */
+function makeDemo(){
+  const d=document.createElement("div");d.className="demo";
+  d.innerHTML=`
+    <h3>🎮 Try it: self-healing</h3>
+    <p class="mgr">👷 The Deployment says: “I must always keep <b>3</b> shops running.”</p>
+    <div class="pods" id="pods"></div>
+    <button id="breakBtn">💥 Break a shop!</button>
+    <div class="say" id="say">Go ahead — break one. Watch what the robot does.</div>`;
+  setTimeout(initDemo,0);
+  return d;
+}
+function initDemo(){
+  const pods=document.getElementById("pods");
+  const want=3;
+  function render(n){pods.innerHTML="";for(let i=0;i<n;i++){const s=document.createElement("span");s.className="pod born";s.textContent="🏪";pods.appendChild(s);}}
+  render(want);
+  document.getElementById("breakBtn").addEventListener("click",()=>{
+    const alive=[...pods.querySelectorAll(".pod:not(.dead)")];
+    if(!alive.length)return;
+    const victim=alive[Math.floor(alive.length-1)];
+    victim.classList.add("dead");
+    document.getElementById("say").style.color="var(--bad)";
+    document.getElementById("say").textContent="😱 A shop crashed! Now there are only 2…";
+    setTimeout(()=>{
+      document.getElementById("say").style.color="var(--good)";
+      document.getElementById("say").textContent="🤖 …and the robot already built a fresh one. Back to 3. You did nothing!";
+      render(want);
+    },1100);
+  });
+}
+
+/* recap + next steps */
+const main=document.querySelector("main");
+const recap=document.createElement("div");recap.className="recap";
+recap.innerHTML=`<h2>🧠 One-line cheat sheet</h2>
+  <table><thead><tr><th>Helper</th><th>In one sentence</th></tr></thead><tbody>
+  ${CONCEPTS.map(c=>`<tr><td><span class="em">${c.emoji}</span>${c.name.split(",")[0]}</td><td>${c.lead}</td></tr>`).join("")}
+  </tbody></table>`;
+main.appendChild(recap);
+
+const next=document.createElement("div");next.className="next";
+next.innerHTML=`<h2>🚀 Ready for the real maps?</h2>
+  <p style="color:var(--ink2)">Now that the helpers make sense, see them wired up in our actual shop:</p>
+  <div class="links">
+    <a href="k8s-architecture.html">🏗️ The cluster map</a>
+    <a href="service-architecture.html">🔌 The service map</a>
+  </div>`;
+main.appendChild(next);
+
+const f=document.createElement("footer");
+f.innerHTML="Made as a friendly on-ramp for the microecom platform · pair it with the two detailed diagrams · open this file in any browser.";
+document.body.appendChild(f);
+
+/* level toggle */
+const b5=document.getElementById("lvl5"),bg=document.getElementById("lvlGrown");
+b5.onclick=()=>{document.body.classList.remove("show-grown");b5.classList.add("on");bg.classList.remove("on");};
+bg.onclick=()=>{document.body.classList.add("show-grown");bg.classList.add("on");b5.classList.remove("on");};
+</script>
+</body>
+</html>

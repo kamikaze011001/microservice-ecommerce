@@ -3,7 +3,7 @@ set -eu
 # TODO (Checkpoint 6 — HUMAN): write idempotency + seed logic.
 #
 # Available in this container:
-#   - mongosh, mongoimport (bitnami/mongodb:7.0)
+#   - mongosh, mongoimport (mongo:7.0, Docker Official)
 #   - $MONGO_URI : full connection string with auth
 #   - $MONGO_DB  : ecommerce_inventory
 #   - /seed/api_role.json
@@ -33,5 +33,28 @@ if [ "${COUNT:-0}" -gt 0 ]; then
 fi
 mongoimport --uri "$MONGO_URI"  --jsonArray --db ecommerce_inventory --collection api_role --file /seed/api_role.json
 mongoimport --uri "$MONGO_URI"  --jsonArray --db ecommerce_inventory --collection product --file /seed/product.json
-mongoimport --uri "$MONGO_URI"  --jsonArray --db ecommerce_inventory --collection product_quantity_history --file /seed/product-quantity-history.json
+# Collection name MUST be productQuantityHistory (camelCase). product-service's
+# entity is `@Document` with no explicit name, so Spring derives the collection
+# from the class ProductQuantityHistory → productQuantityHistory. Importing into
+# product_quantity_history (snake, the JSON filename style) leaves the app
+# reading an EMPTY collection → quantity sum null → product detail showed 0 /
+# 500'd. (product + api_role use @Document("product"/"api_role") so they're fine.)
+mongoimport --uri "$MONGO_URI"  --jsonArray --db ecommerce_inventory --collection productQuantityHistory --file /seed/product-quantity-history.json
+
+# Rewrite the product image host for k8s. docker/product.json hardcodes
+# http://localhost:9000/... (the docker-compose host port). In kind the browser
+# reaches MinIO through the media.microecom.local ingress, so swap the host.
+# Field is `imageUrl` (camelCase as stored in Mongo; it serializes to image_url
+# on the wire via @JsonNaming(SnakeCase) — matching image_url here would rewrite
+# nothing). Kept here, not in product.json, so the JSON stays shared with docker.
+mongosh "$MONGO_URI" --quiet --eval '
+  var d = db.getSiblingDB("ecommerce_inventory");
+  d.product.find({ imageUrl: /^http:\/\/localhost:9000\// }).forEach(function (p) {
+    d.product.updateOne(
+      { _id: p._id },
+      { $set: { imageUrl: p.imageUrl.replace("http://localhost:9000/", "http://media.microecom.local/") } }
+    );
+  });
+  print("imageUrl host rewritten to media.microecom.local");
+'
 echo "mongo seed complete"

@@ -18,12 +18,25 @@ spec:
       containers:
         - name: authorization-server
           image: localhost:5001/authorization-server:dev
-          imagePullPolicy: IfNotPresent
+          # Always re-pull: :dev is a MUTABLE tag rebuilt in place by
+          # k8s/images/build.sh. IfNotPresent serves stale cached layers on kind
+          # nodes so code changes never reach the pod. See k8s/CLAUDE.md.
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 6666
             - name: management
               containerPort: 19091
+          # APPLICATION_MAIL_USERNAME / APPLICATION_MAIL_PASSWORD for SMTP come
+          # from the app-secrets Secret (built from k8s/.env by
+          # `make k8s-app-secrets`). They're user-owned creds — kept out of git
+          # and out of Vault; application.yml reads them as ${ENV} placeholders.
+          # optional:true so the pod still starts if the Secret is absent (creds
+          # just resolve empty → no mail).
+          envFrom:
+            - secretRef:
+                name: app-secrets
+                optional: true
           env:
             # Vault dev mode — the token is `root` (set in vault values.yaml).
             # AWS overlay swaps this for AppRole + KMS-unsealed Vault; the env

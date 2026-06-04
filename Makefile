@@ -189,31 +189,101 @@ k8s-rebuild:
 	@SVC=$(svc) SKIP_CORES=1 k8s/images/build.sh
 	@kubectl -n apps rollout restart deployment/$(svc)
 
-.PHONY: k8s-infra k8s-seed
+.PHONY: k8s-infra k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-images k8s-app-secrets
 
 k8s-infra:
 	@k8s/infra/install.sh
 
-# k8s-seed: run bootstrap Jobs in fixed dependency order. Each Job is
-# idempotent (see seed.sh in each dir) so re-running is safe.
-# Order matters: vault must be seeded before any app that imports its
-# Spring config from vault, and minio before any storefront image
+# k8s-seed: run the PRE-APPS bootstrap Jobs in fixed dependency order. Each Job
+# is idempotent (see seed.sh in each dir) so re-running is safe.
+# Order matters: vault must be seeded before any app that imports its Spring
+# config from vault; mongo (api_role) must be seeded before the gateway /
+# authorization-server load their auth rules; minio before any storefront image
 # upload. Kafka Connect registration runs last because Connect itself
 # (Deployment) is started by k8s-infra.
+#
+# NOTE: mysql is deliberately NOT here — see k8s-seed-mysql below. It must run
+# AFTER k8s-apps because docker/ecommerce.sql is data-only (no CREATE TABLE) and
+# the schema is created by Hibernate ddl-auto when the JPA services boot.
+#
+# These four Jobs are applied with `kubectl apply -k` EXCEPT mongo, whose data
+# configmap is built from out-of-tree docker/*.json that kubectl's embedded
+# kustomize refuses to load — so it's created imperatively + applied with plain
+# `kubectl apply -f`. See the kustomize SCAR in k8s/CLAUDE.md.
 k8s-seed:
-	@for d in 01-mysql-seed 02-mongo-seed 03-vault-seed 05-minio-bootstrap 04-kafka-connect-register; do \
+	@for d in 02-mongo-seed 03-vault-seed 05-minio-bootstrap 04-kafka-connect-register; do \
 	  job=$$(echo $$d | sed 's/^[0-9]*-//'); \
 	  echo "==> applying $$d (job/$$job)"; \
 	  kubectl -n bootstrap delete job $$job --ignore-not-found >/dev/null; \
-	  kubectl apply -k k8s/infra/jobs/$$d; \
+	  case "$$d" in \
+	    02-mongo-seed) \
+	      kubectl -n bootstrap create configmap mongo-seed-scripts \
+	        --from-file=k8s/infra/jobs/02-mongo-seed/seed.sh --dry-run=client -o yaml | kubectl apply -f - ; \
+	      kubectl -n bootstrap create configmap mongo-seed-data \
+	        --from-file=docker/api_role.json --from-file=docker/product.json \
+	        --from-file=docker/product-quantity-history.json --dry-run=client -o yaml | kubectl apply -f - ; \
+	      kubectl apply -f k8s/infra/jobs/02-mongo-seed/job.yaml ;; \
+	    *) kubectl apply -k k8s/infra/jobs/$$d ;; \
+	  esac; \
 	  kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/$$job; \
 	done
 	@echo "k8s-seed complete"
 
+# k8s-seed-mysql: runs SEPARATELY, AFTER k8s-apps. docker/ecommerce.sql is a
+# data-only dump (0 CREATE TABLE); the schema is created by Hibernate ddl-auto
+# during each JPA service's startup. By the time `k8s-apps` reports rollout
+# complete, every service is Ready — which (ddl-auto runs before the web server
+# accepts traffic) means all tables already exist. Seeding earlier fails with
+# "Table 'ecommerce_dev.account' doesn't exist". Both configmaps are created
+# imperatively (out-of-tree docker/ecommerce.sql) and the Job applied with plain
+# `kubectl apply -f`. See k8s/CLAUDE.md.
+k8s-seed-mysql:
+	@echo "==> applying 01-mysql-seed (job/mysql-seed)"
+	@kubectl -n bootstrap delete job mysql-seed --ignore-not-found >/dev/null
+	@kubectl -n bootstrap create configmap mysql-seed-scripts \
+	  --from-file=k8s/infra/jobs/01-mysql-seed/seed.sh --dry-run=client -o yaml | kubectl apply -f -
+	@kubectl -n bootstrap create configmap mysql-seed-sql \
+	  --from-file=docker/ecommerce.sql --dry-run=client -o yaml | kubectl apply -f -
+	@kubectl apply -f k8s/infra/jobs/01-mysql-seed/job.yaml
+	@kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/mysql-seed
+	@echo "k8s-seed-mysql complete"
+
+# k8s-seed-inventory: populate inventory-service's MySQL tables
+# (inventory_product + product_quantity_history) from the same JSON the Mongo
+# catalog uses. Must run AFTER k8s-apps — inventory-service creates those tables
+# via Hibernate ddl-auto at startup, and they're never written during a clean
+# bootstrap (the Kafka ProductUpdate listener only fires on a real product save,
+# which the Mongo seed bypasses). Without this every cart item shows
+# "0 available". Host-side + idempotent, mirroring k8s-seed-images.
+k8s-seed-inventory:
+	@scripts/seed/k8s-inventory.sh
+
+# k8s-seed-images: upload the real product images (docker/seed-images/*) into
+# MinIO at products/<id>/<slug>.jpg. Runs AFTER k8s-seed (needs the
+# ecommerce-media bucket). Host-side because the images live in the repo, not a
+# configMap. Idempotent (mc cp overwrites).
+k8s-seed-images:
+	@scripts/seed/k8s-product-images.sh
+
 .PHONY: k8s-apps k8s-apps-down k8s-status k8s-stress k8s-stress-logs
 
 # Apply all 8 service Deployments via the local overlay.
-k8s-apps:
+# k8s-app-secrets: build the `app-secrets` Secret in the apps namespace from
+# k8s/.env (user-owned mail + PayPal creds). authorization-server and
+# payment-service envFrom it. Kept out of git (k8s/.env is gitignored) and out
+# of Vault. If k8s/.env is missing we create an empty Secret so the optional
+# secretRef resolves (mail/PayPal just stay unset). Idempotent (apply).
+k8s-app-secrets:
+	@if [ -f k8s/.env ]; then \
+	  kubectl create secret generic app-secrets --namespace apps \
+	    --from-env-file=k8s/.env --dry-run=client -o yaml | kubectl apply -f - ; \
+	else \
+	  echo "warn: k8s/.env missing — creating empty app-secrets Secret. Copy k8s/.env.example to k8s/.env and re-run k8s-app-secrets for working mail/PayPal."; \
+	  kubectl create secret generic app-secrets --namespace apps \
+	    --dry-run=client -o yaml | kubectl apply -f - ; \
+	fi
+
+k8s-apps: k8s-app-secrets
 	@kubectl apply -k k8s/apps/overlays/local
 	@kubectl -n apps rollout status deployment --timeout=10m
 
@@ -243,7 +313,7 @@ k8s-stress-logs:
 # One-shot: cluster -> infra -> images -> seed -> apps. Idempotent —
 # safe to re-run after editing manifests or pulling new code. Mirrors
 # the docker-compose `make bootstrap` flow but for the kind cluster.
-k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build k8s-seed k8s-apps
+k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build k8s-seed k8s-seed-images k8s-apps k8s-seed-mysql k8s-seed-inventory
 	@echo "==> k8s bootstrap complete"
 	@$(MAKE) k8s-status
 	@echo ""

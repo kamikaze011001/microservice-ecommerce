@@ -28,12 +28,13 @@ put_if_missing() {
 # ── core-s3 ────────────────────────────────────────────────────────────────
 put_if_missing core-s3 \
   s3.endpoint="http://minio.infra.svc.cluster.local:9000" \
+  s3.public-endpoint="http://media.microecom.local" \
   s3.region="us-east-1" \
   s3.bucket="ecommerce-media" \
   s3.access-key="minioadmin" \
   s3.secret-key="minioadmin" \
   s3.path-style="true" \
-  s3.public-base-url="http://minio.infra.svc.cluster.local:9000/ecommerce-media" \
+  s3.public-base-url="http://media.microecom.local/ecommerce-media" \
   s3.presign-ttl="PT5M" \
   s3.max-upload-size="5242880" \
   s3.allowed-types="image/jpeg,image/png,image/webp"
@@ -58,22 +59,51 @@ put_if_missing ecommerce \
   spring.data.redis.password="" \
   spring.data.redis.database="0" \
   spring.data.mongodb.uri="mongodb://ecommerce:ecommerce123@mongodb.infra.svc.cluster.local:27017/ecommerce_inventory?authSource=admin" \
+  spring.data.mongodb.database="ecommerce_inventory" \
   spring.kafka.bootstrap-servers="kafka.infra.svc.cluster.local:9092" \
+  spring.kafka.properties.schema.registry.url="http://schema-registry.infra.svc.cluster.local:8081" \
+  eureka.client.enabled="false" \
   spring.mail.host="smtp.gmail.com" \
   spring.mail.port="587" \
   spring.mail.protocol="smtp" \
   spring.mail.properties.mail.smtp.auth="true" \
-  spring.mail.properties.mail.smtp.starttls.enable="true" \
-  spring.mail.username="${APPLICATION_MAIL_USERNAME:-}" \
-  spring.mail.password="${APPLICATION_MAIL_PASSWORD:-}"
+  spring.mail.properties.mail.smtp.starttls.enable="true"
+  # NOTE: spring.mail.username/password are NOT seeded here. They are user-owned
+  # creds supplied via the app-secrets k8s Secret (k8s/.env → envFrom on
+  # authorization-server); application.yml reads them as ${APPLICATION_MAIL_*}.
+  # Seeding blank values here would shadow the env vars.
 
+# authorization-server: token policy + JWK key-id. Values mirror
+# docker/vault-configs/authorization-server.json. The JWK itself is generated at
+# runtime (RSAKeyGenerator in AuthorizationServerConfiguration) keyed by
+# authentication-key-id — no keypair is stored. life-times are milliseconds.
+# (The original k8s seed omitted this block, so the service crashed with
+# "Could not resolve placeholder 'application.access-token.life-time'".)
+put_if_missing authorization-server \
+  server.port="6666" \
+  application.access-token.life-time="900000" \
+  application.refresh-token.life-time="604800000" \
+  application.authentication-key-id="ecommerce-auth-key-2024"
+
+# gateway: jwt/jwk config AND route URIs MUST be in ONE put_if_missing call —
+# put_if_missing skips a path that already exists, so a second `put_if_missing
+# gateway` block would be silently dropped. The route URIs replace the
+# application.yml `lb://NAME` (Eureka) defaults with in-cluster Service DNS;
+# required because Eureka is disabled (eureka.client.enabled=false). Without
+# them gateway routes resolve to lb:// → no instances → 503 on every request.
 put_if_missing gateway \
   server.port="6868" \
   application.jwk-set-uri="http://authorization-server/authorization-server/.well-known/jwks.json" \
   jwt.token.retry.max-attempts="3" \
   jwt.token.retry.delay="500" \
   jwt.token.cache.refresh-minutes="30" \
-  jwt.token.cache.force-refresh-threshold="5"
+  jwt.token.cache.force-refresh-threshold="5" \
+  gateway.routes.authorization-server.uri="http://authorization-server.apps.svc.cluster.local:6666" \
+  gateway.routes.inventory-service.uri="http://inventory-service.apps.svc.cluster.local:6969" \
+  gateway.routes.product-service.uri="http://product-service.apps.svc.cluster.local:7777" \
+  gateway.routes.order-service.uri="http://order-service.apps.svc.cluster.local:9696" \
+  gateway.routes.payment-service.uri="http://payment-service.apps.svc.cluster.local:8484" \
+  gateway.routes.bff-service.uri="http://bff-service.apps.svc.cluster.local:8087"
 
 put_if_missing product-service \
   server.port="7777" \
@@ -120,17 +150,22 @@ put_if_missing orchestrator-service \
   application.saga.saga-ttl-minutes="30"
 
 # payment-service: PayPal client-id, client-secret, and tunnel-url come
-# from envFrom (k8s Secret built from k8s/.env). frontend base-url points
-# at the in-cluster frontend Pod (or replaced by the ALB hostname in AWS).
+# from envFrom (k8s Secret built from k8s/.env). frontend base-url is the
+# BROWSER-FACING SPA host: IPNPaypalController issues a 302 redirect to
+# `${frontend.base-url}/payment/success` after PayPal returns, so it must be a
+# host the user's browser can resolve — the ingress host (microecom.local), NOT
+# the in-cluster Service DNS (which NXDOMAINs in the browser). In AWS this
+# becomes the public SPA domain.
 put_if_missing payment-service \
   server.port="8484" \
-  application.frontend.base-url="http://frontend.apps.svc.cluster.local" \
+  application.frontend.base-url="http://microecom.local" \
   application.paypal.base-url="https://api-m.sandbox.paypal.com" \
   application.paypal.success-path="/payment-service/v1/paypal:success" \
-  application.paypal.cancel-path="/payment-service/v1/paypal:cancel" \
-  application.paypal.client-id="${PAYPAL_CLIENT_ID:-}" \
-  application.paypal.client-secret="${PAYPAL_CLIENT_SECRET:-}" \
-  application.paypal.tunnel-url="${PAYPAL_TUNNEL_URL:-}"
+  application.paypal.cancel-path="/payment-service/v1/paypal:cancel"
+  # NOTE: application.paypal.client-id/client-secret/tunnel-url are NOT seeded
+  # here. They are user-owned creds supplied via the app-secrets k8s Secret
+  # (k8s/.env → envFrom on payment-service); application.yml reads them as
+  # ${PAYPAL_*}. Seeding blank values here would shadow the env vars.
 
 # bff-service: eureka.* keys omitted — k8s uses Service DNS, not Eureka.
 # inventory.grpc.host swapped to in-cluster Service DNS.
@@ -141,15 +176,5 @@ put_if_missing bff-service \
   feign.client.product-service.url="http://product-service.apps.svc.cluster.local:7777" \
   feign.client.order-service.url="http://order-service.apps.svc.cluster.local:9696" \
   feign.client.payment-service.url="http://payment-service.apps.svc.cluster.local:8484"
-
-# gateway: replace lb://NAME (Eureka load-balancer scheme) with in-cluster
-# Service DNS. Each route resolves via kube-dns; kube-proxy fans to Pods.
-put_if_missing gateway \
-  gateway.routes.authorization-server.uri="http://authorization-server.apps.svc.cluster.local:6666" \
-  gateway.routes.inventory-service.uri="http://inventory-service.apps.svc.cluster.local:6969" \
-  gateway.routes.product-service.uri="http://product-service.apps.svc.cluster.local:7777" \
-  gateway.routes.order-service.uri="http://order-service.apps.svc.cluster.local:9696" \
-  gateway.routes.payment-service.uri="http://payment-service.apps.svc.cluster.local:8484" \
-  gateway.routes.bff-service.uri="http://bff-service.apps.svc.cluster.local:8087"
 
 echo "vault baseline seed complete"

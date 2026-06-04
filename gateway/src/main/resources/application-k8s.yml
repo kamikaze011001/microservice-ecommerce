@@ -1,0 +1,21 @@
+# k8s profile — activated via SPRING_PROFILES_ACTIVE=k8s in the gateway Deployment.
+# In-cluster there is no Eureka server, so service discovery is delegated to the
+# Kubernetes API. `lb://` routes and the @LoadBalanced WebClient (JWKS fetch) then
+# resolve service-ids against k8s Services in the `apps` namespace. The default
+# profile (docker-compose) is unaffected and keeps using Eureka.
+eureka:
+  client:
+    enabled: false          # no Eureka server in-cluster; would only spam connect errors
+
+spring:
+  cloud:
+    kubernetes:
+      discovery:
+        enabled: true
+        # Services expose two ports (http + management). Without this the LB could
+        # pick the management port (19091); pin it to the app port by name.
+        primary-port-name: http
+      loadbalancer:
+        # SERVICE: target the Service ClusterIP and let kube-proxy balance. Avoids
+        # needing RBAC on `pods` (POD mode lists pod IPs from Endpoints).
+        mode: SERVICE

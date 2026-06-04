@@ -142,6 +142,14 @@ public class JwtAuthenticationFilter implements WebFilter {
         String path = request.getPath().value();
         log.debug("(filter) Processing request for path: {}", path);
 
+        // Skip actuator endpoints (probes/scrape) — internal-only, never carry a
+        // JWT. This filter is a global WebFilter applied on the management port
+        // too. (Harmless here even without a token, but explicit for parity with
+        // AuthorizationFilter and to short-circuit JWK work on probe traffic.)
+        if (path.startsWith("/actuator")) {
+            return chain.filter(exchange);
+        }
+
         String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
         if (authHeader == null || !authHeader.startsWith(BEARER_PREFIX)) {
             log.debug("(filter) No Bearer token present, skipping authentication");

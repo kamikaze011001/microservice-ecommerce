@@ -7,8 +7,12 @@ configMapGenerator:
   - name: mysql-seed-scripts
     files:
       - seed.sh
-  - name: mysql-seed-sql
-    files:
-      - ../../../../docker/ecommerce.sql
+  # NOTE: the seed DATA configmap (mysql-seed-sql, from docker/ecommerce.sql) is
+  # NOT generated here. kubectl's embedded kustomize hardcodes the root-only load
+  # restrictor and exposes no --load-restrictor flag, so a configMapGenerator
+  # cannot read files outside this dir ("not in or below"). docker/ecommerce.sql
+  # is the single source of truth (shared with docker-compose) and must not be
+  # duplicated, so `make k8s-seed` creates mysql-seed-sql imperatively (kubectl
+  # create configmap has no path restriction) before applying this kustomization.
 generatorOptions:
   disableNameSuffixHash: true

@@ -5,9 +5,16 @@ cd "$(git rev-parse --show-toplevel)"
 
 # Repos
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx 2>/dev/null || true
-helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true
+# NOTE: no bitnami repo — the 5 stateful services migrated to Docker Official
+# images as plain manifests (Bitnami images deleted 2025-09-29). See k8s/CLAUDE.md.
 helm repo add hashicorp https://helm.releases.hashicorp.com 2>/dev/null || true
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>/dev/null || true
+helm repo add vm https://victoriametrics.github.io/helm-charts/ 2>/dev/null || true
+helm repo add grafana https://grafana.github.io/helm-charts 2>/dev/null || true
+# metrics-server: upstream kubernetes-sigs chart (NOT bitnami/metrics-server).
+# Bitnami deleted docker.io/bitnami/* versioned images on 2025-09-29; the
+# upstream chart is the maintained, free replacement.
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ 2>/dev/null || true
 helm repo update
 
 # Namespaces
@@ -22,43 +29,67 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   -f k8s/infra/values/ingress-nginx.yaml \
   --wait --timeout 5m
 
-# Metrics-server (separate chart) — required for HPA
-helm upgrade --install metrics-server bitnami/metrics-server \
+# Metrics-server (separate chart) — required for HPA.
+# Upstream kubernetes-sigs chart. --kubelet-insecure-tls is required on kind
+# (kubelet serving certs are self-signed); InternalIP avoids inter-node
+# hostname resolution issues. Upstream uses an `args` list, NOT bitnami's
+# `extraArgs`/`apiService.create` keys.
+helm upgrade --install metrics-server metrics-server/metrics-server \
   --namespace infra \
-  --set apiService.create=true \
-  --set extraArgs[0]=--kubelet-insecure-tls \
+  --set 'args={--kubelet-insecure-tls,--kubelet-preferred-address-types=InternalIP}' \
   --wait --timeout 3m
 
-# kube-prometheus-stack
-helm upgrade --install kps prometheus-community/kube-prometheus-stack \
+# Observability: VictoriaMetrics single-node + Grafana + kube-state-metrics.
+# See docs/superpowers/specs/2026-06-02-victoriametrics-observability-design.md
+helm upgrade --install vmsingle vm/victoria-metrics-single \
   --namespace monitoring \
-  --version 58.2.0 \
-  -f k8s/infra/values/kube-prometheus-stack.yaml \
-  --wait --timeout 10m
-
-helm upgrade --install mysql bitnami/mysql \
-  --namespace infra \
-  --version 11.1.0 \
-  -f k8s/infra/values/mysql.yaml \
+  --version 0.39.0 \
+  -f k8s/infra/values/victoria-metrics.yaml \
   --wait --timeout 5m
 
-kubectl apply -f k8s/infra/manifests/mysql-replica-service.yaml
+helm upgrade --install grafana grafana/grafana \
+  --namespace monitoring \
+  --version 10.5.15 \
+  -f k8s/infra/values/grafana.yaml \
+  --wait --timeout 5m
 
-helm upgrade --install mongodb bitnami/mongodb \
-  --namespace infra --version 15.6.0 \
-  -f k8s/infra/values/mongodb.yaml --wait --timeout 5m
+helm upgrade --install kube-state-metrics prometheus-community/kube-state-metrics \
+  --namespace monitoring \
+  --wait --timeout 3m
 
-helm upgrade --install redis bitnami/redis \
-  --namespace infra --version 19.5.0 \
-  -f k8s/infra/values/redis.yaml --wait --timeout 3m
+# ── Stateful services — Docker Official images as plain manifests ────────────
+# Migrated off Bitnami (docker.io/bitnami/* deleted 2025-09-29). Each manifest
+# keeps its Service DNS name unchanged so the Vault seed + app config + seed
+# Jobs need no edits. See k8s/CLAUDE.md and the design spec.
+MANIFESTS=k8s/infra/manifests
 
-helm upgrade --install minio bitnami/minio \
-  --namespace infra --version 14.6.0 \
-  -f k8s/infra/values/minio.yaml --wait --timeout 5m
+# MongoDB needs an internal keyFile (auth + replica set together). Create it
+# only if missing — re-runs must NOT rotate it, since rotating the keyfile
+# would break the already-initialized replica set.
+if ! kubectl -n infra get secret mongodb-keyfile >/dev/null 2>&1; then
+  echo "creating mongodb-keyfile secret"
+  kubectl -n infra create secret generic mongodb-keyfile \
+    --from-literal=keyfile="$(openssl rand -base64 756 | tr -d '\n')"
+fi
 
-helm upgrade --install kafka bitnami/kafka \
-  --namespace infra --version 29.2.0 \
-  -f k8s/infra/values/kafka.yaml --wait --timeout 8m
+kubectl apply \
+  -f "$MANIFESTS/mysql.yaml" \
+  -f "$MANIFESTS/mysql-replica-service.yaml" \
+  -f "$MANIFESTS/mongodb.yaml" \
+  -f "$MANIFESTS/redis.yaml" \
+  -f "$MANIFESTS/minio.yaml" \
+  -f "$MANIFESTS/minio-ingress.yaml" \
+  -f "$MANIFESTS/kafka.yaml"
+
+# Wait for each to be Ready. The mongodb `bootstrap` and minio `setup` sidecars
+# gate pod-readiness on a completion sentinel, so a Ready pod guarantees the
+# replica-set users / bucket already exist — the seed Jobs that run later won't
+# race ahead and fail to authenticate or write.
+kubectl -n infra rollout status statefulset/mysql   --timeout=5m
+kubectl -n infra rollout status statefulset/mongodb --timeout=5m
+kubectl -n infra rollout status deployment/redis    --timeout=3m
+kubectl -n infra rollout status statefulset/minio   --timeout=5m
+kubectl -n infra rollout status statefulset/kafka   --timeout=5m
 
 helm upgrade --install vault hashicorp/vault \
   --namespace infra --version 0.27.0 \
@@ -82,6 +113,14 @@ else
     --namespace bootstrap \
     --dry-run=client -o yaml | kubectl apply -f -
 fi
+
+# Schema Registry — the JPA services use Confluent Avro (de)serializers and the
+# Debezium Mongo connector publishes Avro, both of which require a reachable
+# registry (services are Vault-pointed at schema-registry.infra.svc:8081).
+# Depends on Kafka (KRaft) being Ready above — it stores subjects in a compacted
+# _schemas topic. Must be up before the JVM services and the connector job.
+kubectl apply -f "$MANIFESTS/schema-registry.yaml"
+kubectl -n infra rollout status deployment/schema-registry --timeout=5m
 
 # Kafka Connect — long-running Deployment hosting source/sink connectors.
 # Connector registration is a separate Job (k8s/infra/jobs/04-kafka-connect-register).

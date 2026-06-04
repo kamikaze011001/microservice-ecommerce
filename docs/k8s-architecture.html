@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>microecom — Local Kubernetes Architecture & Lessons</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2a3340;
+    --txt:#e6edf3; --muted:#9aa7b4; --faint:#6b7785;
+    --accent:#58a6ff; --good:#3fb950; --bad:#f85149; --warn:#d29922;
+    --ingress:#a371f7; --deploy:#58a6ff; --stateful:#39c5cf; --job:#d29922;
+    --helm:#bc8cff; --ext:#768390; --config:#7d8590;
+    --radius:12px; --shadow:0 6px 22px rgba(0,0,0,.45);
+    font-synthesis:none;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.5}
+  a{color:var(--accent)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    background:#0b0f14;border:1px solid var(--line);border-radius:5px;padding:.05em .35em;font-size:.86em}
+
+  header.top{position:sticky;top:0;z-index:40;background:linear-gradient(180deg,#0d1117 70%,rgba(13,17,23,.85));
+    border-bottom:1px solid var(--line);padding:14px 22px;backdrop-filter:blur(6px)}
+  header.top h1{margin:0;font-size:18px;letter-spacing:.2px}
+  header.top h1 .sub{color:var(--muted);font-weight:500;font-size:13px}
+  .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+  select,button{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:7px 11px;cursor:pointer;transition:.15s}
+  select:hover,button:hover{border-color:var(--accent)}
+  button.ghost{background:transparent}
+  .pill{font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--line);
+    border-radius:999px;padding:4px 10px}
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;font-size:12px;color:var(--muted)}
+  .legend .lg{display:flex;align-items:center;gap:6px}
+  .swatch{width:12px;height:12px;border-radius:3px;display:inline-block;border:1px solid rgba(255,255,255,.15)}
+
+  main{max-width:1280px;margin:0 auto;padding:22px}
+  .stepbox{min-height:26px;margin:6px 0 14px;color:var(--muted);font-size:13.5px}
+  .stepbox b{color:var(--txt)}
+  .stepbox .hop{color:var(--accent);font-weight:600}
+
+  /* diagram */
+  .diagram{position:relative}
+  svg.edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;overflow:visible}
+  .lane{position:relative;z-index:2;border:1px solid var(--line);border-radius:var(--radius);
+    background:linear-gradient(180deg,var(--panel),#12161d);margin:0 0 16px;padding:10px 12px 14px}
+  .lane > .lane-title{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);
+    margin:2px 2px 10px;display:flex;align-items:center;gap:8px}
+  .lane > .lane-title .ns{color:var(--accent);background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.25);
+    padding:1px 7px;border-radius:6px;font-size:10px;letter-spacing:.05em}
+  .row{display:flex;flex-wrap:wrap;gap:10px}
+
+  .node{position:relative;z-index:2;min-width:138px;max-width:200px;background:var(--panel2);
+    border:1px solid var(--line);border-left:4px solid var(--deploy);border-radius:10px;
+    padding:9px 11px;cursor:pointer;transition:transform .12s,border-color .12s,box-shadow .12s}
+  .node:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--accent)}
+  .node .nm{font-weight:650;font-size:13.5px;display:flex;align-items:center;gap:6px}
+  .node .meta{color:var(--muted);font-size:11px;margin-top:3px;font-family:ui-monospace,Menlo,monospace}
+  .node .badge{font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:#0d1117;
+    border-radius:5px;padding:1px 6px;font-weight:700}
+  .node.dim{opacity:.32;filter:saturate(.5)}
+  .node.active{border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.18),var(--shadow);transform:translateY(-2px)}
+  .node.active .seq{position:absolute;top:-9px;left:-9px;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);color:#06121f;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;
+    border:2px solid var(--bg)}
+  .b-ingress{background:var(--ingress)} .bd-ingress{border-left-color:var(--ingress)}
+  .b-deploy{background:var(--deploy)}   .bd-deploy{border-left-color:var(--deploy)}
+  .b-stateful{background:var(--stateful)} .bd-stateful{border-left-color:var(--stateful)}
+  .b-job{background:var(--job)}         .bd-job{border-left-color:var(--job)}
+  .b-helm{background:var(--helm)}       .bd-helm{border-left-color:var(--helm)}
+  .b-ext{background:var(--ext)}         .bd-ext{border-left-color:var(--ext)}
+  .b-config{background:var(--config)}   .bd-config{border-left-color:var(--config)}
+
+  /* moving packet */
+  .packet{position:absolute;z-index:3;width:13px;height:13px;border-radius:50%;
+    background:radial-gradient(circle at 35% 35%,#fff,var(--accent));
+    box-shadow:0 0 12px 3px rgba(88,166,255,.8);pointer-events:none;opacity:0}
+
+  /* drawer */
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:.2s;z-index:50}
+  .scrim.on{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;top:0;right:0;height:100%;width:min(440px,92vw);background:var(--panel);
+    border-left:1px solid var(--line);box-shadow:var(--shadow);z-index:60;transform:translateX(102%);
+    transition:transform .22s ease;overflow-y:auto;padding:20px}
+  .drawer.on{transform:none}
+  .drawer h2{margin:.2em 0 .1em;font-size:18px;display:flex;align-items:center;gap:8px}
+  .drawer .kv{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--muted);margin:2px 0 14px}
+  .drawer h3{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin:18px 0 6px}
+  .drawer p{margin:.3em 0;font-size:14px;color:var(--txt)}
+  .drawer .teach{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;font-size:13.5px;color:var(--muted)}
+  .drawer .teach b{color:var(--txt)}
+  .closeX{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:22px;padding:0;cursor:pointer}
+
+  /* lessons */
+  section.lessons{margin-top:34px}
+  .lessons h2.h{font-size:20px;margin:0 0 4px}
+  .lessons .lead{color:var(--muted);margin:0 0 16px;font-size:14px;max-width:760px}
+  .tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .tab{border-radius:999px;padding:7px 14px;font-size:13px}
+  .tab.sel{background:var(--accent);color:#06121f;border-color:var(--accent);font-weight:700}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:16px}
+  .chip{font-size:12px;border-radius:999px;padding:5px 11px;background:var(--panel2);border:1px solid var(--line);cursor:pointer}
+  .chip.sel{background:#21333f;border-color:var(--accent);color:var(--txt)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--bad);border-radius:12px;padding:14px 16px}
+  .card.tech{border-left-color:var(--good)}
+  .card .ct{font-weight:700;font-size:15px;margin:0 0 4px;display:flex;gap:8px;align-items:flex-start}
+  .card .tagrow{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+  .card .t{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);
+    background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+  .card .field{margin:7px 0;font-size:13.2px}
+  .card .field .lab{color:var(--faint);font-size:11px;letter-spacing:.06em;text-transform:uppercase;display:block;margin-bottom:1px}
+  .card .teaches{margin-top:10px;background:#10231a;border:1px solid #1d3a29;border-radius:8px;padding:8px 10px;font-size:12.8px;color:#9fe3b6}
+  .card.scar .teaches{background:#2a1417;border-color:#4a2326;color:#f3b0ad}
+  .card .num{color:var(--faint);font-weight:800;font-size:13px}
+  .count{color:var(--faint);font-size:12px;margin-left:6px}
+  footer{color:var(--faint);font-size:12px;border-top:1px solid var(--line);margin-top:36px;padding:18px 0 40px;max-width:1280px;margin-left:auto;margin-right:auto}
+  .hide{display:none!important}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>microecom — Local Kubernetes <span class="sub">· kind cluster <code>microecom</code> · architecture + the lessons that built it</span></h1>
+  <div class="bar">
+    <span class="pill">Trace a request:</span>
+    <select id="flowSel">
+      <option value="">— pick a flow —</option>
+    </select>
+    <button id="playBtn" class="ghost">▶ Replay</button>
+    <button id="clearBtn" class="ghost">✕ Clear</button>
+    <span class="pill" style="margin-left:auto">Click any node for what it is &amp; what it taught me</span>
+  </div>
+  <div class="legend" id="legend"></div>
+  <div class="stepbox" id="stepbox">Tip: pick a flow above to animate a request through the cluster, or click any box for a teaching panel.</div>
+</header>
+
+<main>
+  <div class="diagram" id="diagram">
+    <svg class="edges" id="edges"><defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#fff"/>
+      </marker>
+    </defs></svg>
+    <div id="lanes"></div>
+    <div class="packet" id="packet"></div>
+  </div>
+
+  <section class="lessons">
+    <h2 class="h">Techniques &amp; mistakes — the field notes</h2>
+    <p class="lead">Every card below is something this cluster taught me the hard way. Green = a technique worth reusing; red = a mistake (a "scar") and how it was fixed. Click a node in the diagram to filter these to just that component, or use the chips.</p>
+    <div class="tabs" id="tabs"></div>
+    <div class="chips" id="chips"></div>
+    <div class="cards" id="cards"></div>
+  </section>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer">
+  <button class="closeX" id="closeX">×</button>
+  <div id="drawerBody"></div>
+</aside>
+
+<footer>
+  Generated as a learning aid for the microecom microservice platform · all facts pulled from <code>k8s/</code> manifests &amp; <code>k8s/CLAUDE.md</code> scars · open this file directly in any browser (no server, no internet needed).
+</footer>
+
+<script>
+/* ───────────────────────── DATA ───────────────────────── */
+const PRIM = {
+  ext:      {label:"external",   cls:"ext"},
+  ingress:  {label:"Ingress",    cls:"ingress"},
+  deploy:   {label:"Deployment", cls:"deploy"},
+  stateful: {label:"StatefulSet",cls:"stateful"},
+  job:      {label:"Job",        cls:"job"},
+  helm:     {label:"Helm",       cls:"helm"},
+  config:   {label:"Config",     cls:"config"},
+};
+
+// lanes render top→bottom
+const LANES = [
+  {id:"host",  title:"Your machine",                ns:null},
+  {id:"edge",  title:"kind node · cluster edge",    ns:null},
+  {id:"appsE", title:"Edge services",               ns:"apps"},
+  {id:"appsS", title:"Backend microservices",       ns:"apps"},
+  {id:"infra", title:"Stateful infrastructure",     ns:"infra"},
+  {id:"mon",   title:"Observability",               ns:"monitoring"},
+  {id:"boot",  title:"Run-once seed Jobs",          ns:"bootstrap"},
+];
+
+const NODES = [
+  // host
+  {id:"browser", lane:"host", prim:"ext", nm:"Browser", meta:"+ /etc/hosts → 127.0.0.1",
+    teach:"Not a k8s object — your machine. <code>/etc/hosts</code> maps the three <code>*.microecom.local</code> names to 127.0.0.1 so the browser reaches the cluster's ingress on :80.",
+    use:"Resolves <code>microecom.local</code> (SPA), <code>api.microecom.local</code> (XHR), <code>media.microecom.local</code> (images) all to localhost."},
+  {id:"registry", lane:"host", prim:"ext", nm:"Local registry", meta:":5001",
+    teach:"A Docker registry container next to the cluster. kind nodes pull images from it via a containerd <code>hosts.toml</code> (config_path), the officially documented kind pattern.",
+    use:"<code>make k8s-build</code> pushes <code>localhost:5001/&lt;svc&gt;:dev</code>; every app pod pulls from here with <code>imagePullPolicy: IfNotPresent</code>."},
+
+  // edge
+  {id:"kindnode", lane:"edge", prim:"ext", nm:"kind node :80/:443", meta:"hostPort → host",
+    teach:"kind runs k8s nodes as Docker containers. <code>extraPortMappings</code> in <code>cluster.yaml</code> maps the control-plane container's :80/:443 to your host so browser traffic can enter. Cluster is 1 control-plane + 3 workers.",
+    use:"The control-plane node is labelled <code>ingress-ready=true</code>; ingress-nginx binds :80/:443 on it via hostPort."},
+  {id:"ingress", lane:"edge", prim:"helm", nm:"ingress-nginx", meta:"ClusterIP + hostPort 80/443",
+    teach:"An <b>Ingress controller</b> (nginx) is an L7 reverse proxy. <b>Ingress</b> objects are routing rules (host/path → Service). The controller watches them and reconfigures nginx.",
+    use:"3 Ingress rules route by hostname: <code>api.*</code>→gateway:6868, <code>microecom.local</code>→frontend:80, <code>media.*</code>→minio:9000. Reaches the host via hostPort, not NodePort.",
+    flowTag:["api","media","fe"]},
+
+  // apps edge
+  {id:"frontend", lane:"appsE", prim:"deploy", nm:"frontend", meta:"SPA · svc :80 (ctr 8080)",
+    ing:"microecom.local",
+    teach:"A <b>Deployment</b> manages a stateless replica set of pods. The Vue SPA is served as static assets by an nginx container.",
+    use:"Loaded from <code>microecom.local</code>. All its API calls go to <code>api.microecom.local</code> — split hosts keep cookies/CORS clean."},
+  {id:"gateway", lane:"appsE", prim:"deploy", nm:"gateway", meta:"Spring Cloud GW · :6868 · HPA",
+    ing:"api.microecom.local",
+    teach:"<b>Deployment</b> + <b>HPA</b> (HorizontalPodAutoscaler scales replicas on CPU). The single backend ingress points here; it path-routes to every service.",
+    use:"Routes <code>/&lt;service&gt;/**</code> via <b>Spring Cloud Kubernetes discovery</b> (<code>k8s</code> profile, <code>lb://SERVICE</code> resolves against k8s API). Direct-DNS Vault overrides (<code>http://&lt;svc&gt;.apps.svc:port</code>) remain as belt-and-suspenders. <b>Eureka is OFF in k8s.</b> Gateway has a dedicated ServiceAccount + RBAC (get/list/watch on services, endpoints, pods)."},
+  {id:"config", lane:"appsE", prim:"config", nm:"app-config / app-secrets", meta:"ConfigMap + Secret",
+    teach:"<b>ConfigMap</b> = non-secret key/values; <b>Secret</b> = base64 sensitive values. Both mount into pods as env or files.",
+    use:"<code>app-secrets</code> (built from gitignored <code>k8s/.env</code>) carries your real mail + PayPal creds — never committed, never in Vault seed scripts."},
+
+  // backend services
+  {id:"auth", lane:"appsS", prim:"deploy", nm:"authorization-server", meta:":6666 · mgmt :19091",
+    teach:"Deployment. Issues RS256 JWTs; gateway validates them via JWK and injects <code>X-User-Id</code>.",
+    use:"Reads users from MySQL, OTP codes from Redis, sends mail via SMTP. Config (token lifetimes, JWK) pulled from Vault at boot."},
+  {id:"product", lane:"appsS", prim:"deploy", nm:"product-service", meta:":7777 · HPA",
+    teach:"Deployment + HPA. JPA service with master/slave repo split (writes→mysql, reads→mysql-replica).",
+    use:"Storefront browse (<code>/product-service/**</code>) is PERMIT_ALL. Stores image URLs pointing at <code>media.microecom.local</code>."},
+  {id:"inventory", lane:"appsS", prim:"deploy", nm:"inventory-service", meta:":6969 · gRPC :9090 · HPA",
+    teach:"Deployment exposing BOTH an HTTP port and a <b>gRPC</b> port (9090) for internal calls.",
+    use:"order-service calls it over gRPC to validate/reserve stock during order placement."},
+  {id:"order", lane:"appsS", prim:"deploy", nm:"order-service", meta:":9696 · HPA",
+    teach:"Deployment + HPA. JVM tuned with <code>-XX:MaxRAMPercentage=75</code> so the heap respects the container memory limit.",
+    use:"Writes orders to MongoDB; that write is the CDC trigger that starts the Saga (Mongo→Kafka Connect→orchestrator)."},
+  {id:"payment", lane:"appsS", prim:"deploy", nm:"payment-service", meta:":8484",
+    teach:"Deployment. PayPal integration.",
+    use:"Driven by the orchestrator during the Saga; publishes Payment*Event to Kafka."},
+  {id:"orchestrator", lane:"appsS", prim:"deploy", nm:"orchestrator-service", meta:":9999",
+    teach:"Deployment implementing the <b>Saga</b> pattern for distributed transactions.",
+    use:"Consumes the CDC event, then coordinates inventory + payment, compensating on failure."},
+  {id:"bff", lane:"appsS", prim:"deploy", nm:"bff-service", meta:":8087",
+    teach:"Backend-for-frontend Deployment — aggregates downstream calls for the SPA.",
+    use:"Calls other services via Feign; reads their snake_case JSON. Storefront browse routes here too (PERMIT_ALL)."},
+
+  // infra
+  {id:"mysql", lane:"infra", prim:"stateful", nm:"mysql", meta:":3306 · writes",
+    teach:"<b>StatefulSet</b> = pods with stable identity + a per-pod <b>PVC</b> (PersistentVolumeClaim) for durable storage. Right primitive for databases.",
+    use:"Primary (writes). Docker Official <code>mysql:8.0</code> as a plain manifest (migrated off deleted Bitnami images), Service DNS kept identical."},
+  {id:"mysqlrep", lane:"infra", prim:"config", nm:"mysql-replica (svc)", meta:"read endpoint",
+    teach:"A bare <b>Service</b> with no new workload — an alternate DNS name routing reads.",
+    use:"The slave repositories resolve reads here; writes go to <code>mysql</code>."},
+  {id:"mongodb", lane:"infra", prim:"stateful", nm:"mongodb", meta:":27017 · replSet rs0",
+    teach:"StatefulSet running <code>--replSet rs0 --auth --keyFile</code>. Replica sets enable CDC change streams.",
+    use:"Order writes here. A <b>bootstrap sidecar over loopback</b> initiates the replica set + creates users (MongoDB's localhost exception is loopback-only, so a separate Job can't do it)."},
+  {id:"redis", lane:"infra", prim:"deploy", nm:"redis (redis-master)", meta:":6379",
+    teach:"Deployment (ephemeral cache, so no StatefulSet needed here).",
+    use:"Holds activation OTP codes (<code>&lt;email&gt;_active_account</code>, ~3 min TTL) and general cache."},
+  {id:"kafka", lane:"infra", prim:"stateful", nm:"kafka", meta:":9092 · KRaft",
+    teach:"StatefulSet. <b>KRaft</b> mode = no ZooKeeper; the broker is its own controller quorum (<code>1@localhost:9093</code>).",
+    use:"Event bus for the Saga + domain events. Apache image uses <code>KAFKA_*</code> env; needs a hardcoded <code>CLUSTER_ID</code> + <code>--ignore-formatted</code> to be idempotent."},
+  {id:"schemareg", lane:"infra", prim:"deploy", nm:"schema-registry", meta:":8081 · Avro",
+    teach:"Deployment (Confluent cp image). Stores Avro schemas so producers/consumers agree on wire format.",
+    use:"Needs <code>enableServiceLinks:false</code> — k8s injects <code>KAFKA_PORT=tcp://…</code> env that the cp startup script chokes on."},
+  {id:"connect", lane:"infra", prim:"deploy", nm:"kafka-connect", meta:":8083 · CDC",
+    teach:"Deployment hosting source/sink connectors. <b>CDC</b> = change-data-capture.",
+    use:"A Mongo source connector streams order writes → Kafka topic → orchestrator. Registered by seed Job 04."},
+  {id:"minio", lane:"infra", prim:"stateful", nm:"minio", meta:":9000/:9001 · S3",
+    ing:"media.microecom.local",
+    teach:"StatefulSet — S3-compatible object store. The app uploads via presigned URLs; the JVM never touches the bytes.",
+    use:"Product images / avatars. Public-read prefixes served at <code>media.microecom.local</code>. A setup sidecar creates the bucket + anon policy."},
+  {id:"vault", lane:"infra", prim:"helm", nm:"vault", meta:":8200 · token=root",
+    teach:"HashiCorp Vault (Helm) — secrets store. Apps read it at boot via <b>Spring Cloud Vault</b> (no sidecar injection).",
+    use:"Every service fetches its config from <code>secret/&lt;service&gt;</code> on startup. The agent <b>injector is disabled</b> (it breaks <code>helm upgrade</code> idempotency)."},
+
+  // monitoring
+  {id:"vmsingle", lane:"mon", prim:"helm", nm:"VictoriaMetrics (vmsingle)", meta:"monitoring ns · :8428 · vm.microecom.local",
+    teach:"<b>VictoriaMetrics single-node</b> — scraper + TSDB + remote-write receiver in one binary. Replaces kube-prometheus-stack. Scrapes via Kubernetes endpoint service-discovery keyed on the <code>management</code> port NAME (no ServiceMonitor CRD). kubelet cAdvisor metrics pulled via the API-server proxy. There is NO Prometheus Operator and NO ServiceMonitor objects.",
+    use:"All JVM services are scraped at their named <code>management</code> port (<code>/actuator/prometheus</code>). Pod/node CPU/mem come from kubelet cAdvisor; restarts/OOM from kube-state-metrics. <code>make k8s-stress</code> (k6) remote-writes to VM; view results on Grafana dashboard #19665."},
+  {id:"grafana", lane:"mon", prim:"helm", nm:"Grafana", meta:"monitoring ns · grafana.microecom.local",
+    teach:"Standalone Grafana (not bundled inside kube-prometheus-stack).",
+    use:"Reads from VictoriaMetrics as data source. Reachable at <code>grafana.microecom.local</code>. Charts pull from docker.io, not quay.io — no flaky-registry risk."},
+  {id:"ksm", lane:"mon", prim:"helm", nm:"kube-state-metrics", meta:"monitoring ns",
+    teach:"Exports k8s object state (pod restarts, OOMKills, deployment ready replicas) as Prometheus-format metrics.",
+    use:"Scraped by VictoriaMetrics; provides the cluster-state signals Grafana dashboards need (restarts, ready pods, HPA replicas)."},
+  {id:"metrics", lane:"mon", prim:"helm", nm:"metrics-server", meta:"infra ns · for HPA",
+    teach:"Supplies live CPU/memory to the API; <b>HPAs cannot scale without it</b>.",
+    use:"Upstream chart (not Bitnami). Needs <code>--kubelet-insecure-tls</code> on kind."},
+
+  // bootstrap jobs
+  {id:"jobMysql", lane:"boot", prim:"job", nm:"01 mysql-seed", meta:"data → MySQL",
+    teach:"A <b>Job</b> runs a pod to completion (run-once), not forever.",
+    use:"Loads <code>docker/ecommerce.sql</code> (data-only). ⚠ Open issue: runs before Hibernate creates tables."},
+  {id:"jobMongo", lane:"boot", prim:"job", nm:"02 mongo-seed", meta:"api_role+product",
+    teach:"Job.",
+    use:"Imports <code>docker/*.json</code> into Mongo (<code>api_role</code> drives gateway authz; <code>product</code> catalog)."},
+  {id:"jobVault", lane:"boot", prim:"job", nm:"03 vault-seed", meta:"writes secrets",
+    teach:"Job.",
+    use:"Writes <code>secret/&lt;service&gt;</code> paths. Must mirror <code>docker/vault-configs/*.json</code> key-for-key; pulls real creds from the <code>vault-seed-env</code> Secret."},
+  {id:"jobConnect", lane:"boot", prim:"job", nm:"04 connect-register", meta:"CDC connector",
+    teach:"Job.",
+    use:"POSTs the Mongo source connector config to kafka-connect's REST API."},
+  {id:"jobMinio", lane:"boot", prim:"job", nm:"05 minio-bootstrap", meta:"bucket + policy",
+    teach:"Job.",
+    use:"Ensures the media bucket + anonymous-read policy exist."},
+];
+
+// flows: ordered node ids + per-hop captions
+const FLOWS = {
+  "Storefront browse (products)": {
+    path:["browser","kindnode","ingress","gateway","product","mysqlrep"],
+    steps:["Browser hits api.microecom.local","into the kind node on :80 (hostPort)",
+      "ingress-nginx routes host api.* → gateway","gateway path-routes /product-service → product pod (Spring Cloud Kubernetes lb://, Eureka OFF)",
+      "product-service serves the catalog","reads go to the mysql-replica endpoint"]},
+  "Login & OTP activate": {
+    path:["browser","ingress","gateway","auth","mysql","redis"],
+    steps:["Browser POSTs /authorization-server/v1/auth:activate","ingress → gateway",
+      "gateway validates JWT (JWK) & forwards","authorization-server handles activation",
+      "reads/writes the account in MySQL","checks the OTP in Redis (<email>_active_account)"]},
+  "Order Saga (CDC)": {
+    path:["order","mongodb","connect","kafka","orchestrator","payment","inventory"],
+    steps:["order-service writes the order to MongoDB","that write is the CDC trigger",
+      "kafka-connect streams the change …","… onto a Kafka topic",
+      "orchestrator consumes it & runs the Saga","drives payment-service",
+      "reserves stock in inventory-service (gRPC)"]},
+  "Product image fetch": {
+    path:["browser","kindnode","ingress","minio"],
+    steps:["Browser requests media.microecom.local/…jpg","into the kind node :80",
+      "ingress routes host media.* → minio:9000","MinIO serves the object (anonymous-read prefix)"]},
+  "VictoriaMetrics scrape": {
+    path:["vmsingle","gateway"],
+    steps:["VictoriaMetrics scrapes via Kubernetes endpoint SD on the 'management' port NAME (no ServiceMonitor, no Prometheus Operator)","scrapes /actuator/prometheus on the management port (shown: gateway; same for all JVM services)"]},
+  "Vault config @ boot": {
+    path:["jobVault","vault","auth"],
+    steps:["Job 03 seeds secret/<service> paths","into Vault",
+      "every service (e.g. auth) reads its config from Vault on startup via Spring Cloud Vault"]},
+};
+
+// lessons — type:'tech'|'scar', cat for chip filter, nodes for click-filter
+const LESSONS = [
+  // ── techniques ──
+  {type:"tech",cat:"cluster",nodes:["registry","kindnode"],title:"Local registry via containerd config_path",
+   ctx:"kind nodes need to pull your freshly built images.",
+   how:"Write a per-node <code>/etc/containerd/certs.d/localhost:5001/hosts.toml</code> (the config_path mechanism) instead of an inline mirrors block.",
+   teaches:"This is the officially documented kind local-registry pattern, and it's the only one that works on containerd 2.x."},
+  {type:"tech",cat:"data",nodes:["mysql","mongodb","redis","minio","kafka"],title:"Docker Official images as plain manifests, stable DNS",
+   ctx:"Bitnami images were deleted; charts broke.",
+   how:"Replaced 5 stateful charts with hand-written manifests using Docker Official images, keeping every Service name identical.",
+   teaches:"Keeping the Service DNS name stable means Vault seed + app config + seed Jobs needed zero edits — the abstraction boundary is the Service name, not the workload."},
+  {type:"tech",cat:"data",nodes:["mongodb"],title:"Replica-set init via in-pod loopback sidecar",
+   ctx:"Mongo needs replSet + auth, but auth blocks the very command that creates the first user.",
+   how:"A bootstrap sidecar in the same pod runs <code>rs.initiate</code> + createUser over 127.0.0.1.",
+   teaches:"MongoDB's localhost exception is loopback-scoped. A sidecar shares the pod network namespace, so its loopback counts — a separate Job over Service DNS never can."},
+  {type:"tech",cat:"kafka",nodes:["kafka"],title:"KRaft Kafka, made idempotent",
+   ctx:"KRaft needs a cluster id; re-running the format wipes data.",
+   how:"Hardcode <code>CLUSTER_ID</code> and pass <code>--ignore-formatted</code> so re-applies are safe against the PVC.",
+   teaches:"Stateful workloads must be idempotent on re-apply — assume <code>make k8s-infra</code> runs many times."},
+  {type:"tech",cat:"kafka",nodes:["schemareg"],title:"enableServiceLinks:false for Confluent cp images",
+   ctx:"schema-registry exited before the JVM even started.",
+   how:"Disable service-link env injection on the pod spec.",
+   teaches:"k8s auto-injects <code>&lt;SVC&gt;_PORT=tcp://…</code> env for every Service in the namespace. Images that read <code>KAFKA_*</code> env (cp-*) choke on it. Reach deps by explicit DNS config instead."},
+  {type:"tech",cat:"vault",nodes:["vault","auth"],title:"Spring Cloud Vault direct read; injector off",
+   ctx:"Apps need secrets; the Vault chart's agent-injector breaks upgrades.",
+   how:"Services read Vault directly (URI + token). Set <code>injector.enabled:false</code>.",
+   teaches:"Don't run machinery you don't use. The injector self-manages a webhook caBundle that fails the 2nd <code>helm upgrade</code> — disabling it removes the whole failure mode."},
+  {type:"tech",cat:"ingress",nodes:["ingress","kindnode"],title:"Expose :80/:443 via hostPort, not NodePort",
+   ctx:"Browser needs real :80/:443.",
+   how:"ingress-nginx Service stays ClusterIP; the controller binds 80/443 through hostPort on the ingress-ready node.",
+   teaches:"NodePort only allows 30000–32767, so a NodePort :80 is rejected outright. hostPort + kind extraPortMappings is the local-dev path to privileged ports."},
+  {type:"tech",cat:"ingress",nodes:["ingress","gateway"],title:"Reference the Service's NAMED port from Ingress",
+   ctx:"Backend port drift caused 503s.",
+   how:"Ingress backend uses <code>port.name: http</code>, not a hardcoded number.",
+   teaches:"A named port tracks the Service definition; a literal number silently rots when the Service port changes."},
+  {type:"tech",cat:"apps",nodes:["order","gateway"],title:"Probes on a separate management port",
+   ctx:"Health/metrics shouldn't ride the traffic port.",
+   how:"Liveness/readiness + VictoriaMetrics scrape target the Actuator mgmt port (e.g. 19696); readiness gates traffic on real deps.",
+   teaches:"Per-service <code>readiness.include</code> must list that service's actual deps — adding <code>db</code> to a service with no datasource fails readiness forever."},
+  {type:"tech",cat:"monitoring",nodes:["vmsingle","ksm","metrics"],title:"VictoriaMetrics endpoint-SD + kube-state-metrics + metrics-server",
+   ctx:"Want metrics + autoscaling without kube-prometheus-stack's quay.io fragility.",
+   how:"VictoriaMetrics single-node scrapes pods via Kubernetes endpoint SD on the named <code>management</code> port — no ServiceMonitor CRD needed. kube-state-metrics feeds cluster-state signals. metrics-server feeds the HPA CPU metrics.",
+   teaches:"Three different systems: VictoriaMetrics (observability TSDB, pull from /actuator via endpoint SD), kube-state-metrics (object-state signals), metrics-server (resource metrics API HPAs read). HPAs are dead without metrics-server; ServiceMonitor objects are no longer in this cluster — applying one will fail (no CRD)."},
+  {type:"tech",cat:"apps",nodes:["gateway","frontend"],title:"Kustomize base + overlays",
+   ctx:"Same manifests, many environments.",
+   how:"<code>apps/base</code> holds the truth; <code>overlays/{local,local-with-frontend,aws}</code> patch per env.",
+   teaches:"Keep environment-specific drift in overlays so the base never forks."},
+  {type:"tech",cat:"vault",nodes:["config","jobVault"],title:"Real creds via gitignored k8s/.env → Secret",
+   ctx:"Your mail/PayPal creds must not be committed.",
+   how:"<code>install.sh</code> builds the <code>vault-seed-env</code>/<code>app-secrets</code> Secret from <code>k8s/.env</code> (gitignored); seed scripts reference env, never literals.",
+   teaches:"Sensitive values enter the cluster as a Secret built at apply-time — never in a committed values.yaml or seed.sh."},
+  {type:"tech",cat:"apps",nodes:["order"],title:"JVM heap respects the container limit",
+   ctx:"JVMs ignore cgroup limits by default and get OOMKilled.",
+   how:"<code>-XX:MaxRAMPercentage=75 -XX:+UseG1GC</code> with explicit requests/limits.",
+   teaches:"Set the heap as a % of the container limit, not a fixed -Xmx, so it scales with the pod's memory."},
+  {type:"tech",cat:"data",nodes:["mongodb","minio","jobMongo"],title:"Readiness sentinels gate the seed Jobs",
+   ctx:"Seed Jobs raced ahead of half-ready stateful pods.",
+   how:"The bootstrap/setup sidecars only report Ready once users/buckets exist; <code>install.sh</code> waits for rollout before seeding.",
+   teaches:"Encode 'truly ready' in the readiness probe so dependents (seed Jobs) can rely on Ready meaning ready."},
+  {type:"tech",cat:"seed",nodes:["jobMysql","jobMongo"],title:"Imperative configMap for out-of-tree seed data",
+   ctx:"Seed data lives in <code>docker/</code>, outside the kustomization dir.",
+   how:"<code>kubectl create configmap --from-file=… --dry-run|apply</code>, then <code>apply -f job.yaml</code>.",
+   teaches:"kubectl's embedded kustomize hardcodes LoadRestrictionsRootOnly — <code>apply -k</code> refuses files outside its dir. Imperative create has no such restriction."},
+  {type:"tech",cat:"process",nodes:["vault"],title:"Idempotent install.sh",
+   ctx:"Bring-up gets re-run constantly.",
+   how:"<code>helm upgrade --install</code>, <code>put_if_missing</code>, <code>create secret --dry-run|apply</code>, keyfile only-if-missing.",
+   teaches:"Every bring-up step must be safe to run twice — re-runs are the norm, not the exception."},
+
+  // ── scars (mistakes) ──
+  {type:"scar",cat:"cluster",nodes:["kindnode","registry"],title:"containerd 2.x rejects the legacy mirrors block",
+   sym:"kubeadm init timed out; kubelet never healthy (misleading cgroups hint).",
+   cause:"A <code>containerdConfigPatches</code> registry.mirrors block is mutually exclusive with config_path on containerd 2.x → the whole CRI plugin refused to load → no ImageService.",
+   fix:"Wire the registry via <code>hosts.toml</code> (config_path) in registry.sh; remove the mirrors patch.",
+   teaches:"A 'kubelet unhealthy' timeout can actually be a CRI-plugin config error. Read the containerd journal inside the node — don't guess at RAM/DNS."},
+  {type:"scar",cat:"data",nodes:["mysql","mongodb","redis","minio","kafka"],title:"Bitnami images were deleted",
+   sym:"ImagePullBackOff / 'not found' on every stateful chart.",
+   cause:"docker.io/bitnami/* versioned images were removed 2025-09-29.",
+   fix:"Migrate to Docker Official images as plain manifests (see the matching technique).",
+   teaches:"Pinned upstream images can vanish. Prefer first-party Docker Official images for infra you depend on."},
+  {type:"scar",cat:"ingress",nodes:["ingress","gateway"],title:"Ingress backend port 8080 vs Service 6868",
+   sym:"Every request through the ingress → 503 (nginx's own page).",
+   cause:"Ingress referenced :8080 (the docker-compose port); the k8s Service exposes 6868 → no matching endpoint.",
+   fix:"Reference the named port (<code>port.name: http</code>).",
+   teaches:"503 from nginx itself = no healthy endpoint behind the rule, almost always a port/selector mismatch."},
+  {type:"scar",cat:"vault",nodes:["vault","gateway"],title:"put_if_missing split across two blocks",
+   sym:"Storefront 503: 'Unable to find instance for PRODUCT-SERVICE' though the pod was 1/1.",
+   cause:"<code>put_if_missing</code> is per-PATH; a 2nd block for the same path is a silent no-op, so the gateway's route URIs never got written → it fell back to bare <code>lb://</code>. At the time Spring Cloud Kubernetes discovery wasn't yet wired, so <code>lb://</code> had no registry to resolve against → no instances.",
+   fix:"Exactly ONE put_if_missing per Vault path; merge all of a service's keys into it.",
+   teaches:"In k8s the gateway routes by k8s DNS, so route URIs in Vault are mandatory. 'No instance for X' = an <code>lb://</code> fallback firing."},
+  {type:"scar",cat:"vault",nodes:["vault","jobVault"],title:"Vault seed dropped keys vs docker/vault-configs",
+   sym:"Assorted crashloops & opaque 500s far downstream (placeholder unresolved, kafka consumer build failed, gateway read wrong Mongo DB).",
+   cause:"The hand-written seed.sh silently omitted keys the apps need.",
+   fix:"Diff every key in seed.sh against <code>docker/vault-configs/*.json</code> (+ the common block).",
+   teaches:"A missing config key won't fail the seed — it fails an app at runtime as an opaque error. Config drift is invisible until it bites."},
+  {type:"scar",cat:"seed",nodes:["jobMongo"],title:"Stray trailing backtick aborted the seed",
+   sym:"Whole mongo-seed Job failed: 'unexpected end of file' — no products/api_role.",
+   cause:"A lone <code>`</code> at the end of seed.sh; scripts run under <code>set -eu</code> so a parse error is fatal.",
+   fix:"<code>sh -n</code> every seed script after editing.",
+   teaches:"Under set -eu a syntax error takes down the entire Job. Lint shell before shipping it into a Job."},
+  {type:"scar",cat:"seed",nodes:["jobMysql","jobMongo"],title:"apply -k can't read out-of-tree data",
+   sym:"'security; file … is not in or below' on seed apply.",
+   cause:"kubectl's embedded kustomize hardcodes LoadRestrictionsRootOnly; the data lives in <code>docker/</code>.",
+   fix:"Build those configMaps imperatively, apply the Job with plain <code>apply -f</code>.",
+   teaches:"<code>kubectl apply -k</code> ≠ standalone <code>kustomize</code>; it can't relax load restrictions. Know which kustomize you're running."},
+  {type:"scar",cat:"vault",nodes:["vault"],title:"vault-agent-injector breaks helm upgrade",
+   sym:"2nd <code>make k8s-infra</code>: UPGRADE FAILED, caBundle conflict; release stuck 'failed'.",
+   cause:"The injector self-manages its webhook's caBundle at runtime, so server-side apply conflicts on re-run.",
+   fix:"<code>injector.enabled:false</code> — nothing uses sidecar injection here.",
+   teaches:"A healthy stack can still fail to reconcile if a controller owns a field helm also writes. Don't enable components you don't use."},
+  {type:"scar",cat:"kafka",nodes:["schemareg"],title:"cp image dies on injected service-link env",
+   sym:"schema-registry exits 1 at '===> Configuring' before the JVM.",
+   cause:"k8s set <code>KAFKA_PORT=tcp://…</code> (service links); the cp configure script read it and choked.",
+   fix:"<code>enableServiceLinks:false</code>.",
+   teaches:"Works in <code>docker run</code> but dies in-cluster ⇒ suspect injected env (service links / downward API)."},
+  {type:"scar",cat:"ingress",nodes:["ingress"],title:"NodePort can't be :80/:443",
+   sym:"server-side apply rejected: 'provided port is not in the valid range'.",
+   cause:"NodePort range is 30000–32767.",
+   fix:"Keep the controller Service ClusterIP; use hostPort for 80/443.",
+   teaches:"Privileged low ports aren't reachable via NodePort; that's what hostPort / LoadBalancer are for."},
+  {type:"scar",cat:"seed",nodes:["jobMysql","mysql"],title:"OPEN: mysql seed runs before the schema exists",
+   sym:"<code>ERROR 1146 Table 'ecommerce_dev.account' doesn't exist</code>.",
+   cause:"<code>ecommerce.sql</code> is data-only; tables are created by Hibernate ddl-auto when apps boot — but seed runs before apps.",
+   fix:"Not yet resolved — a real ordering dependency (seed must run after first app boot, or ship DDL).",
+   teaches:"Job ordering matters: data seeds depend on schema that an app, not the SQL, creates. A dependency the bootstrap order doesn't yet express."},
+  {type:"scar",cat:"apps",nodes:["product","minio"],title:"Product detail 500 + unreachable images",
+   sym:"<code>GET /v1/products/{id}</code> → 500; images 404.",
+   cause:"A SQL SUM over zero rows returns null, unboxed into a primitive long → NPE. Separately, image URLs used cluster-internal / docker host names a browser can't reach, and the objects didn't exist.",
+   fix:"Null-coalesce the SUM; add a <code>media.*</code> Ingress + seed placeholder images.",
+   teaches:"Aggregates return null over empty sets — never unbox them. And a URL stored server-side must be reachable from the CLIENT, not just from inside the cluster."},
+  {type:"scar",cat:"process",nodes:[],title:"Don't announce a root cause from lagged terminal output",
+   sym:"I declared TWO confident root causes (low RAM; dead DNS) — both wrong.",
+   cause:"This environment sometimes flushes a previous command's output into the current one; I theorized on noise.",
+   fix:"Reproduce and read the actual error at the failing layer before asserting; <code>--retain</code> failed nodes to autopsy.",
+   teaches:"A root cause is a claim you can demonstrate, not the first plausible story. Distrust empty/contradictory/out-of-order output."},
+  {type:"scar",cat:"process",nodes:[],title:"Never report success from stale/replayed output",
+   sym:"After a compaction I 'verified' files + a Job status that had actually been cancelled and never ran.",
+   cause:"The transcript replayed old tool results; I treated them as current truth.",
+   fix:"Back every 'done/verified' with a tool result from THIS turn; after compaction re-establish ground truth (ls / kubectl get).",
+   teaches:"'It's done and verified' is the claim the user most needs to trust — never carry a verification across a compaction boundary."},
+  {type:"scar",cat:"process",nodes:[],title:"Over-batching cancels silent writes",
+   sym:"One Bash call with an unquoted glob errored and cancelled ~40 queued calls — including Edits that then never happened.",
+   cause:"A single failing/blocked call cancels every other call queued in the same batch.",
+   fix:"Keep risky/destructive calls in their own turn; quote globs; verify writes structurally.",
+   teaches:"Batching is for INDEPENDENT calls. A syntax error in one shouldn't be able to silently drop your file writes."},
+  {type:"scar",cat:"process",nodes:[],title:"nohup background jobs get reaped",
+   sym:"<code>nohup cmd &</code> from a tool call died the moment the call returned.",
+   cause:"The harness reaps the child when the tool call completes.",
+   fix:"Use the tool's <code>run_in_background</code> (harness-tracked) and read its output file; Monitor for BOTH success and failure lines.",
+   teaches:"Silence ≠ success when watching async work — match on the failure line too."},
+
+  // ── 2026-06-03 SCARs ──
+  {type:"scar",cat:"apps",nodes:["gateway","vmsingle"],title:"Gateway lb:// + @LoadBalanced JWKS fetch need real discovery (Spring Cloud Kubernetes)",
+   sym:"Every authenticated route 500s — 'Unexpected authentication error' — including PERMIT_ALL /product-service routes (logged-in browsers attach a token). Gateway log: RetryExhaustedException; RoundRobinLoadBalancer: No servers available for service: authorization-server.",
+   cause:"The gateway validates JWTs by fetching JWKS through a <code>@LoadBalanced</code> WebClient. <code>@LoadBalanced</code> resolves via Spring Cloud LoadBalancer → discovery client. Eureka isn't deployed in k8s → registry empty → 503 → RetryExhausted → the JWT filter's catch-all 500. Direct-DNS route URIs bypass the LB, but the JWKS fetch can't.",
+   fix:"Added <code>spring-cloud-starter-kubernetes-client-loadbalancer</code> + a <code>k8s</code> Spring profile: eureka disabled, Spring Cloud Kubernetes discovery enabled, <code>primary-port-name: http</code>, <code>loadbalancer.mode: SERVICE</code>. Gateway ServiceAccount + RBAC <code>get/list/watch</code> on services, endpoints, <b>pods</b> (SCK reads its own pod at startup even in SERVICE mode — without pods RBAC the context fails to refresh and the app never boots).",
+   teaches:"Any <code>@LoadBalanced</code> call — including the JWKS fetch — always goes through discovery. You can't bypass it with a route URI override. Eureka off means you need a different discovery client (Spring Cloud Kubernetes) or every LB-resolved call fails."},
+  {type:"scar",cat:"kafka",nodes:["connect","orchestrator","schemareg"],title:"Order stuck at PROCESSING — Mongo-CDC connector must emit Avro to match the orchestrator",
+   sym:"Payment captures but order stays PROCESSING forever. Orchestrator crash-loops: RecordDeserializationException on the CDC topic at offset 0 — 'Unknown magic byte!'.",
+   cause:"The orchestrator saga driver consumes CDC events with <code>KafkaAvroDeserializer</code> (<code>@Payload GenericRecord</code>), but the connector was set to <code>JsonConverter</code> to avoid the schema-registry dependency — which was never deployed. JSON bytes carry no Confluent magic byte → consumer stuck on offset-0 poison record → saga never runs → order never reaches COMPLETED.",
+   fix:"Deploy schema-registry (manifests existed but were never wired into install.sh). Flip connector to <code>AvroConverter</code> + set <code>value.converter.schema.registry.url</code>. Also add <code>output.format.value=schema</code> — without it MongoSourceConnector emits a JSON string, not a structured record with a <code>fullDocument</code> field, and orchestrator's <code>genericRecord.get('fullDocument')</code> returns null. On a live cluster: delete connector → delete topic → re-register → restart orchestrator.",
+   teaches:"The converter flip alone isn't enough — <code>output.format.value=schema</code> is also required. And a poison record at offset 0 blocks the whole consumer group forever; delete the topic to clear it."},
+  {type:"scar",cat:"seed",nodes:["mysql","inventory"],title:"Cart '0 available' — inventory tables aren't seeded by bootstrap",
+   sym:"Every cart line shows '0 AVAILABLE' even though products browse fine.",
+   cause:"bff reads stock via inventory-service gRPC, which needs an <code>inventory_product</code> row AND a sum from <code>product_quantity_history</code>. Both tables are written reactively — only on a real product save event or stock op. The Mongo-seed bootstrap inserts the catalog straight into MongoDB, bypassing the Kafka event path, so both MySQL tables stay empty → gRPC returns 0.",
+   fix:"<code>make k8s-seed-inventory</code> generates INSERTs from <code>docker/product.json</code> + <code>docker/product-quantity-history.json</code> and pipes them into mysql-0. Wired into <code>k8s-bootstrap</code> AFTER <code>k8s-apps</code> (tables only exist once inventory-service's Hibernate ddl-auto runs). Also rewrites <code>image_url</code> from <code>localhost:9000</code> → <code>media.microecom.local</code> to match the mongo-seed rewrite.",
+   teaches:"Reactive event-driven pipelines don't backfill historical state — a Mongo-only seed leaves MySQL tables empty. Seed MySQL inventory after the app boots, not before."},
+  {type:"scar",cat:"apps",nodes:["payment","minio","product"],title:"Internal cluster DNS must never appear in a browser-facing artifact",
+   sym:"Payment redirect → NXDOMAIN. Presigned upload URL fails signature check. Stored image_url 404 in browser.",
+   cause:"Several bring-up configs set a value the BROWSER must reach to a cluster-internal DNS name (<code>*.svc.cluster.local</code>) that only resolves inside the cluster. Offenders: <code>payment.frontend.base-url</code> set to <code>frontend.apps.svc.cluster.local</code>; S3 presigner used <code>minio.infra.svc.cluster.local:9000</code> (the host is part of the SigV4 signature — can't rewrite after signing); stored <code>image_url</code> used the docker-host value.",
+   fix:"Use ingress hosts for anything a browser will fetch: <code>frontend.base-url=http://microecom.local</code>, <code>s3.public-endpoint=http://media.microecom.local</code> (browser-facing presigner), keep internal <code>s3.endpoint</code> for the server-side HEAD check. Contrast: the JWKS fetch and the post-upload HEAD check are server-side (JVM→cluster) — internal DNS is correct there.",
+   teaches:"Draw a clear line: JVM→cluster = internal DNS; browser→cluster = ingress host. Any URL stored server-side and later fetched by a browser must be an ingress host. The SPA is served over plain http:// — guard secure-context-only APIs (<code>crypto.randomUUID()</code> throws on non-HTTPS)."},
+];
+
+/* ───────────────────────── RENDER ───────────────────────── */
+const $ = s => document.querySelector(s);
+const nodeById = Object.fromEntries(NODES.map(n=>[n.id,n]));
+
+// legend
+$("#legend").innerHTML = Object.values(PRIM).map(p=>
+  `<span class="lg"><span class="swatch" style="background:var(--${p.cls})"></span>${p.label}</span>`).join("")
+  + `<span class="lg" style="margin-left:8px;color:var(--good)"><span class="swatch" style="background:var(--good)"></span>technique</span>`
+  + `<span class="lg" style="color:var(--bad)"><span class="swatch" style="background:var(--bad)"></span>mistake / scar</span>`;
+
+// lanes + nodes
+$("#lanes").innerHTML = LANES.map(L=>{
+  const ns = L.ns ? `<span class="ns">ns: ${L.ns}</span>` : "";
+  const cards = NODES.filter(n=>n.lane===L.id).map(n=>{
+    const p = PRIM[n.prim];
+    const ing = n.ing ? ` · ⬡ ${n.ing}` : "";
+    return `<div class="node bd-${p.cls}" data-id="${n.id}">
+      <div class="nm">${n.nm}<span class="badge b-${p.cls}">${p.label}</span></div>
+      <div class="meta">${n.meta}${ing}</div></div>`;
+  }).join("");
+  return `<div class="lane"><div class="lane-title">${L.title} ${ns}</div><div class="row">${cards}</div></div>`;
+}).join("");
+
+// flow select
+$("#flowSel").insertAdjacentHTML("beforeend",
+  Object.keys(FLOWS).map(f=>`<option value="${f}">${f}</option>`).join(""));
+
+/* drawer */
+function openDrawer(id){
+  const n = nodeById[id]; if(!n) return;
+  const p = PRIM[n.prim];
+  const rel = LESSONS.filter(l=>l.nodes.includes(id));
+  const relHtml = rel.length ? rel.map(l=>{
+    const tag = l.type==="tech" ? "✅" : "⚠️";
+    return `<p style="margin:.5em 0"><span>${tag}</span> <a href="#" data-lesson="${encodeURIComponent(l.title)}">${l.title}</a></p>`;
+  }).join("") : `<p style="color:var(--faint)">No specific lessons pinned to this node.</p>`;
+  $("#drawerBody").innerHTML = `
+    <h2>${n.nm} <span class="badge b-${p.cls}" style="font-size:11px">${p.label}</span></h2>
+    <div class="kv">${n.meta}${n.ing?` · ingress: ${n.ing}`:""}</div>
+    <h3>What this primitive is</h3><div class="teach">${n.teach}</div>
+    <h3>How microecom uses it</h3><p>${n.use}</p>
+    <h3>Lessons here (${rel.length})</h3>${relHtml}`;
+  $("#scrim").classList.add("on"); $("#drawer").classList.add("on");
+  // wire lesson links → jump to card
+  $("#drawerBody").querySelectorAll("[data-lesson]").forEach(a=>{
+    a.addEventListener("click",e=>{e.preventDefault();
+      filterByNode(id); closeDrawer();
+      document.querySelector(".lessons").scrollIntoView({behavior:"smooth"});});
+  });
+}
+function closeDrawer(){$("#scrim").classList.remove("on");$("#drawer").classList.remove("on");}
+$("#closeX").onclick=closeDrawer; $("#scrim").onclick=closeDrawer;
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeDrawer();});
+
+// node clicks
+$("#lanes").addEventListener("click",e=>{
+  const c=e.target.closest(".node"); if(!c) return;
+  openDrawer(c.dataset.id);
+});
+
+/* ───────── flow tracing ───────── */
+const svg=$("#edges"), packet=$("#packet"), diagram=$("#diagram");
+let currentFlow=null;
+
+function centerOf(id){
+  const el=$(`.node[data-id="${id}"]`); if(!el) return null;
+  const r=el.getBoundingClientRect(), d=diagram.getBoundingClientRect();
+  return {x:r.left-d.left+r.width/2, y:r.top-d.top+r.height/2, el};
+}
+function clearEdges(){
+  [...svg.querySelectorAll("path.edge")].forEach(p=>p.remove());
+  NODES.forEach(n=>{const el=$(`.node[data-id="${n.id}"]`);
+    el.classList.remove("active","dim");
+    const s=el.querySelector(".seq"); if(s)s.remove();});
+  packet.style.opacity=0;
+}
+function drawFlow(name,animate=true){
+  clearEdges();
+  const flow=FLOWS[name]; if(!flow) return;
+  currentFlow=name;
+  const ids=flow.path;
+  NODES.forEach(n=>{if(!ids.includes(n.id))$(`.node[data-id="${n.id}"]`).classList.add("dim");});
+  ids.forEach((id,i)=>{
+    const el=$(`.node[data-id="${id}"]`); el.classList.add("active");
+    const s=document.createElement("div"); s.className="seq"; s.textContent=i+1; el.appendChild(s);
+  });
+  // build a single polyline path through centers
+  const pts=ids.map(centerOf).filter(Boolean);
+  let d="";
+  for(let i=0;i<pts.length-1;i++){
+    const a=pts[i],b=pts[i+1];
+    const mx=(a.x+b.x)/2;
+    d=`M ${a.x} ${a.y} C ${mx} ${a.y}, ${mx} ${b.y}, ${b.x} ${b.y}`;
+    const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("d",d); path.setAttribute("class","edge");
+    path.setAttribute("fill","none"); path.setAttribute("stroke","#58a6ff");
+    path.setAttribute("stroke-width","2.5"); path.setAttribute("marker-end","url(#arrow)");
+    path.setAttribute("stroke-dasharray","6 5");
+    if(animate){path.style.strokeDashoffset="220";path.style.animation="dash 1s linear forwards";
+      path.style.animationDelay=(i*0.45)+"s";}
+    svg.appendChild(path);
+  }
+  // step captions
+  const stepHtml = flow.steps.map((s,i)=>
+    `<span class="hop">${i+1}.</span> ${s}`).join("&nbsp;&nbsp;→&nbsp;&nbsp; ");
+  $("#stepbox").innerHTML = `<b>${name}:</b> ${stepHtml}`;
+  if(animate) runPacket(pts);
+}
+function runPacket(pts){
+  if(pts.length<2) return;
+  packet.style.opacity=1;
+  let seg=0, t=0, segDur=600;
+  const start=performance.now();
+  function frame(now){
+    const a=pts[seg], b=pts[seg+1];
+    const mx=(a.x+b.x)/2;
+    t=Math.min(1,(now-segStart)/segDur);
+    // cubic bezier point
+    const x=cube(t,a.x,mx,mx,b.x), y=cube(t,a.y,a.y,b.y,b.y);
+    packet.style.left=(x-6.5)+"px"; packet.style.top=(y-6.5)+"px";
+    if(t>=1){seg++; segStart=now; if(seg>=pts.length-1){packet.style.opacity=0; return;}}
+    requestAnimationFrame(frame);
+  }
+  let segStart=start;
+  requestAnimationFrame(frame);
+}
+function cube(t,p0,p1,p2,p3){const u=1-t;
+  return u*u*u*p0+3*u*u*t*p1+3*u*t*t*p2+t*t*t*p3;}
+
+// keyframe for dash
+const styleEl=document.createElement("style");
+styleEl.textContent="@keyframes dash{to{stroke-dashoffset:0}}";
+document.head.appendChild(styleEl);
+
+$("#flowSel").addEventListener("change",e=>{e.target.value?drawFlow(e.target.value):clearEdges();});
+$("#playBtn").onclick=()=>{if(currentFlow)drawFlow(currentFlow,true);};
+$("#clearBtn").onclick=()=>{clearEdges();currentFlow=null;$("#flowSel").value="";
+  $("#stepbox").textContent="Tip: pick a flow above to animate a request through the cluster, or click any box for a teaching panel.";};
+window.addEventListener("resize",()=>{if(currentFlow)drawFlow(currentFlow,false);});
+
+/* ───────── lessons section ───────── */
+let tabState="all"; // all | tech | scar
+let chipState="all"; // all | <cat> | node:<id>
+const CATS=[["all","All"],["cluster","Cluster / kind"],["ingress","Ingress"],["vault","Vault / config"],
+  ["data","Data stores"],["kafka","Kafka / Avro"],["apps","App pods"],["seed","Seed Jobs"],
+  ["monitoring","Monitoring"],["process","Process / discipline"]];
+
+$("#tabs").innerHTML=[["all","Everything"],["tech","✅ Techniques"],["scar","⚠️ Mistakes"]]
+  .map(([v,l])=>`<button class="tab chip ${v==='all'?'sel':''}" data-tab="${v}">${l}</button>`).join("");
+$("#chips").innerHTML=CATS.map(([v,l])=>
+  `<span class="chip ${v==='all'?'sel':''}" data-chip="${v}">${l}</span>`).join("");
+
+function renderCards(){
+  let list=LESSONS.slice();
+  if(tabState!=="all") list=list.filter(l=>l.type===tabState);
+  if(chipState.startsWith("node:")){
+    const id=chipState.slice(5); list=list.filter(l=>l.nodes.includes(id));
+  } else if(chipState!=="all"){
+    list=list.filter(l=>l.cat===chipState);
+  }
+  const cards=list.map((l,i)=>{
+    const isTech=l.type==="tech";
+    const cls=isTech?"card tech":"card scar";
+    const tags=l.nodes.map(id=>nodeById[id]?.nm).filter(Boolean)
+      .map(t=>`<span class="t">${t}</span>`).join("");
+    const body = isTech
+      ? `<div class="field"><span class="lab">Context</span>${l.ctx}</div>
+         <div class="field"><span class="lab">How</span>${l.how}</div>`
+      : `<div class="field"><span class="lab">Symptom</span>${l.sym}</div>
+         <div class="field"><span class="lab">Root cause</span>${l.cause}</div>
+         <div class="field"><span class="lab">Fix</span>${l.fix}</div>`;
+    return `<div class="${cls}">
+      <div class="ct"><span class="num">${isTech?'✅':'⚠️'}</span><span>${l.title}</span></div>
+      <div class="tagrow">${tags||'<span class="t">general</span>'}</div>
+      ${body}
+      <div class="teaches"><b>Lesson:</b> ${l.teaches}</div>
+    </div>`;
+  }).join("");
+  $("#cards").innerHTML = cards || `<p style="color:var(--faint)">No lessons match this filter.</p>`;
+  // count in tabs
+}
+function filterByNode(id){
+  chipState="node:"+id;
+  document.querySelectorAll("#chips .chip").forEach(c=>c.classList.remove("sel"));
+  renderCards();
+}
+$("#tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(!b)return;
+  tabState=b.dataset.tab;
+  document.querySelectorAll("#tabs .tab").forEach(t=>t.classList.toggle("sel",t===b));
+  renderCards();});
+$("#chips").addEventListener("click",e=>{const c=e.target.closest("[data-chip]");if(!c)return;
+  chipState=c.dataset.chip;
+  document.querySelectorAll("#chips .chip").forEach(x=>x.classList.toggle("sel",x===c));
+  renderCards();});
+
+renderCards();
+</script>
+</body>
+</html>
