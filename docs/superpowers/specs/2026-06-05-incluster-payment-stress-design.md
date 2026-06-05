@@ -81,17 +81,23 @@ Worse, `seed-users.sql` is **half wrong for this architecture**:
 
 ### Create
 
-1. **`k6-tests/setup/perftest-users.sql`** — the users-only slice of
-   `seed-users.sql` (admin + 100 users + ADMIN/USER role assignments). Drops the
-   monolith `product`/`inventory` inserts. Idempotent (`INSERT IGNORE` /
-   `ON DUPLICATE KEY UPDATE`).
+1. **`k8s/infra/jobs/06-perftest-seed/perftest-users.sql`** — the users-only
+   slice of the old `seed-users.sql` (admin + 100 users + ADMIN/USER role
+   assignments). Drops the monolith `product`/`inventory` inserts. Idempotent
+   (`INSERT IGNORE` / `ON DUPLICATE KEY UPDATE`). Lives **in the Job dir** (not
+   `k6-tests/`, which is deleted — see Cleanup) so it is in-tree and the
+   kustomization generator can read it.
 
 2. **`k8s/infra/jobs/06-perftest-seed/`** — `seed.sh` + `job.yaml` +
-   `kustomization.yaml`, mirroring `01-mysql-seed`:
+   `kustomization.yaml`, mirroring `01-mysql-seed` but simpler:
    - `seed.sh`: idempotency guard (skip if `perftest_admin` already present), then
      pipe `perftest-users.sql` into `mysql.infra.svc.cluster.local` as root using
      `MYSQL_ROOT_PASSWORD`.
    - `job.yaml`: namespace `bootstrap`, mounts the SQL + script configmaps.
+   - `kustomization.yaml`: since both source files are **in-tree** (unlike
+     `01-mysql-seed`, whose data is out-of-tree in `docker/`), the
+     `configMapGenerator` reads them directly and the Makefile applies with plain
+     `kubectl apply -k` — no imperative-configmap workaround needed.
    - Must run **after** the JPA schema exists (authorization-server has booted and
      `ddl-auto` created `account`/`user`/`role`/`account_role`) — i.e. **after
      `k8s-apps`**, in the same slot as `k8s-seed-mysql` / `k8s-seed-inventory`.
@@ -99,19 +105,34 @@ Worse, `seed-users.sql` is **half wrong for this architecture**:
 ### Modify
 
 3. **`Makefile`**
-   - Add `k8s-seed-perftest` target (configmaps from `seed.sh` + `perftest-users.sql`,
-     apply `job.yaml`, wait for completion) and chain it into `k8s-bootstrap`
-     after `k8s-seed-inventory`.
-   - Add `k8s-payment-stress` (delete `k6-payment-stress` Job if present, then
-     `kubectl apply -k k8s/apps/base/k6-stress`) and `k8s-payment-stress-logs`
+   - Add `k8s-seed-perftest` target (`kubectl apply -k k8s/infra/jobs/06-perftest-seed`,
+     wait for completion) and chain it into `k8s-bootstrap` after `k8s-seed-inventory`.
+   - Add `k8s-payment-stress` (delete `k6-payment-stress` Job if present, create the
+     `k6-payment-script` configmap imperatively, then `kubectl apply -f payment-job.yaml`
+     — **not** `apply -k`, to avoid the browse Job) and `k8s-payment-stress-logs`
      (tail `-l app=k6-payment-stress`). Re-runnable.
+   - Remove the superseded `k8s-stress` / `k8s-stress-logs` targets (see Cleanup).
 
 4. **`k8s/apps/base/k6-stress/payment-flow.js`** — replace the current modest
-   ramp with the locked SLO `options` (profile + thresholds above).
+   ramp with the locked SLO `options` (profile + thresholds above); fix the stale
+   `k6-tests/setup/seed-users.sql` reference in its header comment.
 
 5. **`k8s/apps/base/k6-stress/payment-job.yaml`** — set `PRODUCT_IDS` to 3 real
    catalog IDs; confirm `BASE_URL=http://gateway.apps.svc.cluster.local:6868` and
    the VM remote-write URL.
+
+### Delete (cleanup — per user request)
+
+The host harness and the in-cluster browse stress are superseded by the
+in-cluster payment flow:
+
+6. **`k6-tests/`** (whole tree) — unused host harness: `run.sh`, `scenarios/*`,
+   `tests/full-flow.js`, `config.js`, `helpers/*`, `setup/seed-users.sql`.
+7. **`k8s/apps/base/k6-stress/script.js`** + **`job.yaml`** (the browse `k6-stress`
+   Job) + **`kustomization.yaml`** (unused once the browse Job is gone and the
+   payment target applies `payment-job.yaml` directly).
+8. Doc/reference scrub in `k8s/README.md` + `mock-paypal-service/README.md`,
+   pointing at the in-cluster equivalents.
 
 ## Data flow (one VU iteration)
 
@@ -149,7 +170,11 @@ payment-service success/cancel callback → saga settles via Kafka/orchestrator.
 
 ## Out of scope
 
-- The pre-existing browse k6 Job (`k8s/apps/base/k6-stress/job.yaml`) `BASE_URL`
-  `:8080` vs `:6868` mismatch — flagged separately, not fixed here.
-- Host-side scenario changes (`k6-tests/scenarios/*`).
+- Adding HPA to `payment-service` (it runs at fixed replicas by design; the
+  scaling story comes from `order-service` / `inventory-service`).
+
+> Note: the browse k6 Job's `:8080` `BASE_URL` mismatch and the host
+> `k6-tests/scenarios/*` were originally listed out-of-scope; per the user's
+> cleanup request they are now **deleted** (see the Delete/cleanup section), so
+> the mismatch is moot.
 - Adding HPA to payment-service.
