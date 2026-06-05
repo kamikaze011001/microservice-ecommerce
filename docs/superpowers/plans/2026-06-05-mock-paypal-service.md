@@ -4,9 +4,9 @@
 
 **Goal:** Build a standalone Spring Boot mock of PayPal's REST API so k6 stress tests and local frontend dev can run the full payment lifecycle (success / cancel / fail) without real PayPal, with `payment-service`/`core-paypal` code untouched.
 
-**Architecture:** A new standalone module `mock-paypal-service` (Java 24, virtual threads) implements the exact 5 PayPal REST endpoints `core-paypal` calls plus one HTML "approve" page. It holds per-token state in an in-memory `ConcurrentHashMap` (single replica). The switch from real PayPal is config-only: point `application.paypal.base-url` at the mock. Browser reaches the approve page through the gateway (`Path=/mock-paypal-service/**`, context-path keeps the convention); k6 hits the approve endpoint directly with a `?decision=` param.
+**Architecture:** A new standalone module `mock-paypal-service` (Java 25, virtual threads) implements the exact 5 PayPal REST endpoints `core-paypal` calls plus one HTML "approve" page. It holds per-token state in an in-memory `ConcurrentHashMap` (single replica). The switch from real PayPal is config-only: point `application.paypal.base-url` at the mock. Browser reaches the approve page through the gateway (`Path=/mock-paypal-service/**`, context-path keeps the convention); k6 hits the approve endpoint directly with a `?decision=` param.
 
-**Tech Stack:** Spring Boot 3.5.x, Java 24, Lombok, Spring MVC, Spring Boot Actuator, Maven. No Vault/DB/Kafka/Eureka deps.
+**Tech Stack:** Spring Boot 3.5.x, Java 25 (LTS; chosen after Java 24 went EOL/unavailable — virtual threads intact), Lombok, Spring MVC, Spring Boot Actuator, Maven. No Vault/DB/Kafka/Eureka deps.
 
 ---
 
@@ -19,7 +19,7 @@
 - **JSON casing:** every DTO is `@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)` — matches `core-paypal`.
 - **Fail trigger:** the capture endpoint returns **HTTP 422** with a body whose `name` field is set, because `RestTemplateErrorHandler` throws `PaypalRestTemplateException` on any 4xx/5xx → `payment-service` publishes `PaymentFailed`.
 - **Local runtime:** bare JVM process via `scripts/services.list` (NOT docker-compose). Local real→mock toggle = edit `docker/vault-configs/payment-service.json`.
-- **Java version note:** repo services are Java 17 on Spring Boot 3.3.6, which does not support Java 24. This module pins **Spring Boot 3.5.x + Java 24** for itself only. If `mvn` reports the chosen patch version doesn't support Java 24, bump to the latest `3.5.x`.
+- **Java version note:** repo services are Java 17 on Spring Boot 3.3.6. This module pins **Spring Boot 3.5.x + Java 25 (LTS)** for itself only. (Originally specified Java 24, but Java 24 is a non-LTS release that reached EOL ~Sep 2025 and is no longer installable via sdkman/Temurin; Java 25 is the closest LTS and keeps virtual threads. Local toolchain: `25.0.3-tem` via sdkman.)
 
 ---
 
@@ -29,8 +29,8 @@
 
 | File | Responsibility |
 |---|---|
-| `pom.xml` | Standalone Boot 3.5.x / Java 24 module |
-| `Dockerfile` | Multi-stage JDK 24 build → runnable jar |
+| `pom.xml` | Standalone Boot 3.5.x / Java 25 module |
+| `Dockerfile` | Multi-stage JDK 25 build → runnable jar |
 | `src/main/java/org/aibles/mockpaypal/MockPaypalApplication.java` | Spring Boot entrypoint |
 | `.../model/Decision.java` | enum: PENDING, APPROVE, CANCEL, FAIL |
 | `.../model/OrderState.java` | per-token state holder |
@@ -87,7 +87,7 @@
     <name>mock-paypal-service</name>
     <description>Mock PayPal REST API for stress testing and local dev</description>
     <properties>
-        <java.version>24</java.version>
+        <java.version>25</java.version>
     </properties>
     <dependencies>
         <dependency>
@@ -1296,9 +1296,9 @@ git commit -m "feat(mock-paypal): refund endpoint"
 
 ## Phase B — Build & image wiring
 
-### Task 9: Dockerfile (JDK 24) + image build registration
+### Task 9: Dockerfile (JDK 25) + image build registration
 
-The shared image build likely uses a JDK 17 base, which can't compile this module. Give the mock its own self-contained multi-stage Dockerfile.
+The shared image build likely uses a JDK 17 base, which can't compile this Java 25 module. Give the mock its own self-contained multi-stage Dockerfile.
 
 **Files:**
 - Create: `mock-paypal-service/Dockerfile`
@@ -1308,7 +1308,7 @@ The shared image build likely uses a JDK 17 base, which can't compile this modul
 
 ```dockerfile
 # Stage 1 — build
-FROM maven:3.9-eclipse-temurin-24 AS build
+FROM maven:3.9-eclipse-temurin-25 AS build
 WORKDIR /app
 COPY pom.xml .
 RUN mvn -q -e -B dependency:go-offline
@@ -1316,14 +1316,14 @@ COPY src ./src
 RUN mvn -q -B clean package -DskipTests
 
 # Stage 2 — run
-FROM eclipse-temurin:24-jre
+FROM eclipse-temurin:25-jre
 WORKDIR /app
 COPY --from=build /app/target/mock-paypal-service-*.jar app.jar
 EXPOSE 8585 18585
 ENTRYPOINT ["java","-XX:MaxRAMPercentage=75.0","-jar","/app/app.jar"]
 ```
 
-> If `maven:3.9-eclipse-temurin-24` or `eclipse-temurin:24-jre` tags are unavailable, run `docker search`/check Docker Hub for the current JDK 24 tag and substitute. The two-stage shape stays the same.
+> If `maven:3.9-eclipse-temurin-25` or `eclipse-temurin:25-jre` tags are unavailable, run `docker search`/check Docker Hub for the current JDK 25 tag and substitute. The two-stage shape stays the same.
 
 - [ ] **Step 2: Inspect the existing build script, then register the service**
 
@@ -1333,7 +1333,7 @@ Read how `SERVICES` is declared and how each image is built (shared Dockerfile v
 - If it uses a single shared Dockerfile for all services, instead add an explicit block that builds this module with its own Dockerfile, e.g.:
 
 ```bash
-# mock-paypal-service uses Java 24 — build with its own Dockerfile
+# mock-paypal-service uses Java 25 — build with its own Dockerfile
 docker build -t localhost:5001/mock-paypal-service:dev \
   -f mock-paypal-service/Dockerfile mock-paypal-service
 docker push localhost:5001/mock-paypal-service:dev
@@ -1348,7 +1348,7 @@ Expected: image builds successfully.
 
 ```bash
 git add mock-paypal-service/Dockerfile k8s/images/build.sh
-git commit -m "build(mock-paypal): JDK 24 Dockerfile + image registration"
+git commit -m "build(mock-paypal): JDK 25 Dockerfile + image registration"
 ```
 
 ---
@@ -1667,7 +1667,7 @@ git commit -m "test(k6): drive mock-paypal decision mix + ingress hostAliases"
 # mock-paypal-service
 
 A drop-in mock of PayPal's REST API for stress testing (k6) and local frontend
-dev. Java 24 + virtual threads, single replica, in-memory per-token state.
+dev. Java 25 + virtual threads, single replica, in-memory per-token state.
 
 ## How it works
 - Implements the 5 PayPal endpoints `core-paypal` calls + a `/checkout` page.
@@ -1700,7 +1700,7 @@ Under the "Security & Communication" or a new "Testing" subsection, add:
 
 ```markdown
 ### Mock PayPal (stress test / local dev)
-`mock-paypal-service` (Java 24, port 8585) mocks PayPal's REST API so k6 and
+`mock-paypal-service` (Java 25, port 8585) mocks PayPal's REST API so k6 and
 local frontend can run the full payment flow without real PayPal. Switch is
 config-only: set `application.paypal.base-url` to
 `http://<host>:8585/mock-paypal-service`. Decision (approve/cancel/fail) is
