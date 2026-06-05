@@ -1,0 +1,23 @@
+server:
+  port: 8585
+  servlet:
+    context-path: /mock-paypal-service
+spring:
+  application:
+    name: mock-paypal-service
+  threads:
+    virtual:
+      enabled: true
+management:
+  server:
+    port: 18585
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+mock:
+  public-base-url: ${MOCK_PUBLIC_BASE_URL:http://localhost:8585/mock-paypal-service}
