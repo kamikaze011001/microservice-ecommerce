@@ -48,5 +48,6 @@ load_config "$CFG_DIR/order-service.json"           "order-service"
 load_config "$CFG_DIR/payment-service.json"         "payment-service"
 load_config "$CFG_DIR/orchestrator-service.json"    "orchestrator-service"
 load_config "$CFG_DIR/bff-service.json"             "bff-service"
+load_config "$CFG_DIR/mock-paypal-service.json"     "mock-paypal-service"
 
 log_ok "Vault secrets imported"
