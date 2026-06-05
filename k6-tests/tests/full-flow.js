@@ -136,7 +136,7 @@ export default function(data) {
 
   // Step 4: Find and call the "approve" link
   const links = purchaseRes.json('data.links');
-  const approveLink = links.find(link => link.rel === 'approve');
+  const approveLink = links.find(link => link.rel === 'approve' || link.rel === 'payer-action');
 
   if (!approveLink) {
     console.error(`VU ${vu}: No approve link found in response`);
