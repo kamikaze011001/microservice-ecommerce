@@ -48,7 +48,11 @@
 **Files:**
 - Create: `k8s/infra/jobs/06-perftest-seed/perftest-users.sql`
 
-This is the valid half of the old `k6-tests/setup/seed-users.sql` (accounts/users/roles), with the monolith `product`/`inventory` inserts dropped — those tables don't exist in this split architecture (catalog is Mongo, stock is inventory-service). The BCrypt hashes are the cost-10 hashes for `Admin@123456` / `Test@123456`.
+Seeds only the authorization-server tables, against the **real** schema (verified from the JPA entities + `docker/ecommerce.sql`), which differs from the old `k6-tests/setup/seed-users.sql`:
+- Tables/relationship: `user(id, email UNIQUE)` ← `account(id, username UNIQUE, password, is_activated, user_id NOT NULL→user.id)` → `account_role(id, account_id, role_id)`. **`account` has no `created_at`; `user` has no `account_id`.** Insert order is user → account → account_role.
+- Roles in this schema are `EMPLOYEE, ADMIN, MERCHANT` — **there is no `USER` role.** Order/payment endpoints require `AUTHORIZED` (any authenticated account), so the 100 load users get **no role row**; only `perftest_admin` gets `ADMIN` (needed for the `PATCH /inventory-service/...` top-up in k6 `setup()`).
+- BCrypt hashes are cost-10 and **verified with `htpasswd`** to match `Admin@123456` / `Test@123456` (the hashes in the old file did NOT match their labels). All 100 users share one verified `Test@123456` hash.
+- Idempotent: `email`/`username` are UNIQUE so `INSERT IGNORE` is a no-op on re-run; the admin role link is guarded by a pre-counted variable.
 
 - [ ] **Step 1: Create the SQL file**
 
@@ -56,86 +60,102 @@ This is the valid half of the old `k6-tests/setup/seed-users.sql` (accounts/user
 -- =============================================
 -- K6 Performance Test - USERS-ONLY Seed (in-cluster safe)
 -- =============================================
--- Seeds only authorization-server tables (account/user/role/account_role).
--- Products are NOT seeded here: in this microservice architecture the catalog
--- lives in MongoDB (product-service) and stock in inventory-service. The k6
--- payment-flow test points PRODUCT_IDS at real seeded catalog IDs instead.
--- Passwords: perftest_admin = Admin@123456 ; perftest_user_N = Test@123456
--- BCrypt cost factor 10. Idempotent: INSERT IGNORE / ON DUPLICATE KEY UPDATE.
--- Consumed by the 06-perftest-seed Job (see seed.sh).
+-- Seeds only authorization-server tables: `user`, `account`, `account_role`.
+-- Schema (from authorization-server JPA entities + docker/ecommerce.sql):
+--   user(id PK, email UNIQUE NOT NULL, name, gender, address, avatar_url)
+--   account(id PK, username UNIQUE NOT NULL, password NOT NULL,
+--           is_activated NOT NULL, user_id NOT NULL -> user.id)
+--   account_role(id PK, account_id NOT NULL, role_id NOT NULL)
+--   role(id PK, name)        -- existing roles: EMPLOYEE, ADMIN, MERCHANT
+-- Insert order matters: user -> account (FK user_id) -> account_role.
+--
+-- Authorization model (docker/api_role.json): the order/payment endpoints the
+-- k6 flow hits require AUTHORIZED (any authenticated account), so the 100 load
+-- users need NO role row -- only a valid account to log in. perftest_admin gets
+-- the ADMIN role because the k6 setup() phase tops up stock via
+-- PATCH /inventory-service/v1/inventories/** which requires ADMIN. There is no
+-- "USER" role in this schema.
+--
+-- Products are NOT seeded here (catalog lives in MongoDB; the k6 test points
+-- PRODUCT_IDS at real seeded catalog IDs).
+--
+-- Passwords (bcrypt cost 10, verified with htpasswd against this exact hash):
+--   perftest_admin  = Admin@123456
+--   perftest_user_N = Test@123456
+-- Idempotent: `email`/`username` are UNIQUE so INSERT IGNORE is a no-op on
+-- re-run; the admin role link is guarded by a pre-counted variable. The
+-- 06-perftest-seed Job additionally skips the whole script if perftest_admin
+-- already exists (see seed.sh).
 -- =============================================
 
--- Admin user (setup phase: tops up inventory, needs ADMIN role)
-INSERT INTO account (id, username, password, is_activated, created_at)
+-- ---- admin: user -> account -> ADMIN role ----
+INSERT IGNORE INTO `user` (id, email)
+VALUES (UUID(), 'perftest_admin@test.com');
+
+SET @admin_user_id = (SELECT id FROM `user` WHERE email = 'perftest_admin@test.com');
+
+INSERT IGNORE INTO `account` (id, username, password, is_activated, user_id)
 VALUES (
   UUID(),
   'perftest_admin',
-  '$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG', -- Admin@123456
-  true,
-  NOW()
-) ON DUPLICATE KEY UPDATE is_activated = true;
+  '$2a$10$4piyvE7LAoy8KVqhbcwN1.hUxQTkP9eOU.4ZvlPFJlMwPgaIYS3MG', -- Admin@123456
+  1,
+  @admin_user_id
+);
 
-SET @admin_account_id = (SELECT id FROM account WHERE username = 'perftest_admin');
+SET @admin_account_id = (SELECT id FROM `account` WHERE username = 'perftest_admin');
+SET @admin_role_id    = (SELECT id FROM `role` WHERE name = 'ADMIN' LIMIT 1);
+SET @admin_link_count = (SELECT COUNT(*) FROM `account_role`
+                         WHERE account_id = @admin_account_id AND role_id = @admin_role_id);
 
-INSERT INTO user (id, email, account_id)
-VALUES (UUID(), 'perftest_admin@test.com', @admin_account_id)
-ON DUPLICATE KEY UPDATE email = 'perftest_admin@test.com';
+-- account_role has no UNIQUE(account_id, role_id), so guard via the pre-counted
+-- variable (FROM DUAL avoids referencing the target table in the INSERT-SELECT).
+INSERT INTO `account_role` (id, account_id, role_id)
+SELECT UUID(), @admin_account_id, @admin_role_id
+FROM DUAL
+WHERE @admin_role_id IS NOT NULL AND @admin_link_count = 0;
 
-INSERT INTO account_role (account_id, role_id)
-SELECT @admin_account_id, r.id FROM role r WHERE r.name = 'ADMIN'
-ON DUPLICATE KEY UPDATE account_id = account_id;
-
-INSERT INTO account_role (account_id, role_id)
-SELECT @admin_account_id, r.id FROM role r WHERE r.name = 'USER'
-ON DUPLICATE KEY UPDATE account_id = account_id;
-
--- 100 load-test users (USER role)
+-- ---- 100 load users: user + account only (AUTHORIZED = authenticated) ----
 DELIMITER //
-DROP PROCEDURE IF EXISTS create_test_users//
-CREATE PROCEDURE create_test_users()
+DROP PROCEDURE IF EXISTS create_perftest_users//
+CREATE PROCEDURE create_perftest_users()
 BEGIN
   DECLARE i INT DEFAULT 1;
-  DECLARE account_uuid VARCHAR(36);
-  DECLARE user_uuid VARCHAR(36);
+  DECLARE v_user_id VARCHAR(36);
   DECLARE uname VARCHAR(50);
   DECLARE uemail VARCHAR(100);
-  DECLARE user_role_id VARCHAR(36);
-
-  SELECT id INTO user_role_id FROM role WHERE name = 'USER' LIMIT 1;
 
   WHILE i <= 100 DO
-    SET account_uuid = UUID();
-    SET user_uuid = UUID();
-    SET uname = CONCAT('perftest_user_', i);
+    SET uname  = CONCAT('perftest_user_', i);
     SET uemail = CONCAT('perftest_user_', i, '@test.com');
 
-    INSERT IGNORE INTO account (id, username, password, is_activated, created_at)
+    INSERT IGNORE INTO `user` (id, email) VALUES (UUID(), uemail);
+    SET v_user_id = (SELECT id FROM `user` WHERE email = uemail);
+
+    INSERT IGNORE INTO `account` (id, username, password, is_activated, user_id)
     VALUES (
-      account_uuid,
+      UUID(),
       uname,
-      '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZRGdjGj/n3.nL/9Rcf6/1sJwBaHHi', -- Test@123456
-      true,
-      NOW()
+      '$2a$10$p0YRQWiVtDe8ioifDNLyI.y9rbjl/5aWWYR.q3bFb5tSNhs5DTtZC', -- Test@123456
+      1,
+      v_user_id
     );
-
-    SELECT id INTO account_uuid FROM account WHERE username = uname;
-
-    INSERT IGNORE INTO user (id, email, account_id)
-    VALUES (user_uuid, uemail, account_uuid);
-
-    INSERT IGNORE INTO account_role (account_id, role_id)
-    VALUES (account_uuid, user_role_id);
 
     SET i = i + 1;
   END WHILE;
 END//
 DELIMITER ;
 
-CALL create_test_users();
-DROP PROCEDURE IF EXISTS create_test_users;
+CALL create_perftest_users();
+DROP PROCEDURE IF EXISTS create_perftest_users;
 
-SELECT 'perftest admin:' AS status, COUNT(*) AS n FROM account WHERE username = 'perftest_admin';
-SELECT 'perftest users:' AS status, COUNT(*) AS n FROM account WHERE username LIKE 'perftest_user_%';
+SELECT 'perftest admin:'  AS status, COUNT(*) AS n FROM `account` WHERE username = 'perftest_admin';
+SELECT 'perftest users:'  AS status, COUNT(*) AS n FROM `account` WHERE username LIKE 'perftest_user_%';
+SELECT 'admin ADMIN link:' AS status, COUNT(*) AS n
+  FROM `account_role` ar
+  JOIN `account` a ON a.id = ar.account_id
+  JOIN `role` r    ON r.id = ar.role_id
+  WHERE a.username = 'perftest_admin' AND r.name = 'ADMIN';
 ```
 
 - [ ] **Step 2: Sanity-check the SQL is well-formed**

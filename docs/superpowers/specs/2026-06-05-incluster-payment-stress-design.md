@@ -81,12 +81,24 @@ Worse, `seed-users.sql` is **half wrong for this architecture**:
 
 ### Create
 
-1. **`k8s/infra/jobs/06-perftest-seed/perftest-users.sql`** — the users-only
-   slice of the old `seed-users.sql` (admin + 100 users + ADMIN/USER role
-   assignments). Drops the monolith `product`/`inventory` inserts. Idempotent
-   (`INSERT IGNORE` / `ON DUPLICATE KEY UPDATE`). Lives **in the Job dir** (not
-   `k6-tests/`, which is deleted — see Cleanup) so it is in-tree and the
-   kustomization generator can read it.
+1. **`k8s/infra/jobs/06-perftest-seed/perftest-users.sql`** — users-only seed
+   against the **real** authorization-server schema (verified from JPA entities
+   + `docker/ecommerce.sql`), which differs materially from the old
+   `seed-users.sql`:
+   - Relationship is `user(id, email UNIQUE)` ← `account(..., user_id NOT NULL)`
+     → `account_role(id, account_id, role_id)`; `account` has **no `created_at`**
+     and `user` has **no `account_id`**. Insert order: user → account →
+     account_role.
+   - Roles are `EMPLOYEE/ADMIN/MERCHANT` — **no `USER` role**. Order/payment
+     endpoints require `AUTHORIZED` (any authenticated account), so the 100 load
+     users get **no role**; only `perftest_admin` gets `ADMIN` (for the
+     inventory `PATCH` in k6 `setup()`).
+   - BCrypt hashes are **verified** (`htpasswd`) to match `Admin@123456` /
+     `Test@123456` — the old file's hashes did not match their labels.
+   - Idempotent via `INSERT IGNORE` (email/username UNIQUE) + a counted guard
+     for the admin role link. Drops the monolith `product`/`inventory` inserts.
+   - Lives **in the Job dir** (not `k6-tests/`, which is deleted — see Cleanup)
+     so it is in-tree and the kustomization generator can read it.
 
 2. **`k8s/infra/jobs/06-perftest-seed/`** — `seed.sh` + `job.yaml` +
    `kustomization.yaml`, mirroring `01-mysql-seed` but simpler:
