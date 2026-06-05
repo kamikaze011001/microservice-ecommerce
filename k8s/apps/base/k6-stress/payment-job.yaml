@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-payment-stress
+  namespace: apps
+  labels: { app: k6-payment-stress }
+spec:
+  # Don't auto-restart on failure — a failed threshold is real signal, not retry.
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels: { app: k6-payment-stress }
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:0.54.0
+          args: ["run", "-o", "experimental-prometheus-rw", "/scripts/payment-flow.js"]
+          env:
+            # In-cluster gateway Service DNS. The script rewrites the mock's
+            # browser-facing api.microecom.local origin back to this, so no
+            # hostAliases / ingress ClusterIP is needed (see payment-flow.js).
+            - { name: BASE_URL, value: "http://gateway.apps.svc.cluster.local:6868" }
+            - { name: INGRESS_ORIGIN, value: "http://api.microecom.local" }
+            - { name: K6_PROMETHEUS_RW_SERVER_URL, value: "http://vmsingle.monitoring.svc.cluster.local:8428/api/v1/write" }
+            - { name: K6_PROMETHEUS_RW_TREND_STATS, value: "p(95),p(99),avg,min,max" }
+          resources:
+            requests: { cpu: "200m", memory: "128Mi" }
+            limits:   { cpu: "1000m", memory: "256Mi" }
+          volumeMounts:
+            - { name: script, mountPath: /scripts }
+      volumes:
+        - name: script
+          configMap:
+            name: k6-payment-script

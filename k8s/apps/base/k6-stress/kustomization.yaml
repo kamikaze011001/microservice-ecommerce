@@ -3,12 +3,19 @@ kind: Kustomization
 namespace: apps
 resources:
   - job.yaml
-# kustomize materializes script.js into a ConfigMap referenced by job.yaml.
-# Edit script.js and re-apply to update the load profile.
+  - payment-job.yaml
+# kustomize materializes each script into a ConfigMap referenced by its Job.
+# Edit the script and re-apply to update the load profile.
+#  - script.js        -> browse-only stress (HPA/ingress), Job k6-stress
+#  - payment-flow.js  -> full payment-saga stress w/ 90/5/5 decision mix,
+#                        Job k6-payment-stress (drives mock-paypal-service)
 configMapGenerator:
   - name: k6-stress-script
     files:
       - script.js
+  - name: k6-payment-script
+    files:
+      - payment-flow.js
 # Stable name — Jobs reference it by name. Without this, kustomize
 # appends a content hash and the Job's volume.configMap.name no longer matches.
 generatorOptions:

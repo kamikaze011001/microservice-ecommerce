@@ -145,14 +145,23 @@ export default function(data) {
 
   sleep(0.5);
 
-  // Step 5: Call approve link (PayPal mock)
-  // This triggers the mock to call back to SUT at /paypal:success
-  const approveRes = http.get(approveLink.href, {
-    tags: { name: 'paypal_approve' }
+  // Step 5: Drive the mock checkout with a decision mix (90% approve, 5%
+  // cancel, 5% fail) so the saga's success AND compensation paths get load.
+  // The mock records the choice at the checkout page and replays it at capture
+  // (fail -> 422 -> PaymentFailed). approveLink.href points at the mock page.
+  const roll = Math.random();
+  const decision = roll < 0.90 ? 'approve' : (roll < 0.95 ? 'cancel' : 'fail');
+  const sep = approveLink.href.includes('?') ? '&' : '?';
+  const driveUrl = `${approveLink.href}${sep}decision=${decision}`;
+
+  // Follow the 302 chain into payment-service's paypal:success/cancel callback.
+  const approveRes = http.get(driveUrl, {
+    redirects: 5,
+    tags: { name: `paypal_${decision}` }
   });
 
   check(approveRes, {
-    'paypal approve success': (r) => r.status === 200 || r.status === 302
+    'paypal decision handled': (r) => r.status === 200 || r.status === 302
   });
 
   // Think time between iterations
