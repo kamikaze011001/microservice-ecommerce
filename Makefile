@@ -37,6 +37,7 @@ help:
 	@echo "  make k8s-bootstrap    — one-shot: cluster + infra + images + seed + apps"
 	@echo "  make k8s-down         — tear down apps + cluster"
 	@echo "  make k8s-status       — pods across nodes/infra/bootstrap/apps"
+	@echo "  make k8s-mysql-status — MySQL 1-primary/2-replica replication health"
 	@echo "  make k8s-apps         — re-apply just the service overlay"
 	@echo "  make k8s-rebuild svc=NAME — rebuild one image + rollout restart"
 	@echo "  make k8s-payment-stress      — fire k6 payment-saga load Job (opt-in)"
@@ -279,7 +280,7 @@ k8s-seed-perftest:
 k8s-seed-images:
 	@scripts/seed/k8s-product-images.sh
 
-.PHONY: k8s-apps k8s-apps-down k8s-status k8s-payment-stress k8s-payment-stress-logs
+.PHONY: k8s-apps k8s-apps-down k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs
 
 # Apply all 8 service Deployments via the local overlay.
 # k8s-app-secrets: build the `app-secrets` Secret in the apps namespace from
@@ -310,6 +311,25 @@ k8s-status:
 	@echo "== infra =="; kubectl -n infra get pods
 	@echo "== bootstrap jobs =="; kubectl -n bootstrap get jobs
 	@echo "== apps =="; kubectl -n apps get pods
+
+# MySQL replication health at a glance: the 3 pods, the read Service endpoints,
+# the primary's writable state, and each replica's IO/SQL thread + lag. Read-only
+# (no changes). Healthy = both replicas show Replica_IO_Running/Replica_SQL_Running
+# Yes and Seconds_Behind_Source 0.
+k8s-mysql-status:
+	@echo "== MySQL pods =="; kubectl -n infra get pods -l app.kubernetes.io/name=mysql -o wide
+	@echo ""; echo "== read Service endpoints (mysql-replica → should list 2 IPs) =="
+	@kubectl -n infra get endpoints mysql-replica
+	@echo ""; echo "== primary (mysql-0) =="
+	@kubectl -n infra exec mysql-0 -- mysql -uroot -proot -N -e \
+	  "SELECT CONCAT('server_id=', @@server_id, ' read_only=', @@read_only, ' gtid_executed=', @@gtid_executed);" 2>/dev/null \
+	  || echo "  (unable to query mysql-0)"
+	@for rep in mysql-replica-0 mysql-replica-1; do \
+	  echo ""; echo "== $$rep =="; \
+	  kubectl -n infra exec "$$rep" -- mysql -uroot -proot -e "SHOW REPLICA STATUS\G" 2>/dev/null \
+	    | grep -E "Replica_IO_Running:|Replica_SQL_Running:|Seconds_Behind_Source:|Source_Host:|Last_IO_Error:|Last_SQL_Error:" \
+	    || echo "  (no replica status — pod missing or replication not configured)"; \
+	done
 
 # Fire the k6 PAYMENT-saga stress Job (drives mock-paypal-service through the
 # full login -> order -> payment -> approve flow). Opt-in. Re-runnable — deletes
