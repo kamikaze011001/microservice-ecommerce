@@ -15,8 +15,9 @@ import { check, sleep } from 'k6';
 // we rewrite any api.microecom.local origin back to the in-cluster gateway
 // Service DNS at every redirect hop — same destination, nothing to template.
 //
-// Prerequisites in the cluster: the perftest users (k6-tests/setup/seed-users.sql)
-// and the PRODUCT_IDS must exist. The script fails loudly in setup() otherwise.
+// Prerequisites in the cluster: the perftest users (seeded by `make
+// k8s-seed-perftest` / the 06-perftest-seed Job) and the PRODUCT_IDS must exist.
+// The script fails loudly in setup() otherwise.
 
 const BASE = __ENV.BASE_URL || 'http://gateway.apps.svc.cluster.local:6868';
 const INGRESS_ORIGIN = __ENV.INGRESS_ORIGIN || 'http://api.microecom.local';
@@ -29,15 +30,19 @@ const PRODUCT_IDS = (__ENV.PRODUCT_IDS || 'test-product-1,test-product-2,test-pr
   .split(',').map((s) => s.trim());
 
 export const options = {
+  // SLO bar: hold 50 VUs for 3m. The held, error-free VU level is the
+  // sustained-throughput figure to quote. If the kind cluster saturates on a
+  // laptop, step the hold target down to 30/20 and re-run.
   stages: [
-    { duration: '30s', target: 10 },
-    { duration: '1m',  target: 30 },
-    { duration: '2m',  target: 30 },   // hold — gives the saga time under load
-    { duration: '30s', target: 0 },
+    { duration: '1m',  target: 50 },   // ramp to the SLO load
+    { duration: '3m',  target: 50 },   // HOLD — the sustained-throughput window
+    { duration: '30s', target: 0 },    // ramp down
   ],
   thresholds: {
-    http_req_failed: ['rate<0.10'],
-    checks: ['rate>0.90'],
+    http_req_failed: ['rate<0.05'],
+    checks: ['rate>0.95'],
+    'http_req_duration{name:create_payment}': ['p(95)<2000'],
+    'http_req_duration{name:login}': ['p(95)<800'],
   },
 };
 
