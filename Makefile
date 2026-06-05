@@ -189,7 +189,7 @@ k8s-rebuild:
 	@SVC=$(svc) SKIP_CORES=1 k8s/images/build.sh
 	@kubectl -n apps rollout restart deployment/$(svc)
 
-.PHONY: k8s-infra k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-images k8s-app-secrets
+.PHONY: k8s-infra k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest k8s-seed-images k8s-app-secrets
 
 k8s-infra:
 	@k8s/infra/install.sh
@@ -258,6 +258,20 @@ k8s-seed-mysql:
 k8s-seed-inventory:
 	@scripts/seed/k8s-inventory.sh
 
+# k8s-seed-perftest: seed the k6 load-test fixtures (perftest_admin + 100
+# perftest_user_N + role assignments) into authorization-server MySQL. Runs
+# SEPARATELY, AFTER k8s-apps — the account/user/role tables are created by
+# Hibernate ddl-auto at authorization-server startup. Both the script and the
+# SQL are in-tree, so this uses plain `kubectl apply -k`. Idempotent (seed.sh
+# skips if perftest_admin exists; the SQL is INSERT IGNORE). Re-runnable: the
+# Job is deleted first (Jobs are immutable).
+k8s-seed-perftest:
+	@echo "==> applying 06-perftest-seed (job/perftest-seed)"
+	@kubectl -n bootstrap delete job perftest-seed --ignore-not-found >/dev/null
+	@kubectl apply -k k8s/infra/jobs/06-perftest-seed
+	@kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/perftest-seed
+	@echo "k8s-seed-perftest complete"
+
 # k8s-seed-images: upload the real product images (docker/seed-images/*) into
 # MinIO at products/<id>/<slug>.jpg. Runs AFTER k8s-seed (needs the
 # ecommerce-media bucket). Host-side because the images live in the repo, not a
@@ -313,7 +327,7 @@ k8s-stress-logs:
 # One-shot: cluster -> infra -> images -> seed -> apps. Idempotent —
 # safe to re-run after editing manifests or pulling new code. Mirrors
 # the docker-compose `make bootstrap` flow but for the kind cluster.
-k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build k8s-seed k8s-seed-images k8s-apps k8s-seed-mysql k8s-seed-inventory
+k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build k8s-seed k8s-seed-images k8s-apps k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest
 	@echo "==> k8s bootstrap complete"
 	@$(MAKE) k8s-status
 	@echo ""
