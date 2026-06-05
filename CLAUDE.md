@@ -145,6 +145,16 @@ Services use `@EnableRoutingDatasource` annotation with separate configurations:
 4. Event publishing for success/failure scenarios
 5. Distributed transaction management via orchestrator
 
+### Mock PayPal (stress test / local dev)
+`mock-paypal-service` (Java 25, port 8585) mocks PayPal's REST API so k6 and
+local frontend can run the full payment flow (success/cancel/fail) without real
+PayPal. Switch is config-only: set `application.paypal.base-url` to
+`http://<host>:8585/mock-paypal-service`. The approve/cancel/fail decision is
+chosen at the `/checkout` page (browser) or via `?decision=` (k6); `fail` returns
+HTTP 422 from capture to trigger `PaymentFailed`. Single replica by design
+(in-memory per-token state). Targets Java 25 — build/run with a JDK 25 toolchain.
+See `mock-paypal-service/README.md`.
+
 ## Security & Communication
 - **Auth**: JWT (RS256) issued by `authorization-server`; gateway validates and injects `X-User-Id`.
 - **External**: REST through gateway. **Internal**: gRPC (see `grpc-common` protos).
