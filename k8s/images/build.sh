@@ -67,9 +67,20 @@ build_frontend() {
   docker push "${REGISTRY}/frontend:${TAG}"
 }
 
+build_mock_paypal() {
+  echo "==> building mock-paypal-service (Java 25, standalone Dockerfile)"
+  docker build \
+    -f mock-paypal-service/Dockerfile \
+    -t "${REGISTRY}/mock-paypal-service:${TAG}" \
+    mock-paypal-service
+  docker push "${REGISTRY}/mock-paypal-service:${TAG}"
+}
+
 if [ -n "${SVC:-}" ]; then
   if [ "$SVC" = "frontend" ]; then
     build_frontend
+  elif [ "$SVC" = "mock-paypal-service" ]; then
+    build_mock_paypal
   else
     build_service "$SVC"
   fi
@@ -78,4 +89,5 @@ else
     build_service "$svc"
   done
   build_frontend
+  build_mock_paypal
 fi
