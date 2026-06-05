@@ -279,7 +279,7 @@ k8s-seed-perftest:
 k8s-seed-images:
 	@scripts/seed/k8s-product-images.sh
 
-.PHONY: k8s-apps k8s-apps-down k8s-status k8s-stress k8s-stress-logs
+.PHONY: k8s-apps k8s-apps-down k8s-status k8s-stress k8s-stress-logs k8s-payment-stress k8s-payment-stress-logs
 
 # Apply all 8 service Deployments via the local overlay.
 # k8s-app-secrets: build the `app-secrets` Secret in the apps namespace from
@@ -321,6 +321,21 @@ k8s-stress:
 
 k8s-stress-logs:
 	@kubectl -n apps logs -f -l app=k6-stress --tail=-1
+
+# Fire the k6 PAYMENT-saga stress Job (drives mock-paypal-service through the
+# full login -> order -> payment -> approve flow). Opt-in. Re-runnable — deletes
+# the previous Job first (Jobs are immutable). Applies ONLY payment-job.yaml;
+# the script configMap is created imperatively (stable name `k6-payment-script`).
+k8s-payment-stress:
+	@kubectl -n apps delete job k6-payment-stress --ignore-not-found
+	@kubectl -n apps create configmap k6-payment-script \
+	  --from-file=k8s/apps/base/k6-stress/payment-flow.js --dry-run=client -o yaml | kubectl apply -f -
+	@kubectl apply -f k8s/apps/base/k6-stress/payment-job.yaml
+	@echo "k6 payment stress running. Watch with: make k8s-payment-stress-logs"
+	@echo "Watch HPA: kubectl -n apps get hpa -w"
+
+k8s-payment-stress-logs:
+	@kubectl -n apps logs -f -l app=k6-payment-stress --tail=-1
 
 .PHONY: k8s-bootstrap k8s-down
 
