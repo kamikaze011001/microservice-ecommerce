@@ -52,9 +52,10 @@ payment-service use the mock locally, follow the `_comment_mock_paypal` note in
   `/mock-paypal-service/checkout` is PERMIT_ALL in `docker/api_role.json`.
 
 ## k6 stress
-- Host: `k6-tests/tests/full-flow.js` drives a 90/5/5 approve/cancel/fail mix.
-- In-cluster: Job `k6-payment-stress` (`k8s/apps/base/k6-stress/payment-flow.js`)
-  runs the full payment saga under load. It rewrites the mock's browser-facing
+- In-cluster Job `k6-payment-stress` (`k8s/apps/base/k6-stress/payment-flow.js`,
+  fired via `make k8s-payment-stress`) runs the full payment saga under load with
+  a 90/5/5 approve/cancel/fail mix. It rewrites the mock's browser-facing
   `api.microecom.local` origin back to the in-cluster gateway Service DNS (so no
   `hostAliases`/ingress-ClusterIP templating is needed). Requires the perftest
-  users (`k6-tests/setup/seed-users.sql`) and products to be seeded.
+  users (seeded by `make k8s-seed-perftest`) and the real catalog products
+  (`PRODUCT_IDS` in `payment-job.yaml`) to be seeded.

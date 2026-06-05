@@ -408,7 +408,7 @@ endpoint SD on the `management` port **name** (number varies per service), so
 there are **no ServiceMonitors** and no Prometheus Operator — applying a
 ServiceMonitor now fails (no CRD). Pod/node CPU/mem come from the **kubelet
 cAdvisor** scrape, not node-exporter; restarts/OOM from kube-state-metrics.
-`make k8s-stress` (k6) remote-writes to VM — view it on Grafana dashboard #19665.
+`make k8s-payment-stress` (k6) remote-writes to VM — view it on Grafana dashboard #19665.
 All three charts pull from `docker.io` / `registry.k8s.io`, so the quay.io images
 **and** the host-side pre-pull + `kind load` workaround that defended them were
 deleted from `install.sh`. Rationale + the meltdown that motivated the switch:
