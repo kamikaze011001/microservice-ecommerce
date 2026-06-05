@@ -103,7 +103,8 @@ put_if_missing gateway \
   gateway.routes.product-service.uri="http://product-service.apps.svc.cluster.local:7777" \
   gateway.routes.order-service.uri="http://order-service.apps.svc.cluster.local:9696" \
   gateway.routes.payment-service.uri="http://payment-service.apps.svc.cluster.local:8484" \
-  gateway.routes.bff-service.uri="http://bff-service.apps.svc.cluster.local:8087"
+  gateway.routes.bff-service.uri="http://bff-service.apps.svc.cluster.local:8087" \
+  gateway.routes.mock-paypal-service.uri="http://mock-paypal-service.apps.svc.cluster.local:8585"
 
 put_if_missing product-service \
   server.port="7777" \
@@ -176,5 +177,10 @@ put_if_missing bff-service \
   feign.client.product-service.url="http://product-service.apps.svc.cluster.local:7777" \
   feign.client.order-service.url="http://order-service.apps.svc.cluster.local:9696" \
   feign.client.payment-service.url="http://payment-service.apps.svc.cluster.local:8484"
+
+# mock-paypal-service: standalone PayPal mock (stress test / local dev).
+put_if_missing mock-paypal-service \
+  server.port="8585" \
+  mock.public-base-url="http://api.microecom.local/mock-paypal-service"
 
 echo "vault baseline seed complete"

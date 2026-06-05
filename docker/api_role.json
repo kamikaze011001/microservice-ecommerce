@@ -213,5 +213,11 @@
     "path": "/payment-service/v1/paypal:cancel",
     "roles": ["PERMIT_ALL"],
     "method": ["GET"]
+  },
+  {
+    "_id": {"$oid": "67bdd5f4159bec37d09bb6a8"},
+    "path": "/mock-paypal-service/**",
+    "roles": ["PERMIT_ALL"],
+    "method": ["GET"]
   }
 ]
