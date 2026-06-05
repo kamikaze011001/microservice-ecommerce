@@ -2,12 +2,12 @@
 # Replaces the Bitnami chart (docker.io/bitnami/mysql deleted 2025-09-29).
 # Pinned to 8.0.40 to match the version in the project CLAUDE.md.
 #
-# Topology: ONE pod. The app's core-routing-db wires master + slave1/slave2
-# datasources, but the slaves resolve via the `mysql-replica` Service which
-# (today) selects this same pod — no real replication locally. The `mysql`
-# Service (writes) and `mysql-replica` Service (reads, in
-# mysql-replica-service.yaml) both target the label
-# app.kubernetes.io/name=mysql,component=primary below.
+# Topology: PRIMARY of a 1-primary/2-replica GTID setup. server-id=1 + log-bin
+# + gtid-mode make this the replication source; replicas live in
+# mysql-replica.yaml and replicate via SOURCE_AUTO_POSITION=1 (configured by
+# install.sh). The `mysql` Service (writes) selects this component=primary pod;
+# the `mysql-replica` Service (reads, mysql-replica-service.yaml) selects the
+# component=replica pods.
 #
 # LOCAL-DEV ONLY: plaintext creds bound to the kind cluster. The AWS overlay
 # (k8s/infra/overlays/aws/) replaces MySQL with RDS + ExternalSecrets.
@@ -23,6 +23,8 @@ stringData:
   MYSQL_DATABASE: ecommerce_dev
   MYSQL_USER: ecommerce
   MYSQL_PASSWORD: ecommerce
+  MYSQL_REPL_USER: repl_user
+  MYSQL_REPL_PASSWORD: replica_ecommerce
 ---
 apiVersion: v1
 kind: Service
@@ -72,6 +74,11 @@ spec:
             - secretRef:
                 name: mysql-credentials
           args:
+            - --server-id=1
+            - --log-bin=mysql-bin
+            - --binlog-format=row
+            - --gtid-mode=ON
+            - --enforce-gtid-consistency=ON
             - --default-authentication-plugin=mysql_native_password
           volumeMounts:
             - name: data
