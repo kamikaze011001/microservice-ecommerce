@@ -1,6 +1,6 @@
-# Aliased Service so app DSNs use mysql-primary (writes) and mysql-replica (reads).
-# Today both point at the same Pod. When we add a true replica, we change the
-# selector on this Service without touching app config.
+# Read Service: app slave1/slave2 DSNs resolve here (see vault-seed). Selects the
+# component=replica pods (mysql-replica.yaml) and load-balances reads across the
+# 2 replicas. Writes go to the separate `mysql` Service (component=primary).
 apiVersion: v1
 kind: Service
 metadata:
@@ -10,7 +10,7 @@ spec:
   type: ClusterIP
   selector:
     app.kubernetes.io/name: mysql
-    app.kubernetes.io/component: primary
+    app.kubernetes.io/component: replica
   ports:
     - name: mysql
       port: 3306
