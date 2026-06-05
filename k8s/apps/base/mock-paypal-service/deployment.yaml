@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-paypal-service
+  namespace: apps
+  labels: { app: mock-paypal-service }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: mock-paypal-service }
+  template:
+    metadata:
+      labels: { app: mock-paypal-service }
+    spec:
+      containers:
+        - name: mock-paypal-service
+          image: localhost:5001/mock-paypal-service:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8585 }
+            - { name: management, containerPort: 18585 }
+          env:
+            - name: MOCK_PUBLIC_BASE_URL
+              value: http://api.microecom.local/mock-paypal-service
+            - name: JAVA_OPTS
+              value: "-XX:MaxRAMPercentage=75.0"
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits:   { cpu: 500m, memory: 384Mi }
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: management }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 4
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: management }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
