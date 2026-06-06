@@ -207,9 +207,22 @@ spec:
           ports:
             - name: mysql
               containerPort: 3306
-          envFrom:
-            - secretRef:
-                name: mysql-credentials
+          # ONLY root password + database — NOT MYSQL_USER/MYSQL_PASSWORD. The
+          # mysql entrypoint binlogs a non-idempotent `CREATE USER '<MYSQL_USER>'`
+          # (outside its SET SQL_LOG_BIN=0 block); if the replica creates that
+          # user locally too, replaying the primary's CREATE USER stops the SQL
+          # thread. The app user arrives via replication; app reads as root.
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-credentials
+                  key: MYSQL_ROOT_PASSWORD
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-credentials
+                  key: MYSQL_DATABASE
           # No --server-id here: it comes from /etc/mysql/conf.d/server-id.cnf
           # written per-pod by the initContainer. --skip-slave-start: install.sh
           # configures CHANGE REPLICATION SOURCE then START REPLICA explicitly.

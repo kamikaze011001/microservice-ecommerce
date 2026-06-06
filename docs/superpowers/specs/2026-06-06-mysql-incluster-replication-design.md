@@ -80,10 +80,17 @@ dependency for a local kind dev cluster; Bitnami was already removed for weight)
    - **StatefulSet** `mysql-replica` (`replicas:2`, `serviceName:
      mysql-replica-headless`, labels `app.kubernetes.io/name: mysql`,
      `component: replica`):
-     - `image: mysql:8.0.40`; `envFrom: mysql-credentials` (same root password +
-       `MYSQL_DATABASE=ecommerce_dev`, so the replicated `CREATE TABLE` DDL has
-       its database — the entrypoint's DB/user creation is `SQL_LOG_BIN=0`, hence
-       not replicated, so the replica must create the empty DB itself).
+     - `image: mysql:8.0.40`; explicit `env` of **only** `MYSQL_ROOT_PASSWORD` +
+       `MYSQL_DATABASE` from `mysql-credentials` (via `secretKeyRef`) — crucially
+       **NOT** `MYSQL_USER`/`MYSQL_PASSWORD`. The mysql entrypoint binlogs
+       `CREATE USER '<MYSQL_USER>'@'%'` (it runs *outside* the entrypoint's
+       `SET SQL_LOG_BIN=0` block, and is not `IF NOT EXISTS`); if the replica
+       created that user locally too, replaying the primary's `CREATE USER` aborts
+       the SQL thread (`Replica_SQL_Running: No`). The app user arrives via
+       replication; the app reads replicas as `root`. `MYSQL_DATABASE` is kept so
+       the empty `ecommerce_dev` exists for replicated `CREATE TABLE` DDL. Mirrors
+       `docker/mysql.yml` slaves (which omit `MYSQL_USER`). *(Root-caused
+       2026-06-06; the original `envFrom: mysql-credentials` broke replication.)*
      - Server args: `--log-bin=mysql-bin --binlog-format=row --gtid-mode=ON
        --enforce-gtid-consistency=ON --default-authentication-plugin=mysql_native_password
        --skip-slave-start=1 --read-only=ON --replica-parallel-workers=4
