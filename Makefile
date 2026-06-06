@@ -37,7 +37,8 @@ help:
 	@echo "  make k8s-bootstrap    — one-shot: cluster + infra + images + seed + apps"
 	@echo "  make k8s-stop         — pause cluster (keep data; fast resume, no rebuild)"
 	@echo "  make k8s-start        — resume a stopped cluster (re-seeds Vault, bounces apps)"
-	@echo "  make k8s-down         — tear down apps + cluster"
+	@echo "  make k8s-down         — tear down apps + cluster (keeps registry/images)"
+	@echo "  make k8s-nuke         — full wipe incl. registry (cold rebuild next time)"
 	@echo "  make k8s-status       — pods across nodes/infra/bootstrap/apps"
 	@echo "  make k8s-mysql-status — MySQL 1-primary/2-replica replication health"
 	@echo "  make k8s-apps         — re-apply just the service overlay"
@@ -165,7 +166,7 @@ logs:
 
 K8S_CLUSTER := microecom
 
-.PHONY: k8s-cluster-up k8s-cluster-down k8s-cluster-status k8s-stop k8s-start
+.PHONY: k8s-cluster-up k8s-cluster-down k8s-cluster-status k8s-nuke k8s-stop k8s-start
 
 k8s-cluster-up:
 	@if ! kind get clusters | grep -q "^$(K8S_CLUSTER)$$"; then \
@@ -176,7 +177,15 @@ k8s-cluster-up:
 
 k8s-cluster-down:
 	-kind delete cluster --name $(K8S_CLUSTER)
+	@echo "==> cluster deleted; kind-registry kept (built images preserved). Use 'make k8s-nuke' to remove it too."
+
+# Full clean slate: delete the cluster AND the local registry (drops all built
+# images, forcing a cold rebuild + re-pull on the next bootstrap). Use this only
+# when you truly want nothing reused; the normal `make k8s-down` keeps images.
+k8s-nuke: k8s-apps-down
+	-kind delete cluster --name $(K8S_CLUSTER)
 	-docker rm -f kind-registry
+	@echo "==> cluster + registry destroyed (full clean slate)"
 
 k8s-cluster-status:
 	@kind get clusters
