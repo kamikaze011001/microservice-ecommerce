@@ -94,15 +94,19 @@ spec:
                   name: mysql-credentials
                   key: MYSQL_DATABASE
           # No --server-id here: it comes from /etc/mysql/conf.d/server-id.cnf
-          # written per-pod by the initContainer. --skip-slave-start: install.sh
-          # configures CHANGE REPLICATION SOURCE then START REPLICA explicitly.
+          # written per-pod by the initContainer. We intentionally do NOT set
+          # --skip-slave-start: mysqld then auto-starts replication on every boot
+          # when master.info exists, so replicas self-heal after a node/Docker
+          # restart (otherwise they come back Replica_*_Running: No until someone
+          # runs START REPLICA). Fresh PVCs have no master.info, so first boot is
+          # still safe; install.sh runs STOP REPLICA before CHANGE REPLICATION
+          # SOURCE to tolerate the harmless auto-start on a configured replica.
           args:
             - --log-bin=mysql-bin
             - --binlog-format=row
             - --gtid-mode=ON
             - --enforce-gtid-consistency=ON
             - --default-authentication-plugin=mysql_native_password
-            - --skip-slave-start=1
             - --read-only=ON
             - --replica-parallel-workers=4
             - --replica-parallel-type=LOGICAL_CLOCK
