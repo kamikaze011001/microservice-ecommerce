@@ -80,13 +80,29 @@ public class PaymentServiceImpl implements PaymentService {
             return BaseResponse.from(e.getStatus(), e.getCode(), e.getMessage());
         }
 
-        Payment payment = Payment.builder()
-                .type(PaymentType.PURCHASE)
-                .orderId(orderId)
-                .status(PaymentStatus.PROCESSING)
-                .token(paypalOrderSimple.getId())
-                .totalPrice(totalPrice)
-                .build();
+        // Upsert: reuse the existing Payment row for this order if one exists (the
+        // user cancelled a prior attempt and is retrying). The whole lifecycle —
+        // findByOrderId (Optional) and markSuccess/updateStatus (UPDATE ... WHERE
+        // orderId) — assumes ONE Payment per order, so a blind insert on retry
+        // produced a second row and handleSuccessPayment threw
+        // NonUniqueResultException. Look up via the MASTER repo for read-your-writes
+        // (a slave lookup could lag and miss the just-written row → duplicate again).
+        Payment payment = masterPaymentRepo.findByOrderId(orderId)
+                .map(existing -> {
+                    existing.setType(PaymentType.PURCHASE);
+                    existing.setStatus(PaymentStatus.PROCESSING);
+                    existing.setToken(paypalOrderSimple.getId());
+                    existing.setTotalPrice(totalPrice);
+                    existing.setCaptureId(null);
+                    return existing;
+                })
+                .orElseGet(() -> Payment.builder()
+                        .type(PaymentType.PURCHASE)
+                        .orderId(orderId)
+                        .status(PaymentStatus.PROCESSING)
+                        .token(paypalOrderSimple.getId())
+                        .totalPrice(totalPrice)
+                        .build());
 
         masterPaymentRepo.save(payment);
 
