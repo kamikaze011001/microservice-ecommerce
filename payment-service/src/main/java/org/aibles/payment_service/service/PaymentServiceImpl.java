@@ -105,7 +105,7 @@ public class PaymentServiceImpl implements PaymentService {
             orderId = paypalOrderDetail.getPurchaseUnits().get(0).getCustomId();
         } catch (PaypalRestTemplateException | IndexOutOfBoundsException | NullPointerException e) {
             log.error("(handleSuccessPayment)paypal failure for token: {}", token, e);
-            Optional<Payment> paymentOptional = slavePaymentRepo.findByToken(token);
+            Optional<Payment> paymentOptional = masterPaymentRepo.findByToken(token);
             if (paymentOptional.isEmpty()) {
                 return null;
             }
@@ -117,7 +117,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (orderId == null) {
             log.error("(handleSuccessPayment)order is null from paypal service");
-            Optional<Payment> paymentOptional = slavePaymentRepo.findByToken(token);
+            Optional<Payment> paymentOptional = masterPaymentRepo.findByToken(token);
             if (paymentOptional.isEmpty()) {
                 return null;
             }
@@ -125,7 +125,7 @@ public class PaymentServiceImpl implements PaymentService {
             return paymentOptional.get().getOrderId();
         }
 
-        Optional<Payment> paymentOptional = slavePaymentRepo.findByOrderId(orderId);
+        Optional<Payment> paymentOptional = masterPaymentRepo.findByOrderId(orderId);
 
         if (paymentOptional.isEmpty()) {
             log.error("(handleSuccessPayment)payment not found for order: {}", orderId);
@@ -159,7 +159,7 @@ public class PaymentServiceImpl implements PaymentService {
             orderId = paypalOrderDetail.getPurchaseUnits().get(0).getCustomId();
         } catch (PaypalRestTemplateException | IndexOutOfBoundsException | NullPointerException e) {
             log.error("(handleCancelPayment)paypal failure for token: {}", token, e);
-            Optional<Payment> paymentOptional = slavePaymentRepo.findByToken(token);
+            Optional<Payment> paymentOptional = masterPaymentRepo.findByToken(token);
             if (paymentOptional.isEmpty()) {
                 return null;
             }
@@ -169,7 +169,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (orderId == null) {
             log.error("(handleCancelPayment)order is null from paypal service");
-            Optional<Payment> paymentOptional = slavePaymentRepo.findByToken(token);
+            Optional<Payment> paymentOptional = masterPaymentRepo.findByToken(token);
             if (paymentOptional.isEmpty()) {
                 return null;
             }
