@@ -171,11 +171,16 @@ fi
 # Depends on Kafka (KRaft) being Ready above — it stores subjects in a compacted
 # _schemas topic. Must be up before the JVM services and the connector job.
 kubectl apply -f "$MANIFESTS/schema-registry.yaml"
-kubectl -n infra rollout status deployment/schema-registry --timeout=5m
+# 10m (not 5m): the confluentinc/cp-schema-registry image is ~1.8GB and on a
+# cold cluster (e.g. after `make k8s-down` wipes each node's image cache) the
+# pull alone can take ~5.5m, blowing past a 5m rollout wait even though the pod
+# is healthy. Give the large Confluent image pull room.
+kubectl -n infra rollout status deployment/schema-registry --timeout=10m
 
 # Kafka Connect — long-running Deployment hosting source/sink connectors.
 # Connector registration is a separate Job (k8s/infra/jobs/04-kafka-connect-register).
 kubectl apply -f k8s/infra/manifests/kafka-connect.yaml
-kubectl -n infra rollout status deployment/kafka-connect --timeout=5m
+# 10m: same large-Confluent-image cold-pull reason as schema-registry above.
+kubectl -n infra rollout status deployment/kafka-connect --timeout=10m
 
 echo "infra install complete"
