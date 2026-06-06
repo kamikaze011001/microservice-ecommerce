@@ -214,10 +214,11 @@ k8s-start:
 	  docker start $$nodes kind-registry >/dev/null
 	@echo "waiting for API server..."
 	@until kubectl --context kind-$(K8S_CLUSTER) get nodes >/dev/null 2>&1; do sleep 3; done
-	@echo "waiting for Vault + MySQL to be ready..."
+	@echo "waiting for Vault + MySQL + Mongo to be ready..."
 	@kubectl -n infra wait --for=condition=ready pod -l app.kubernetes.io/name=vault --timeout=5m
 	@kubectl -n infra rollout status statefulset/mysql         --timeout=5m
 	@kubectl -n infra rollout status statefulset/mysql-replica --timeout=5m
+	@kubectl -n infra rollout status statefulset/mongodb       --timeout=5m
 	@echo "re-seeding Vault (dev mode is in-memory)"
 	@kubectl -n bootstrap delete job vault-seed --ignore-not-found >/dev/null
 	@kubectl apply -k k8s/infra/jobs/03-vault-seed
