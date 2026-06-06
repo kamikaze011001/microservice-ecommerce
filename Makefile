@@ -226,10 +226,15 @@ k8s-start:
 	@kubectl -n apps rollout status deployment --timeout=10m
 	@echo "cluster resumed. Check: make k8s-status && make k8s-mysql-status"
 
-.PHONY: k8s-build k8s-rebuild
+.PHONY: k8s-build k8s-build-reuse k8s-rebuild
 
 k8s-build:
 	@k8s/images/build.sh
+
+# Bootstrap build path: skip images already in the registry (fast down->bootstrap).
+# `make k8s-bootstrap FORCE_BUILD=1` rebuilds everything from scratch instead.
+k8s-build-reuse:
+	@if [ -n "$(FORCE_BUILD)" ]; then k8s/images/build.sh; else REUSE_EXISTING=1 k8s/images/build.sh; fi
 
 k8s-rebuild:
 	@if [ -z "$(svc)" ]; then echo "Usage: make k8s-rebuild svc=NAME"; exit 1; fi
@@ -397,7 +402,7 @@ k8s-payment-stress-logs:
 # One-shot: cluster -> infra -> images -> seed -> apps. Idempotent —
 # safe to re-run after editing manifests or pulling new code. Mirrors
 # the docker-compose `make bootstrap` flow but for the kind cluster.
-k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build k8s-seed k8s-seed-images k8s-apps k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest
+k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build-reuse k8s-seed k8s-seed-images k8s-apps k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest
 	@echo "==> k8s bootstrap complete"
 	@$(MAKE) k8s-status
 	@echo ""
