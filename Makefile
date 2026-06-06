@@ -35,6 +35,8 @@ help:
 	@echo ""
 	@echo "Kubernetes (local kind cluster):"
 	@echo "  make k8s-bootstrap    — one-shot: cluster + infra + images + seed + apps"
+	@echo "  make k8s-stop         — pause cluster (keep data; fast resume, no rebuild)"
+	@echo "  make k8s-start        — resume a stopped cluster (re-seeds Vault, bounces apps)"
 	@echo "  make k8s-down         — tear down apps + cluster"
 	@echo "  make k8s-status       — pods across nodes/infra/bootstrap/apps"
 	@echo "  make k8s-mysql-status — MySQL 1-primary/2-replica replication health"
@@ -163,7 +165,7 @@ logs:
 
 K8S_CLUSTER := microecom
 
-.PHONY: k8s-cluster-up k8s-cluster-down k8s-cluster-status
+.PHONY: k8s-cluster-up k8s-cluster-down k8s-cluster-status k8s-stop k8s-start
 
 k8s-cluster-up:
 	@if ! kind get clusters | grep -q "^$(K8S_CLUSTER)$$"; then \
@@ -179,6 +181,41 @@ k8s-cluster-down:
 k8s-cluster-status:
 	@kind get clusters
 	@kubectl get nodes -o wide 2>/dev/null || echo "(cluster not running)"
+
+# Pause the cluster without destroying it. kind nodes are Docker containers, so
+# `docker stop` freezes them; all PVC data (MySQL/Mongo/Kafka/Redis/MinIO) and the
+# built images survive. Resume with `make k8s-start` — far faster than a full
+# bootstrap (no kind create, no image rebuild, no DB reseed).
+k8s-stop:
+	@nodes=$$(kind get nodes --name $(K8S_CLUSTER) 2>/dev/null); \
+	  if [ -z "$$nodes" ]; then echo "cluster '$(K8S_CLUSTER)' not found — nothing to stop"; exit 0; fi; \
+	  echo "==> stopping kind cluster '$(K8S_CLUSTER)' (data + images preserved)"; \
+	  docker stop $$nodes kind-registry >/dev/null
+	@echo "stopped. Resume with: make k8s-start"
+
+# Resume a stopped cluster. Restarts the node + registry containers, waits for the
+# API and infra, then RE-SEEDS Vault (dev mode is in-memory, so its secrets are
+# lost on pod restart) and bounces the apps (which crash-loop on an empty Vault).
+# Everything else (DB data, Kafka topics, MinIO bucket, images) persists.
+k8s-start:
+	@nodes=$$(kind get nodes --name $(K8S_CLUSTER) 2>/dev/null); \
+	  if [ -z "$$nodes" ]; then echo "cluster '$(K8S_CLUSTER)' not found — run 'make k8s-bootstrap' first"; exit 1; fi; \
+	  echo "==> starting kind cluster '$(K8S_CLUSTER)'"; \
+	  docker start $$nodes kind-registry >/dev/null
+	@echo "waiting for API server..."
+	@until kubectl --context kind-$(K8S_CLUSTER) get nodes >/dev/null 2>&1; do sleep 3; done
+	@echo "waiting for Vault + MySQL to be ready..."
+	@kubectl -n infra wait --for=condition=ready pod -l app.kubernetes.io/name=vault --timeout=5m
+	@kubectl -n infra rollout status statefulset/mysql         --timeout=5m
+	@kubectl -n infra rollout status statefulset/mysql-replica --timeout=5m
+	@echo "re-seeding Vault (dev mode is in-memory)"
+	@kubectl -n bootstrap delete job vault-seed --ignore-not-found >/dev/null
+	@kubectl apply -k k8s/infra/jobs/03-vault-seed
+	@kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/vault-seed
+	@echo "restarting apps so they re-read Vault"
+	@kubectl -n apps rollout restart deployment
+	@kubectl -n apps rollout status deployment --timeout=10m
+	@echo "cluster resumed. Check: make k8s-status && make k8s-mysql-status"
 
 .PHONY: k8s-build k8s-rebuild
 
