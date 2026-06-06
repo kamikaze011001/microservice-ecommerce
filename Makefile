@@ -173,6 +173,7 @@ k8s-cluster-up:
 	  kind create cluster --config k8s/kind/cluster.yaml; \
 	fi
 	@k8s/kind/registry.sh
+	@k8s/kind/preload-images.sh
 	@kubectl cluster-info --context kind-$(K8S_CLUSTER)
 
 k8s-cluster-down:
