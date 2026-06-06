@@ -43,18 +43,28 @@ public class CheckoutPageController {
         return switch (decision) {
             case "approve" -> {
                 store.setDecision(token, Decision.APPROVE);
-                yield redirect(state.getReturnUrl());
+                yield redirect(withReturnParams(state.getReturnUrl(), token));
             }
             case "fail" -> {
                 store.setDecision(token, Decision.FAIL);
-                yield redirect(state.getReturnUrl());
+                yield redirect(withReturnParams(state.getReturnUrl(), token));
             }
             case "cancel" -> {
                 store.setDecision(token, Decision.CANCEL);
-                yield redirect(state.getCancelUrl());
+                yield redirect(withReturnParams(state.getCancelUrl(), token));
             }
             default -> ResponseEntity.badRequest().body("Unknown decision: " + decision);
         };
+    }
+
+    // Real PayPal appends ?token=<order-id>&PayerID=<id> to the return/cancel URL
+    // when it bounces the approver back to the merchant. payment-service's IPN
+    // handlers read the order id from @RequestParam("token"), so redirecting to a
+    // bare return URL fails with 400 (MissingServletRequestParameterException).
+    // Mirror PayPal so the capture step can resolve the order.
+    private String withReturnParams(String url, String token) {
+        String sep = url.contains("?") ? "&" : "?";
+        return url + sep + "token=" + token + "&PayerID=MOCKPAYERID";
     }
 
     private ResponseEntity<String> redirect(String location) {
