@@ -158,19 +158,51 @@ spec:
               done
 
               echo "(bootstrap) ensuring replica set rs0 ..."
-              # rs.status throws (NotYetInitialized) before initiate.
-              if ! mongosh --host 127.0.0.1 --quiet --eval 'rs.status().ok' >/dev/null 2>&1; then
-                # Member host = Service DNS so consumers connect to the name the
-                # RS advertises (a hostname mismatch would break the connector).
-                mongosh --host 127.0.0.1 --quiet --eval \
-                  'rs.initiate({_id:"rs0", members:[{_id:0, host:"'"${MEMBER}"'"}]})'
-                echo "(bootstrap) rs.initiate issued, waiting for PRIMARY ..."
-                until mongosh --host 127.0.0.1 --quiet --eval 'db.hello().isWritablePrimary' 2>/dev/null | grep -q true; do
-                  sleep 2
-                done
-              else
-                echo "(bootstrap) replica set already initialized."
-              fi
+              # msh: run mongosh as root when users already exist (every restart
+              # after first boot), else fall back to no-auth — on a brand-new node
+              # the localhost exception grants full access over loopback until the
+              # first user is created, so initiate/status work without creds.
+              msh() {
+                mongosh --host 127.0.0.1 --quiet -u root -p root \
+                  --authenticationDatabase admin --eval "$1" 2>/dev/null \
+                || mongosh --host 127.0.0.1 --quiet --eval "$1" 2>/dev/null
+              }
+              # Classify the replica-set state:
+              #   NotYetInitialized (94)        — fresh node, never initiated.
+              #   InvalidReplicaSetConfig (93)  — config exists but the node lost
+              #     its membership, typically because the pod IP changed on a
+              #     restart and mongod evaluated membership before the Service
+              #     endpoint/DNS caught up. It will NOT self-heal on its own.
+              #   PRIMARY                       — healthy.
+              STATE=$(msh 'try { print(rs.status().myState === 1 ? "PRIMARY" : "NOTPRIMARY"); } catch (e) { print(e.codeName); }')
+              echo "(bootstrap) replica set state: ${STATE}"
+              case "$STATE" in
+                PRIMARY)
+                  echo "(bootstrap) replica set already PRIMARY." ;;
+                NotYetInitialized)
+                  # First boot. Member host = Service DNS so consumers connect to
+                  # the name the RS advertises (a hostname mismatch breaks the CDC
+                  # connector). Runs pre-auth via the localhost exception.
+                  echo "(bootstrap) initiating replica set rs0 ..."
+                  msh 'rs.initiate({_id:"rs0", members:[{_id:0, host:"'"${MEMBER}"'"}]})' ;;
+                *)
+                  # InvalidReplicaSetConfig / not-PRIMARY after a restart: re-assert
+                  # the config with a force reconfig (same single member, bumped
+                  # version) so mongod re-evaluates its identity against current DNS
+                  # and elects itself PRIMARY. Auth is required here — the localhost
+                  # exception is closed once users exist — so msh uses root. This is
+                  # the self-heal for the post-restart IP-churn deadlock; without it
+                  # the node stays NotPrimaryOrSecondary and every app 500s.
+                  echo "(bootstrap) not PRIMARY (state=${STATE}); forcing reconfig to self-heal ..."
+                  msh 'var c = db.getSiblingDB("local").system.replset.findOne();
+                       var v = (c && c.version ? c.version : 0) + 1;
+                       db.adminCommand({replSetReconfig: {_id:"rs0", version:v, members:[{_id:0, host:"'"${MEMBER}"'"}]}, force:true});' ;;
+              esac
+
+              echo "(bootstrap) waiting for PRIMARY ..."
+              until msh 'db.hello().isWritablePrimary' | grep -q true; do
+                sleep 2
+              done
 
               # Root: localhost exception lets us create the FIRST user with no
               # auth, but ONLY over loopback and ONLY while zero users exist.
