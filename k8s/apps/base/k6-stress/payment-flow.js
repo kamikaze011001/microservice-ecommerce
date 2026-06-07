@@ -69,10 +69,17 @@ export function setup() {
   }
   const adminToken = adminRes.json('data.access_token');
   for (const pid of PRODUCT_IDS) {
-    http.patch(`${BASE}/inventory-service/v1/inventories/${pid}`,
+    const topUp = http.patch(`${BASE}/inventory-service/v1/inventories/${pid}`,
       JSON.stringify({ quantity: 1000000, is_add: true }),
       { headers: { 'Authorization': `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
         tags: { name: 'setup_inventory' } });
+    // Fail loudly: an unchecked top-up silently 403s when perftest_admin has no
+    // ADMIN role, leaving the catalog to deplete mid-run and masquerade as a
+    // latency/throughput failure. Stop here instead.
+    if (topUp.status < 200 || topUp.status >= 300) {
+      throw new Error(`inventory top-up failed for ${pid} (HTTP ${topUp.status}); ` +
+        `perftest_admin likely missing the ADMIN role — re-run make k8s-seed-perftest: ${topUp.body}`);
+    }
   }
   return {};
 }
