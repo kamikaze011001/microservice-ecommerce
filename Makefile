@@ -404,8 +404,10 @@ k8s-payment-stress-logs:
 # config (skin + namespace hotkeys). Switch contexts live inside k9s with :ctx.
 #   make k9s            # ENV=local (default) → kind cluster
 #   make k9s ENV=eks    # EKS (one-time: aws eks update-kubeconfig --alias microecom-eks)
+# NOTE: pass ENV on the make line; a shell-exported ENV (e.g. ENV=staging) is
+# also picked up and will be rejected as unknown — set it explicitly here.
 k9s:
-	@command -v k9s >/dev/null 2>&1 || { echo "k9s not installed — run: brew install k9s"; exit 1; }
+	@command -v k9s >/dev/null 2>&1 || { echo "k9s not installed — run: brew install k9s (other platforms: https://k9scli.io)"; exit 1; }
 	@case "$(ENV)" in \
 	  ""|local) ctx=kind-microecom ;; \
 	  eks)      ctx=microecom-eks ;; \

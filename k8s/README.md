@@ -76,6 +76,10 @@ per-cluster state is written under `k8s/k9s/clusters/**` and is git-ignored.
 **Namespace hotkeys:** `Shift-A` → `apps`, `Shift-I` → `infra`,
 `Shift-B` → `bootstrap` jobs. Switch clusters live with `:ctx`.
 
+**Read-write mode is enabled** — you can delete, scale, and restart resources
+directly from the TUI (matches how this cluster is managed). It acts live against
+whatever context you're on, so double-check the crumbs before destructive actions.
+
 **EKS (future):** one-time, register the context under the alias the launcher
 expects, then use `ENV=eks`:
 
