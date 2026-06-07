@@ -88,12 +88,15 @@ spec:
               value: "false"
             - name: CONNECT_PLUGIN_PATH
               value: "/usr/share/java,/usr/share/confluent-hub-components"
+          # cp-kafka-connect (JVM + connector plugins) was OOMKilled repeatedly
+          # (exit 137) at a 1Gi limit — RSS peaked ~963Mi (94% of limit). Give it
+          # real headroom: request 1Gi, cap at 2Gi.
           resources:
             requests:
               cpu: "100m"
-              memory: "512Mi"
-            limits:
               memory: "1Gi"
+            limits:
+              memory: "2Gi"
           readinessProbe:
             httpGet:
               path: /
