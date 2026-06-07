@@ -77,7 +77,7 @@ per-cluster state is written under `k8s/k9s/clusters/**` and is git-ignored.
 `Shift-B` → `bootstrap` jobs. Switch clusters live with `:ctx`.
 
 **Infra health plugin:** select an `infra` pod (mysql / mongodb / kafka / redis)
-and press `Ctrl-Y` for a read-only health report for that service — MySQL
+and press `Shift-Z` for a read-only health report for that service — MySQL
 replication status, MongoDB replica-set state, Kafka consumer-group lag, or Redis
 `INFO` — paged through `less` (`q` to return). Defined in `k8s/k9s/plugins.yaml`.
 
