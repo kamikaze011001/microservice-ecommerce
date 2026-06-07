@@ -50,6 +50,7 @@ spec:
             # below), so heap auto-adapts if we bump the limit.
             - name: JAVA_OPTS
               value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+UseStringDeduplication"
+            - { name: MALLOC_ARENA_MAX, value: "2" }
           resources:
             requests:
               cpu: 100m
