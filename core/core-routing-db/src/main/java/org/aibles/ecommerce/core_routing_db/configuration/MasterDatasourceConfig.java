@@ -29,6 +29,13 @@ public class MasterDatasourceConfig {
         AtomikosDataSourceBean dataSourceBean = new AtomikosDataSourceBean();
         dataSourceBean.setUniqueResourceName("master");
         dataSourceBean.setXaDataSource(mysqlXaDataSource);
+        // Atomikos defaults maxPoolSize to 1, which serializes every concurrent
+        // transaction on this datasource and exhausts under load (a 50-VU login
+        // burst -> "Connection pool exhausted"). 20 absorbs the burst while
+        // staying under MySQL max_connections=151 (~6 master-side replicas x 20 =
+        // 120); min 5 keeps connections warm to avoid XA cold-start on a burst.
+        dataSourceBean.setMinPoolSize(5);
+        dataSourceBean.setMaxPoolSize(20);
         return dataSourceBean;
     }
 
