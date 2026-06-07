@@ -115,7 +115,11 @@ public class InventoryServiceImpl implements InventoryService {
     public InventoryProductIdsResponse list(InventoryProductIdsRequest request) {
         log.info("(list)request: {}", request);
         List<InventoryProduct> inventoryProducts = masterInventoryProductRepository.findByIdIn(request.getIds());
-        List<ProductQuantitySummary> quantitySummaries = slaveProductQuantityHistoryRepo.sumQuantitiesByProductIds(request.getIds());
+        // Authoritative (master) stock SUM: this response feeds order-service's
+        // reservation ceiling (maxInventory) for the atomic Lua reserve. Reading
+        // it from an async slave returned stale-high stock under load, so the
+        // reserve over-permitted and oversold to negative. Read from master.
+        List<ProductQuantitySummary> quantitySummaries = masterProductQuantityHistoryRepo.sumQuantitiesByProductIds(request.getIds());
 
         Map<String, Long> productQuantityMap = quantitySummaries.stream().collect(
                 Collectors.toMap(ProductQuantitySummary::getProductId, ProductQuantitySummary::getTotalQuantity)
