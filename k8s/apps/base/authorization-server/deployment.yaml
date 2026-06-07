@@ -53,10 +53,13 @@ spec:
             - { name: MALLOC_ARENA_MAX, value: "2" }
           resources:
             requests:
-              cpu: 100m
+              # bcrypt password hashing (cost 10, ~80ms CPU each) is the login
+              # bottleneck. At a 1-core limit, concurrent logins queue → p95 ~4s
+              # under 50 VUs. Give it room and let the HPA add replicas.
+              cpu: 250m
               memory: 512Mi
             limits:
-              cpu: 1000m
+              cpu: 2000m
               memory: 768Mi
           # Liveness: just "is the JVM alive?" — checks management port so we
           # don't get false negatives from a busy http thread pool.

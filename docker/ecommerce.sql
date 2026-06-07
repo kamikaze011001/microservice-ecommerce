@@ -21,7 +21,7 @@
 
 LOCK TABLES `account` WRITE;
 /*!40000 ALTER TABLE `account` DISABLE KEYS */;
-INSERT INTO `account` VALUES ('38abfe92-280c-42c4-a3f1-b7c81454163d',_binary '','$2a$10$1uyllxkKheYmeMFJ7kj/PeRHR1AIWyXBAfbNqfVolcWxe0D2nk0UO','980033d6-e318-41a1-9ce3-597b955717ef','sonanh2001'),('4bc8ef19-a15a-4983-a6ac-a3e1f6eb28a7',_binary '\0','$2a$10$EJ.53Q7DdxwLc4rj7KeJAu2Zfzp7G1Si.nXN9.AHJ0huvqi.APBMa','311c4ba5-5239-4a99-8ddc-13f68308d306','sonanh2002');
+INSERT INTO `account` (id, is_activated, password, user_id, username) VALUES ('38abfe92-280c-42c4-a3f1-b7c81454163d',_binary '','$2a$10$1uyllxkKheYmeMFJ7kj/PeRHR1AIWyXBAfbNqfVolcWxe0D2nk0UO','980033d6-e318-41a1-9ce3-597b955717ef','sonanh2001'),('4bc8ef19-a15a-4983-a6ac-a3e1f6eb28a7',_binary '\0','$2a$10$EJ.53Q7DdxwLc4rj7KeJAu2Zfzp7G1Si.nXN9.AHJ0huvqi.APBMa','311c4ba5-5239-4a99-8ddc-13f68308d306','sonanh2002');
 /*!40000 ALTER TABLE `account` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -31,7 +31,7 @@ UNLOCK TABLES;
 
 LOCK TABLES `account_role` WRITE;
 /*!40000 ALTER TABLE `account_role` DISABLE KEYS */;
-INSERT INTO `account_role` VALUES ('b10cbf78-81ca-4812-b1b8-421cbb4eba5b','38abfe92-280c-42c4-a3f1-b7c81454163d','b617429d-0722-4ced-95ec-eb5bd03e3098');
+INSERT INTO `account_role` (id, account_id, role_id) VALUES ('b10cbf78-81ca-4812-b1b8-421cbb4eba5b','38abfe92-280c-42c4-a3f1-b7c81454163d','b617429d-0722-4ced-95ec-eb5bd03e3098');
 /*!40000 ALTER TABLE `account_role` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -41,7 +41,7 @@ UNLOCK TABLES;
 
 LOCK TABLES `role` WRITE;
 /*!40000 ALTER TABLE `role` DISABLE KEYS */;
-INSERT INTO `role` VALUES ('1b6fc636-230a-429c-977e-a5289f7f03b6','EMPLOYEE'),('b617429d-0722-4ced-95ec-eb5bd03e3098','ADMIN'),('bdb4b8bf-d4d1-4aaa-b4fd-e1187fc0faed','MERCHANT');
+INSERT INTO `role` (id, name) VALUES ('1b6fc636-230a-429c-977e-a5289f7f03b6','EMPLOYEE'),('b617429d-0722-4ced-95ec-eb5bd03e3098','ADMIN'),('bdb4b8bf-d4d1-4aaa-b4fd-e1187fc0faed','MERCHANT');
 /*!40000 ALTER TABLE `role` ENABLE KEYS */;
 UNLOCK TABLES;
 

@@ -6,6 +6,7 @@ import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.KeyUse;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
+import java.text.ParseException;
 import org.aibles.ecommerce.authorization_server.repository.master.MasterAccountRepository;
 import org.aibles.ecommerce.authorization_server.repository.master.MasterAccountRoleRepository;
 import org.aibles.ecommerce.authorization_server.repository.master.MasterUserRepository;
@@ -49,14 +50,19 @@ public class AuthorizationServerConfiguration {
     @Value("${application.authentication-key-id}")
     private String secretKey;
 
+    @Value("${application.jwk}")
+    private String jwkJson;
+
     @Bean
-    public JWKSet jwkSet() throws JOSEException {
-        RSAKey rsaKey = new RSAKeyGenerator(2048)
-                .keyUse(KeyUse.SIGNATURE)
-                .algorithm(JWSAlgorithm.RS256)
-                .keyID(secretKey)
-                .generate();
-        return new JWKSet(rsaKey);
+    public JWKSet jwkSet() throws ParseException {
+        // Load a STABLE signing key from Vault (application.jwk) rather than
+        // generating one per startup. A per-pod generated key invalidated all
+        // live tokens on every restart (the gateway caches JWKS by kid, which is
+        // constant here) and made the auth tier impossible to scale: each replica
+        // would sign with a different key under the same kid, so the gateway's
+        // cached JWKS validated only one replica's tokens. The kid/use/alg are
+        // embedded in the JWK JSON.
+        return new JWKSet(RSAKey.parse(jwkJson));
     }
 
     @Bean

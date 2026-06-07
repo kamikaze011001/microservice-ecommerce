@@ -1,0 +1,37 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: authorization-server
+  namespace: apps
+  labels: { app: authorization-server }
+spec:
+  # Login is bcrypt-CPU-bound; scale auth out under load so password hashes
+  # run in parallel across replicas (p95 login was ~4s on a single pod).
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: authorization-server
+  minReplicas: 1
+  maxReplicas: 3
+  # averageUtilization is a % of requests.cpu (250m). 60% => scale when avg
+  # CPU per pod exceeds 150m — bcrypt under load blows past this quickly.
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

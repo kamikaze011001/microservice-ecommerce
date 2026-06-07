@@ -39,6 +39,10 @@ public class SlaveDatasourceConfig {
         AtomikosDataSourceBean dataSourceBean = new AtomikosDataSourceBean();
         dataSourceBean.setUniqueResourceName("slave1");
         dataSourceBean.setXaDataSource(mysqlXaDataSource);
+        // See MasterDatasourceConfig: Atomikos defaults maxPoolSize to 1, which
+        // exhausts under concurrent read load. Match the master sizing.
+        dataSourceBean.setMinPoolSize(5);
+        dataSourceBean.setMaxPoolSize(20);
         return dataSourceBean;
     }
 
@@ -52,6 +56,10 @@ public class SlaveDatasourceConfig {
         AtomikosDataSourceBean dataSourceBean = new AtomikosDataSourceBean();
         dataSourceBean.setUniqueResourceName("slave2");
         dataSourceBean.setXaDataSource(mysqlXaDataSource);
+        // See MasterDatasourceConfig: Atomikos defaults maxPoolSize to 1, which
+        // exhausts under concurrent read load. Match the master sizing.
+        dataSourceBean.setMinPoolSize(5);
+        dataSourceBean.setMaxPoolSize(20);
         return dataSourceBean;
     }
 

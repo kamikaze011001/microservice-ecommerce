@@ -45,6 +45,17 @@ VALUES (
 );
 
 SET @admin_account_id = (SELECT id FROM `account` WHERE username = 'perftest_admin');
+
+-- Ensure the ADMIN role exists. docker/ecommerce.sql seeds it, but in k8s the
+-- mysql-seed runs before Hibernate creates the tables (data-only dump), so that
+-- INSERT fails and `role` ends up empty -> @admin_role_id would be NULL and the
+-- link below would be silently skipped (perftest_admin gets no role -> the k6
+-- setup() inventory top-up 403s -> stock never refills -> test runs dry). Make
+-- this seed self-sufficient instead of depending on ecommerce.sql ordering.
+INSERT INTO `role` (id, name)
+SELECT UUID(), 'ADMIN' FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `role` WHERE name = 'ADMIN');
+
 SET @admin_role_id    = (SELECT id FROM `role` WHERE name = 'ADMIN' LIMIT 1);
 SET @admin_link_count = (SELECT COUNT(*) FROM `account_role`
                          WHERE account_id = @admin_account_id AND role_id = @admin_role_id);

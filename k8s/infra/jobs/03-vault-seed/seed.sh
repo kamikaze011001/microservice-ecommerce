@@ -74,16 +74,19 @@ put_if_missing ecommerce \
   # Seeding blank values here would shadow the env vars.
 
 # authorization-server: token policy + JWK key-id. Values mirror
-# docker/vault-configs/authorization-server.json. The JWK itself is generated at
-# runtime (RSAKeyGenerator in AuthorizationServerConfiguration) keyed by
-# authentication-key-id — no keypair is stored. life-times are milliseconds.
+# docker/vault-configs/authorization-server.json. application.jwk is the STABLE
+# RSA signing key (private JWK JSON) loaded by AuthorizationServerConfiguration;
+# it MUST be identical across restarts and replicas because the gateway caches
+# JWKS by kid — a per-startup key broke token validation on every deploy and
+# blocked horizontal scaling of the auth tier. life-times are milliseconds.
 # (The original k8s seed omitted this block, so the service crashed with
 # "Could not resolve placeholder 'application.access-token.life-time'".)
 put_if_missing authorization-server \
   server.port="6666" \
   application.access-token.life-time="900000" \
   application.refresh-token.life-time="604800000" \
-  application.authentication-key-id="ecommerce-auth-key-2024"
+  application.authentication-key-id="ecommerce-auth-key-2024" \
+  application.jwk='{"kty":"RSA","kid":"ecommerce-auth-key-2024","use":"sig","alg":"RS256","n":"8O-ohPxhOmVzHBBVTXIC5_peX3twa0-cbaaU-HuGtRx1KkvMrC4CcBv1uzM00O4DDrNuYuSvpuNusF5l0aLcywYjq7kq4tTD1BznKmjUuas9XPGC4ZDS_F537Gw74oPjFvCfvsXQjbQkjyupnKuFM7F6Qk2on4VEvCI6nbpHSWET5Rthy2nZJwcxw1rHTjm2xqzOANe88vZia02x5yIu51qlh9AuJQQ8GmM8_ikS4yAcGom5HbvIPpl2jLpKlHMjGFjQuAkEgg3VkBDpxcJYVM_AmJvSfPwYpEaQoaerayrVriXxhOreRUakErxjWXfx4fE4aqqMv1O_76lUGK8fSQ","e":"AQAB","d":"BsR8jnZhAW5oZtE7TChtK3iYCQTjGf3g-MrVOWDi3kMf3rcarHrDB8TJSLT-AUuw20tanj1_2jyzgbxiY2_jKsgP3XAfORgyg0qSiwQ_IWiixHG7iZFzU7Jlmkb0rFP5tM2_zEXV1KfK38NMCYIJ2kixv0YGJquWzCqxTHfh2Q4_4q_nqQUW-R1fzWmgNdqss6aohP1r52QopsTdRIv0394YRdr-lHb17UXJ8lIpMZJQxuvFZRNbYA8d6jabJrzS37cIRYXd977S2GNLCO9zbOEDxm_Vfd3hSs-_9U5i1_x00N1VJzxTkcMGvulmbPg4cdm2-YY9n1QySc08xbOdwQ","p":"_ORNmdZaNAdNPsYnXfw6Z7DaUEtujtLavaWuwCJO0KwP9GHDoYZ9AOz4CJZhut4N69-7-kC3VXqA2ZydPXkt1lVs-I7eTdfiRpqq6x-YC59JLcD2jeQP3hU50lRoYgI59BAw2r5zKf_g-FAivRuTWv5zAEZ1YkxzIQwG1ziXKBk","q":"8-W87cVZcceULkLuEbXo-xbuWbFW-iPmg5FsCmVq2MBWVLjYCYHrysFbRjDVBErEB8ZIGqtP5jQjpjuT7SSLmyq5mLcWzhT602t-aWvOI_Z6f-mproQCzhsbp9WlzhMqBOswTlitOdVFtSH0_jJmSB7Ie4JxOPi7W4Li9VzUVrE","dp":"jIBfKNgxl3RzEyxOVOY8oL1eHXw7OXimdPUnKLIm7cKavqDOauBodOozR7odJBAY1fKg4oGwGfqMudpMdgnsUId3moTtt3v4yFdIHIeaFuLxak0p7l1F_5H1ZQjmUYWBIzsXmYB0RWJXYD5NfplifgyeYgnDT9C_qh2fc1WKjYk","dq":"5shjjmWoLjaYa3HfjZig_T6EiRB6abUgwSwQnIG8qZ7N0dsaaVyrfi6aLH-2gRoyBd1Eix_BOeXqObi0T7e99jRmbDAK_zPw568WbbCZ3YO0BGdYrQ6zDM2vzI8oFigiIYdeLTRRraC2FiAsj3-nMuUV9XDHrA4IUx41ndCaB_E","qi":"kdzDggJVAyKwuNiLAr38A8fl33dg3lmT_nqm7rE2KH22xuveYPbVepcnE5ijT-dULtObB60XYBi0fs8fjWSqt90-3MZPv8Kb8DWXNZSlGmlefJOE6Wky_1chaKSoUECIWYo5enxNe1nwTmnMLkWRxw3IzoL7QfON-ARuYq66ITc"}'
 
 # gateway: jwt/jwk config AND route URIs MUST be in ONE put_if_missing call —
 # put_if_missing skips a path that already exists, so a second `put_if_missing
