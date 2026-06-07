@@ -1,0 +1,6 @@
+# k9s writes per-cluster state, logs, and dumps here at runtime.
+# Keep only the curated config (config.yaml, skins/, hotkeys.yaml).
+/clusters/
+/*.log
+/screen-dumps/
+/benchmarks/
