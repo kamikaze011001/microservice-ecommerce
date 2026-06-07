@@ -4,3 +4,6 @@
 /*.log
 /screen-dumps/
 /benchmarks/
+# interactively-saved user state (created when you save an alias/jump in the TUI)
+/aliases.yaml
+/jumps.yaml
