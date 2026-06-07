@@ -1,0 +1,41 @@
+# k9s plugins — committed. One read-only "inspect infra" action: select an infra
+# pod (mysql / mongodb / kafka / redis) in the pods view and press Shift-Z to run
+# that service's health command via `kubectl exec`, paged through `less`.
+#
+# Key/scope notes (k9s v0.51):
+#   - scope MUST be the short name `po` (the full word `pods` is not reliably
+#     registered, so the plugin never activates in the pods view).
+#   - Shift-Z: a Shift-<letter> key that is NOT a k9s built-in and not one of our
+#     namespace hotkeys (Shift-A/I/B). Avoid Ctrl-Y (terminals swallow it) and
+#     Ctrl-J (= Enter). All commands here are READ-ONLY.
+plugins:
+  inspect-infra:
+    shortCut: Shift-Z
+    description: Inspect infra
+    scopes:
+      - po
+    command: bash
+    background: false
+    confirm: false
+    args:
+      - -c
+      - |
+        kc="kubectl --context $CONTEXT -n $NAMESPACE"
+        case "$NAME" in
+          mysql*)
+            $kc exec "$NAME" -- \
+              mysql -uroot -proot -e "SELECT @@hostname, @@server_id, @@read_only\G SHOW REPLICA STATUS\G" ;;
+          mongodb*)
+            $kc exec "$NAME" -c mongodb -- \
+              mongosh --host 127.0.0.1 -u root -p root --authenticationDatabase admin --quiet \
+              --eval 'print("myState:", rs.status().myState); rs.status().members.forEach(function (m) { print(m.name, m.stateStr, "health=" + m.health); })' ;;
+          kafka-connect*)
+            echo "No broker monitor for kafka-connect — select the kafka broker pod (e.g. kafka-0)." ;;
+          kafka*)
+            $kc exec "$NAME" -- \
+              /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --all-groups --describe ;;
+          redis*)
+            $kc exec "$NAME" -- redis-cli INFO ;;
+          *)
+            echo "No infra monitor for pod: $NAME" ;;
+        esac 2>&1 | less -R

@@ -1,0 +1,16 @@
+# Project hotkeys: jump straight to this cluster's namespaces. Works on any
+# context using the same namespace names (kind + EKS) — a reason to keep
+# apps/infra/bootstrap on EKS too.
+hotKeys:
+  shift-a:
+    shortCut: Shift-A
+    description: Pods in apps
+    command: pods apps
+  shift-i:
+    shortCut: Shift-I
+    description: Pods in infra
+    command: pods infra
+  shift-b:
+    shortCut: Shift-B
+    description: Jobs in bootstrap
+    command: jobs bootstrap

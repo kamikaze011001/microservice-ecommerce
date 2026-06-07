@@ -59,6 +59,43 @@ k8s/
         └── aws/           — placeholder (LoadBalancer, EBS, IRSA come later)
 ```
 
+## Monitoring with k9s
+
+[k9s](https://k9scli.io) is a terminal UI for the cluster. Install once, then
+launch with a repo-committed config (skin + namespace hotkeys):
+
+```bash
+brew install k9s          # one-time
+make k9s                  # local kind cluster (ENV=local default)
+make k9s ENV=eks          # EKS context (see below)
+```
+
+The config lives in `k8s/k9s/` (shared, version-controlled). k9s's own
+per-cluster state is written under `k8s/k9s/clusters/**` and is git-ignored.
+
+**Namespace hotkeys:** `Shift-A` → `apps`, `Shift-I` → `infra`,
+`Shift-B` → `bootstrap` jobs. Switch clusters live with `:ctx`.
+
+**Infra health plugin:** select an `infra` pod (mysql / mongodb / kafka / redis)
+and press `Shift-Z` for a read-only health report for that service — MySQL
+replication status, MongoDB replica-set state, Kafka consumer-group lag, or Redis
+`INFO` — paged through `less` (`q` to return). Defined in `k8s/k9s/plugins.yaml`.
+
+**Read-write mode is enabled** — you can delete, scale, and restart resources
+directly from the TUI (matches how this cluster is managed). It acts live against
+whatever context you're on, so double-check the crumbs before destructive actions.
+
+**EKS (future):** one-time, register the context under the alias the launcher
+expects, then use `ENV=eks`:
+
+```bash
+aws eks update-kubeconfig --name <cluster-name> --alias microecom-eks
+make k9s ENV=eks
+```
+
+The same committed config serves both clusters; keep the `apps`/`infra`/`bootstrap`
+namespace names on EKS so the hotkeys carry over.
+
 ## AWS portability
 
 Manifests live in `base/`; environment differences live in overlays.

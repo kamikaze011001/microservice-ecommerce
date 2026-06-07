@@ -1,0 +1,9 @@
+# k9s writes per-cluster state, logs, and dumps here at runtime.
+# Keep only the curated config (config.yaml, skins/, hotkeys.yaml).
+/clusters/
+/*.log
+/screen-dumps/
+/benchmarks/
+# interactively-saved user state (created when you save an alias/jump in the TUI)
+/aliases.yaml
+/jumps.yaml

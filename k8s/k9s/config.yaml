@@ -1,0 +1,22 @@
+# k9s global config — committed, env-agnostic (skin + UI prefs only).
+# Per-cluster runtime state (last namespace/view) is written by k9s under
+# k8s/k9s/clusters/** and is git-ignored (see .gitignore in this dir).
+k9s:
+  liveViewAutoRefresh: true
+  refreshRate: 2
+  maxConnRetry: 5
+  readOnly: false
+  noExitOnCtrlC: false
+  skipLatestRevCheck: true
+  ui:
+    skin: microecom
+    enableMouse: false
+    headless: false
+    logoless: false
+    crumbsless: false
+    reactive: true
+    noIcons: false
+  logger:
+    tail: 200
+    buffer: 5000
+    sinceSeconds: -1   # -1 = no time window, show all log lines

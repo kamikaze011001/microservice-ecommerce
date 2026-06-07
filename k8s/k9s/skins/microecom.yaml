@@ -1,0 +1,66 @@
+# microecom k9s skin (Nord palette). Selected via k9s.ui.skin: microecom.
+k9s:
+  body:
+    fgColor: '#d8dee9'
+    bgColor: default
+    logoColor: '#88c0d0'
+  prompt:
+    fgColor: '#d8dee9'
+    bgColor: default
+    suggestColor: '#ebcb8b'
+  info:
+    fgColor: '#a3be8c'
+    sectionColor: '#d8dee9'
+  dialog:
+    fgColor: '#d8dee9'
+    bgColor: default
+    buttonFgColor: '#d8dee9'
+    buttonBgColor: '#81a1c1'
+    buttonFocusFgColor: '#eceff4'
+    buttonFocusBgColor: '#b48ead'
+    labelFgColor: '#ebcb8b'
+    fieldFgColor: '#d8dee9'
+  frame:
+    border:
+      fgColor: '#4c566a'
+      focusColor: '#88c0d0'
+    menu:
+      fgColor: '#d8dee9'
+      keyColor: '#88c0d0'
+      numKeyColor: '#88c0d0'
+    crumbs:
+      fgColor: '#eceff4'
+      bgColor: '#4c566a'
+      activeColor: '#b48ead'
+    status:
+      newColor: '#88c0d0'
+      modifyColor: '#81a1c1'
+      addColor: '#a3be8c'
+      errorColor: '#bf616a'
+      highlightColor: '#ebcb8b'
+      killColor: '#d08770'
+      completedColor: '#616e88'
+    title:
+      fgColor: '#d8dee9'
+      bgColor: default
+      highlightColor: '#ebcb8b'
+      counterColor: '#88c0d0'
+      filterColor: '#b48ead'
+  views:
+    table:
+      fgColor: '#d8dee9'
+      bgColor: default
+      header:
+        fgColor: '#d8dee9'
+        bgColor: default
+        sorterColor: '#88c0d0'
+    yaml:
+      keyColor: '#88c0d0'
+      colonColor: '#81a1c1'
+      valueColor: '#d8dee9'
+    logs:
+      fgColor: '#d8dee9'
+      bgColor: default
+      indicator:
+        fgColor: '#d8dee9'
+        bgColor: '#4c566a'

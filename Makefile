@@ -45,6 +45,7 @@ help:
 	@echo "  make k8s-rebuild svc=NAME — rebuild one image + rollout restart"
 	@echo "  make k8s-payment-stress      — fire k6 payment-saga load Job (opt-in)"
 	@echo "  make k8s-payment-stress-logs — tail k6 payment-stress output"
+	@echo "  make k9s [ENV=local|eks]     — open k9s monitor on the chosen cluster"
 
 # ============================================================================
 # First-run / daily loop
@@ -333,7 +334,7 @@ k8s-seed-perftest:
 k8s-seed-images:
 	@scripts/seed/k8s-product-images.sh
 
-.PHONY: k8s-apps k8s-apps-down k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs
+.PHONY: k8s-apps k8s-apps-down k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs k9s
 
 # Apply all 8 service Deployments via the local overlay.
 # k8s-app-secrets: build the `app-secrets` Secret in the apps namespace from
@@ -398,6 +399,22 @@ k8s-payment-stress:
 
 k8s-payment-stress-logs:
 	@kubectl -n apps logs -f -l app=k6-payment-stress --tail=-1
+
+# Launch k9s (terminal UI) on a chosen environment, using the repo's committed
+# config (skin + namespace hotkeys). Switch contexts live inside k9s with :ctx.
+#   make k9s            # ENV=local (default) → kind cluster
+#   make k9s ENV=eks    # EKS (one-time: aws eks update-kubeconfig --alias microecom-eks)
+# NOTE: pass ENV on the make line; a shell-exported ENV (e.g. ENV=staging) is
+# also picked up and will be rejected as unknown — set it explicitly here.
+k9s:
+	@command -v k9s >/dev/null 2>&1 || { echo "k9s not installed — run: brew install k9s (other platforms: https://k9scli.io)"; exit 1; }
+	@case "$(ENV)" in \
+	  ""|local) ctx=kind-microecom ;; \
+	  eks)      ctx=microecom-eks ;; \
+	  *) echo "Unknown ENV '$(ENV)' — use ENV=local or ENV=eks"; exit 1 ;; \
+	 esac; \
+	 echo "k9s → context $$ctx (ENV=$${ENV:-local}), namespace apps"; \
+	 K9S_CONFIG_DIR="$(CURDIR)/k8s/k9s" k9s --context "$$ctx" -n apps
 
 .PHONY: k8s-bootstrap k8s-down
 
