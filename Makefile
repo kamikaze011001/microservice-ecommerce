@@ -35,12 +35,16 @@ help:
 	@echo ""
 	@echo "Kubernetes (local kind cluster):"
 	@echo "  make k8s-bootstrap    — one-shot: cluster + infra + images + seed + apps"
-	@echo "  make k8s-down         — tear down apps + cluster"
+	@echo "  make k8s-stop         — pause cluster (keep data; fast resume, no rebuild)"
+	@echo "  make k8s-start        — resume a stopped cluster (re-seeds Vault, bounces apps)"
+	@echo "  make k8s-down         — tear down apps + cluster (keeps registry/images)"
+	@echo "  make k8s-nuke         — full wipe incl. registry (cold rebuild next time)"
 	@echo "  make k8s-status       — pods across nodes/infra/bootstrap/apps"
+	@echo "  make k8s-mysql-status — MySQL 1-primary/2-replica replication health"
 	@echo "  make k8s-apps         — re-apply just the service overlay"
 	@echo "  make k8s-rebuild svc=NAME — rebuild one image + rollout restart"
-	@echo "  make k8s-stress       — fire k6 load Job (opt-in)"
-	@echo "  make k8s-stress-logs  — tail k6 output"
+	@echo "  make k8s-payment-stress      — fire k6 payment-saga load Job (opt-in)"
+	@echo "  make k8s-payment-stress-logs — tail k6 payment-stress output"
 
 # ============================================================================
 # First-run / daily loop
@@ -162,34 +166,84 @@ logs:
 
 K8S_CLUSTER := microecom
 
-.PHONY: k8s-cluster-up k8s-cluster-down k8s-cluster-status
+.PHONY: k8s-cluster-up k8s-cluster-down k8s-cluster-status k8s-nuke k8s-stop k8s-start
 
 k8s-cluster-up:
 	@if ! kind get clusters | grep -q "^$(K8S_CLUSTER)$$"; then \
 	  kind create cluster --config k8s/kind/cluster.yaml; \
 	fi
 	@k8s/kind/registry.sh
+	@k8s/kind/preload-images.sh
 	@kubectl cluster-info --context kind-$(K8S_CLUSTER)
 
 k8s-cluster-down:
 	-kind delete cluster --name $(K8S_CLUSTER)
+	@echo "==> cluster deleted; kind-registry kept (built images preserved). Use 'make k8s-nuke' to remove it too."
+
+# Full clean slate: delete the cluster AND the local registry (drops all built
+# images, forcing a cold rebuild + re-pull on the next bootstrap). Use this only
+# when you truly want nothing reused; the normal `make k8s-down` keeps images.
+k8s-nuke: k8s-apps-down
+	-kind delete cluster --name $(K8S_CLUSTER)
 	-docker rm -f kind-registry
+	@echo "==> cluster + registry destroyed (full clean slate)"
 
 k8s-cluster-status:
 	@kind get clusters
 	@kubectl get nodes -o wide 2>/dev/null || echo "(cluster not running)"
 
-.PHONY: k8s-build k8s-rebuild
+# Pause the cluster without destroying it. kind nodes are Docker containers, so
+# `docker stop` freezes them; all PVC data (MySQL/Mongo/Kafka/Redis/MinIO) and the
+# built images survive. Resume with `make k8s-start` — far faster than a full
+# bootstrap (no kind create, no image rebuild, no DB reseed).
+k8s-stop:
+	@nodes=$$(kind get nodes --name $(K8S_CLUSTER) 2>/dev/null); \
+	  if [ -z "$$nodes" ]; then echo "cluster '$(K8S_CLUSTER)' not found — nothing to stop"; exit 0; fi; \
+	  echo "==> stopping kind cluster '$(K8S_CLUSTER)' (data + images preserved)"; \
+	  docker stop $$nodes kind-registry >/dev/null
+	@echo "stopped. Resume with: make k8s-start"
+
+# Resume a stopped cluster. Restarts the node + registry containers, waits for the
+# API and infra, then RE-SEEDS Vault (dev mode is in-memory, so its secrets are
+# lost on pod restart) and bounces the apps (which crash-loop on an empty Vault).
+# Everything else (DB data, Kafka topics, MinIO bucket, images) persists.
+k8s-start:
+	@nodes=$$(kind get nodes --name $(K8S_CLUSTER) 2>/dev/null); \
+	  if [ -z "$$nodes" ]; then echo "cluster '$(K8S_CLUSTER)' not found — run 'make k8s-bootstrap' first"; exit 1; fi; \
+	  echo "==> starting kind cluster '$(K8S_CLUSTER)'"; \
+	  docker start $$nodes kind-registry >/dev/null
+	@echo "waiting for API server..."
+	@until kubectl --context kind-$(K8S_CLUSTER) get nodes >/dev/null 2>&1; do sleep 3; done
+	@echo "waiting for Vault + MySQL + Mongo to be ready..."
+	@kubectl -n infra wait --for=condition=ready pod -l app.kubernetes.io/name=vault --timeout=5m
+	@kubectl -n infra rollout status statefulset/mysql         --timeout=5m
+	@kubectl -n infra rollout status statefulset/mysql-replica --timeout=5m
+	@kubectl -n infra rollout status statefulset/mongodb       --timeout=5m
+	@echo "re-seeding Vault (dev mode is in-memory)"
+	@kubectl -n bootstrap delete job vault-seed --ignore-not-found >/dev/null
+	@kubectl apply -k k8s/infra/jobs/03-vault-seed
+	@kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/vault-seed
+	@echo "restarting apps so they re-read Vault"
+	@kubectl -n apps rollout restart deployment
+	@kubectl -n apps rollout status deployment --timeout=10m
+	@echo "cluster resumed. Check: make k8s-status && make k8s-mysql-status"
+
+.PHONY: k8s-build k8s-build-reuse k8s-rebuild
 
 k8s-build:
 	@k8s/images/build.sh
+
+# Bootstrap build path: skip images already in the registry (fast down->bootstrap).
+# `make k8s-bootstrap FORCE_BUILD=1` rebuilds everything from scratch instead.
+k8s-build-reuse:
+	@if [ -n "$(FORCE_BUILD)" ]; then k8s/images/build.sh; else REUSE_EXISTING=1 k8s/images/build.sh; fi
 
 k8s-rebuild:
 	@if [ -z "$(svc)" ]; then echo "Usage: make k8s-rebuild svc=NAME"; exit 1; fi
 	@SVC=$(svc) SKIP_CORES=1 k8s/images/build.sh
 	@kubectl -n apps rollout restart deployment/$(svc)
 
-.PHONY: k8s-infra k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-images k8s-app-secrets
+.PHONY: k8s-infra k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest k8s-seed-images k8s-app-secrets
 
 k8s-infra:
 	@k8s/infra/install.sh
@@ -258,6 +312,20 @@ k8s-seed-mysql:
 k8s-seed-inventory:
 	@scripts/seed/k8s-inventory.sh
 
+# k8s-seed-perftest: seed the k6 load-test fixtures (perftest_admin + 100
+# perftest_user_N + role assignments) into authorization-server MySQL. Runs
+# SEPARATELY, AFTER k8s-apps — the account/user/role tables are created by
+# Hibernate ddl-auto at authorization-server startup. Both the script and the
+# SQL are in-tree, so this uses plain `kubectl apply -k`. Idempotent (seed.sh
+# skips if perftest_admin exists; the SQL is INSERT IGNORE). Re-runnable: the
+# Job is deleted first (Jobs are immutable).
+k8s-seed-perftest:
+	@echo "==> applying 06-perftest-seed (job/perftest-seed)"
+	@kubectl -n bootstrap delete job perftest-seed --ignore-not-found >/dev/null
+	@kubectl apply -k k8s/infra/jobs/06-perftest-seed
+	@kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/perftest-seed
+	@echo "k8s-seed-perftest complete"
+
 # k8s-seed-images: upload the real product images (docker/seed-images/*) into
 # MinIO at products/<id>/<slug>.jpg. Runs AFTER k8s-seed (needs the
 # ecommerce-media bucket). Host-side because the images live in the repo, not a
@@ -265,7 +333,7 @@ k8s-seed-inventory:
 k8s-seed-images:
 	@scripts/seed/k8s-product-images.sh
 
-.PHONY: k8s-apps k8s-apps-down k8s-status k8s-stress k8s-stress-logs
+.PHONY: k8s-apps k8s-apps-down k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs
 
 # Apply all 8 service Deployments via the local overlay.
 # k8s-app-secrets: build the `app-secrets` Secret in the apps namespace from
@@ -297,23 +365,46 @@ k8s-status:
 	@echo "== bootstrap jobs =="; kubectl -n bootstrap get jobs
 	@echo "== apps =="; kubectl -n apps get pods
 
-# Fire the k6 stress Job. Opt-in (NOT part of k8s-apps) so `make k8s-apps`
-# doesn't trigger load. Re-runnable — deletes the previous Job first.
-k8s-stress:
-	@kubectl -n apps delete job k6-stress --ignore-not-found
-	@kubectl apply -k k8s/apps/base/k6-stress
-	@echo "k6 stress running. Watch with: make k8s-stress-logs"
+# MySQL replication health at a glance: the 3 pods, the read Service endpoints,
+# the primary's writable state, and each replica's IO/SQL thread + lag. Read-only
+# (no changes). Healthy = both replicas show Replica_IO_Running/Replica_SQL_Running
+# Yes and Seconds_Behind_Source 0.
+k8s-mysql-status:
+	@echo "== MySQL pods =="; kubectl -n infra get pods -l app.kubernetes.io/name=mysql -o wide
+	@echo ""; echo "== read Service endpoints (mysql-replica → should list 2 IPs) =="
+	@kubectl -n infra get endpoints mysql-replica
+	@echo ""; echo "== primary (mysql-0) =="
+	@kubectl -n infra exec mysql-0 -- mysql -uroot -proot -N -e \
+	  "SELECT CONCAT('server_id=', @@server_id, ' read_only=', @@read_only, ' gtid_executed=', @@gtid_executed);" 2>/dev/null \
+	  || echo "  (unable to query mysql-0)"
+	@for rep in mysql-replica-0 mysql-replica-1; do \
+	  echo ""; echo "== $$rep =="; \
+	  kubectl -n infra exec "$$rep" -- mysql -uroot -proot -e "SHOW REPLICA STATUS\G" 2>/dev/null \
+	    | grep -E "Replica_IO_Running:|Replica_SQL_Running:|Seconds_Behind_Source:|Source_Host:|Last_IO_Error:|Last_SQL_Error:" \
+	    || echo "  (no replica status — pod missing or replication not configured)"; \
+	done
+
+# Fire the k6 PAYMENT-saga stress Job (drives mock-paypal-service through the
+# full login -> order -> payment -> approve flow). Opt-in. Re-runnable — deletes
+# the previous Job first (Jobs are immutable). Applies ONLY payment-job.yaml;
+# the script configMap is created imperatively (stable name `k6-payment-script`).
+k8s-payment-stress:
+	@kubectl -n apps delete job k6-payment-stress --ignore-not-found
+	@kubectl -n apps create configmap k6-payment-script \
+	  --from-file=k8s/apps/base/k6-stress/payment-flow.js --dry-run=client -o yaml | kubectl apply -f -
+	@kubectl apply -f k8s/apps/base/k6-stress/payment-job.yaml
+	@echo "k6 payment stress running. Watch with: make k8s-payment-stress-logs"
 	@echo "Watch HPA: kubectl -n apps get hpa -w"
 
-k8s-stress-logs:
-	@kubectl -n apps logs -f -l app=k6-stress --tail=-1
+k8s-payment-stress-logs:
+	@kubectl -n apps logs -f -l app=k6-payment-stress --tail=-1
 
 .PHONY: k8s-bootstrap k8s-down
 
 # One-shot: cluster -> infra -> images -> seed -> apps. Idempotent —
 # safe to re-run after editing manifests or pulling new code. Mirrors
 # the docker-compose `make bootstrap` flow but for the kind cluster.
-k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build k8s-seed k8s-seed-images k8s-apps k8s-seed-mysql k8s-seed-inventory
+k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build-reuse k8s-seed k8s-seed-images k8s-apps k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest
 	@echo "==> k8s bootstrap complete"
 	@$(MAKE) k8s-status
 	@echo ""

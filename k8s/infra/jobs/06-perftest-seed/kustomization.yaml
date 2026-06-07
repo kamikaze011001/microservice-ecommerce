@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: bootstrap
+resources:
+  - job.yaml
+# Both source files are in-tree, so (unlike 01-mysql-seed, whose data lives
+# out-of-tree in docker/) the generator reads them directly and the Makefile
+# uses plain `kubectl apply -k`.
+configMapGenerator:
+  - name: perftest-seed-scripts
+    files:
+      - seed.sh
+  - name: perftest-seed-sql
+    files:
+      - perftest-users.sql
+generatorOptions:
+  disableNameSuffixHash: true

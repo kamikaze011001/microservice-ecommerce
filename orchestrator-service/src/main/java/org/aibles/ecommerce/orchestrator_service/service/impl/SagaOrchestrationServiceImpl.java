@@ -90,7 +90,14 @@ public class SagaOrchestrationServiceImpl implements SagaOrchestrationService {
         } else if (event instanceof PaymentFailedEvent) {
             compensate(saga, topic("order-service.order.failed-status"));
         } else if (event instanceof PaymentCanceledEvent) {
-            compensate(saga, topic("order-service.order.canceled-status"));
+            // A PayPal-approval cancel abandons THIS payment attempt but does NOT
+            // cancel the order — the user can retry payment, and a later
+            // PaymentSuccess must still complete it. So keep the saga in
+            // AWAITING_PAYMENT (do not compensate to a terminal state, which would
+            // discard a subsequent success). If the order is never paid,
+            // SagaTimeoutScheduler compensates it once expiresAt passes
+            // (findExpiredSagas only picks up AWAITING_PAYMENT sagas).
+            log.info("(handlePaymentReply) Payment attempt canceled for orderId: {} — staying AWAITING_PAYMENT for retry", orderId);
         }
     }
 

@@ -30,6 +30,10 @@ spring:
           uri: ${gateway.routes.bff-service.uri:lb://BFF-SERVICE}
           predicates:
             - Path=/bff-service/**
+        - id: mock-paypal-service
+          uri: ${gateway.routes.mock-paypal-service.uri:lb://MOCK-PAYPAL-SERVICE}
+          predicates:
+            - Path=/mock-paypal-service/**
     vault:
       uri: http://localhost:8200
       token: ${VAULT_TOKEN}

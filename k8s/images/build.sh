@@ -12,6 +12,24 @@ TAG="${TAG:-dev}"
 
 cd "$(git rev-parse --show-toplevel)"
 
+# When REUSE_EXISTING is set, skip building an image whose tag is already in the
+# local registry. Used by `make k8s-build-reuse` (the bootstrap path) so a
+# down->bootstrap cycle does not rebuild unchanged images. `make k8s-build`
+# leaves REUSE_EXISTING unset = always rebuild. Fails "closed": if the registry
+# probe errors, the image is treated as absent and gets built.
+image_in_registry() {  # $1=repo $2=tag -> exit 0 if present
+  curl -fsS -o /dev/null \
+    -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' \
+    "http://${REGISTRY}/v2/$1/manifests/$2" 2>/dev/null
+}
+reuse_or_build() {  # $1=repo -> exit 0 (caller should skip) if reusing
+  if [ -n "${REUSE_EXISTING:-}" ] && image_in_registry "$1" "${TAG}"; then
+    echo "==> reusing ${REGISTRY}/$1:${TAG} (already in registry)"
+    return 0
+  fi
+  return 1
+}
+
 SERVICES=(
   authorization-server
   gateway
@@ -24,6 +42,7 @@ SERVICES=(
 )
 
 build_cores() {
+  reuse_or_build "maven-cores" && return 0
   echo "==> building cores base image"
   docker build \
     -f k8s/images/Dockerfile.cores \
@@ -34,6 +53,7 @@ build_cores() {
 
 build_service() {
   local svc="$1"
+  reuse_or_build "${svc}" && return 0
   echo "==> building ${svc}"
   docker build \
     -f k8s/images/Dockerfile.jvm \
@@ -56,6 +76,7 @@ if [ -z "${SKIP_CORES:-}" ]; then
 fi
 
 build_frontend() {
+  reuse_or_build "frontend" && return 0
   echo "==> building frontend"
   # VITE_API_BASE_URL is inlined at build time. Browser calls hit the
   # api.* Ingress; the SPA itself is served from microecom.local.
@@ -67,9 +88,21 @@ build_frontend() {
   docker push "${REGISTRY}/frontend:${TAG}"
 }
 
+build_mock_paypal() {
+  reuse_or_build "mock-paypal-service" && return 0
+  echo "==> building mock-paypal-service (Java 25, standalone Dockerfile)"
+  docker build \
+    -f mock-paypal-service/Dockerfile \
+    -t "${REGISTRY}/mock-paypal-service:${TAG}" \
+    mock-paypal-service
+  docker push "${REGISTRY}/mock-paypal-service:${TAG}"
+}
+
 if [ -n "${SVC:-}" ]; then
   if [ "$SVC" = "frontend" ]; then
     build_frontend
+  elif [ "$SVC" = "mock-paypal-service" ]; then
+    build_mock_paypal
   else
     build_service "$SVC"
   fi
@@ -78,4 +111,5 @@ else
     build_service "$svc"
   done
   build_frontend
+  build_mock_paypal
 fi

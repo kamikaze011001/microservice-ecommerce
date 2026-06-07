@@ -2,6 +2,7 @@ package org.aibles.ecommerce.core_email.framework.repository.datasource;
 
 
 import jakarta.mail.Message;
+import jakarta.mail.internet.InternetAddress;
 import lombok.extern.slf4j.Slf4j;
 import org.aibles.ecommerce.core_email.adapter.repository.EmailHelper;
 import org.aibles.ecommerce.core_email.business.email.BaseEmail;
@@ -20,10 +21,17 @@ import java.util.Objects;
 public class EmailHelperImpl implements EmailHelper {
   private JavaMailSender emailSender;
   private SpringTemplateEngine templateEngine;
+  // From address for every outbound mail. Wired to the authenticated SMTP
+  // account (spring.mail.username). Without it JavaMail defaults From to
+  // root@<pod-hostname> — a non-existent domain — and Gmail (which also requires
+  // the From to match the authenticated user) silently drops it or files it as
+  // spam, so OTPs "send" (250 OK) but never reach the inbox.
+  private String from;
 
-  public EmailHelperImpl(JavaMailSender emailSender, SpringTemplateEngine templateEngine) {
+  public EmailHelperImpl(JavaMailSender emailSender, SpringTemplateEngine templateEngine, String from) {
     this.emailSender = emailSender;
     this.templateEngine = templateEngine;
+    this.from = from;
   }
 
   @Async
@@ -31,6 +39,7 @@ public class EmailHelperImpl implements EmailHelper {
   public void send(String subject, String to, String content) {
     try {
       var message = new SimpleMailMessage();
+      message.setFrom(from);
       message.setTo(to);
       message.setSubject(subject);
       message.setText(content);
@@ -45,6 +54,7 @@ public class EmailHelperImpl implements EmailHelper {
   public void send(String subject, String to, String template, Map<String, Object> properties) {
     try {
       var message = emailSender.createMimeMessage();
+      message.setFrom(new InternetAddress(from));
       message.setRecipients(Message.RecipientType.TO, to);
       message.setSubject(subject);
       message.setContent(getContent(template, properties), BaseEmail.CONTENT_TYPE_TEXT_HTML);
@@ -59,6 +69,7 @@ public class EmailHelperImpl implements EmailHelper {
     try {
       var message = emailSender.createMimeMessage();
       var helper = new MimeMessageHelper(message, true);
+      helper.setFrom(from);
       helper.setTo(to);
       helper.setSubject(subject);
       helper.setText(content);

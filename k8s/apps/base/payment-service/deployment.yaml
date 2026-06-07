@@ -15,7 +15,7 @@ spec:
       containers:
         - name: payment-service
           image: localhost:5001/payment-service:dev
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - { name: http, containerPort: 8484 }
             - { name: management, containerPort: 18484 }

@@ -75,6 +75,7 @@ fi
 kubectl apply \
   -f "$MANIFESTS/mysql.yaml" \
   -f "$MANIFESTS/mysql-replica-service.yaml" \
+  -f "$MANIFESTS/mysql-replica.yaml" \
   -f "$MANIFESTS/mongodb.yaml" \
   -f "$MANIFESTS/redis.yaml" \
   -f "$MANIFESTS/minio.yaml" \
@@ -85,11 +86,61 @@ kubectl apply \
 # gate pod-readiness on a completion sentinel, so a Ready pod guarantees the
 # replica-set users / bucket already exist — the seed Jobs that run later won't
 # race ahead and fail to authenticate or write.
-kubectl -n infra rollout status statefulset/mysql   --timeout=5m
-kubectl -n infra rollout status statefulset/mongodb --timeout=5m
+kubectl -n infra rollout status statefulset/mysql         --timeout=5m
+kubectl -n infra rollout status statefulset/mysql-replica --timeout=5m
+kubectl -n infra rollout status statefulset/mongodb       --timeout=5m
 kubectl -n infra rollout status deployment/redis    --timeout=3m
 kubectl -n infra rollout status statefulset/minio   --timeout=5m
 kubectl -n infra rollout status statefulset/kafka   --timeout=5m
+
+# ── MySQL replication: 1 primary + 2 replicas (GTID auto-position) ────────────
+# Mirrors docker/scripts/init-mysql.sh, idempotent. The repl user is created on
+# the primary AFTER init (so it replicates); replicas use SOURCE_AUTO_POSITION=1
+# to pull the full binlog from empty (no clone needed). This runs before the JVM
+# services (k8s-apps) and the seed Jobs, so all table DDL + seed rows replicate.
+REPL_USER=repl_user
+REPL_PASS=replica_ecommerce
+PRIMARY_HOST=mysql.infra.svc.cluster.local
+
+echo "configuring replication user on primary (mysql-0)"
+kubectl -n infra exec mysql-0 -- mysql -uroot -proot -e "
+  CREATE USER IF NOT EXISTS '${REPL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${REPL_PASS}';
+  GRANT REPLICATION SLAVE ON *.* TO '${REPL_USER}'@'%';
+  FLUSH PRIVILEGES;"
+
+for rep in mysql-replica-0 mysql-replica-1; do
+  running=$(kubectl -n infra exec "$rep" -- mysql -uroot -proot -N -e \
+    "SELECT COUNT(*) FROM performance_schema.replication_connection_status WHERE SERVICE_STATE='ON';" 2>/dev/null || echo 0)
+  if [ "${running:-0}" -ge 1 ]; then
+    echo "$rep already replicating; skipping"
+    continue
+  fi
+  echo "starting replication on $rep"
+  kubectl -n infra exec "$rep" -- mysql -uroot -proot -e "
+    STOP REPLICA;
+    CHANGE REPLICATION SOURCE TO
+      SOURCE_HOST='${PRIMARY_HOST}',
+      SOURCE_USER='${REPL_USER}',
+      SOURCE_PASSWORD='${REPL_PASS}',
+      SOURCE_AUTO_POSITION=1,
+      GET_SOURCE_PUBLIC_KEY=1;
+    START REPLICA;"
+done
+
+# Verify both replicas are actually replicating; fail the install if not (don't
+# seed onto a broken topology).
+sleep 5
+for rep in mysql-replica-0 mysql-replica-1; do
+  status=$(kubectl -n infra exec "$rep" -- mysql -uroot -proot -e "SHOW REPLICA STATUS\G")
+  if echo "$status" | grep -q "Replica_IO_Running: Yes" && echo "$status" | grep -q "Replica_SQL_Running: Yes"; then
+    echo "$rep replication OK"
+  else
+    echo "ERROR: $rep replication not running:"
+    echo "$status" | grep -E "Replica_IO_Running:|Replica_SQL_Running:|Last_IO_Error:|Last_SQL_Error:"
+    exit 1
+  fi
+done
+echo "MySQL replication ready (1 primary + 2 replicas)"
 
 helm upgrade --install vault hashicorp/vault \
   --namespace infra --version 0.27.0 \
@@ -120,11 +171,16 @@ fi
 # Depends on Kafka (KRaft) being Ready above — it stores subjects in a compacted
 # _schemas topic. Must be up before the JVM services and the connector job.
 kubectl apply -f "$MANIFESTS/schema-registry.yaml"
-kubectl -n infra rollout status deployment/schema-registry --timeout=5m
+# 10m (not 5m): the confluentinc/cp-schema-registry image is ~1.8GB and on a
+# cold cluster (e.g. after `make k8s-down` wipes each node's image cache) the
+# pull alone can take ~5.5m, blowing past a 5m rollout wait even though the pod
+# is healthy. Give the large Confluent image pull room.
+kubectl -n infra rollout status deployment/schema-registry --timeout=10m
 
 # Kafka Connect — long-running Deployment hosting source/sink connectors.
 # Connector registration is a separate Job (k8s/infra/jobs/04-kafka-connect-register).
 kubectl apply -f k8s/infra/manifests/kafka-connect.yaml
-kubectl -n infra rollout status deployment/kafka-connect --timeout=5m
+# 10m: same large-Confluent-image cold-pull reason as schema-registry above.
+kubectl -n infra rollout status deployment/kafka-connect --timeout=10m
 
 echo "infra install complete"

@@ -19,7 +19,7 @@ seeds the inventory stock tables. Idempotent — safe to re-run.
 | Re-deploy one service after code change | `make k8s-rebuild svc=order-service` |
 | Re-apply all manifests | `make k8s-apps` |
 | Status table | `make k8s-status` |
-| Stress test (HPA) | `make k8s-stress` then `make k8s-stress-logs` |
+| Stress test (HPA) | `make k8s-payment-stress` then `make k8s-payment-stress-logs` |
 | Watch autoscaling live | `kubectl -n apps get hpa -w` |
 | Tail one Pod | `kubectl -n apps logs -f deploy/<svc>` |
 | Re-seed inventory stock (cart shows "0 available") | `make k8s-seed-inventory` |
@@ -68,8 +68,12 @@ shapes stay identical.
 
 ## Stress testing
 
-`k8s/apps/base/k6-stress/`. Targets the gateway via Service DNS (skips
-Ingress so latency reflects the backend only), ramps to 50 VUs against
-`/product-service/v1/products`. Edit `script.js` then `make k8s-stress`
-re-applies. ConfigMap is generated from the file via kustomize with
-`disableNameSuffixHash: true` so the Job's volume reference stays stable.
+`k8s/apps/base/k6-stress/payment-flow.js` + `payment-job.yaml`. Targets the
+gateway via Service DNS (skips Ingress so latency reflects the backend only)
+and drives the full payment saga — login → create order → create payment →
+PayPal approve/cancel/fail — against `mock-paypal-service`, holding 50 VUs for
+3 min (the SLO bar). `make k8s-payment-stress` deletes any prior Job, recreates
+the `k6-payment-script` ConfigMap from `payment-flow.js`, and applies
+`payment-job.yaml`; `make k8s-payment-stress-logs` tails it. Prerequisite: the
+perftest users seeded by `make k8s-seed-perftest` (run automatically by
+`make k8s-bootstrap`). Watch autoscaling with `kubectl -n apps get hpa -w`.
