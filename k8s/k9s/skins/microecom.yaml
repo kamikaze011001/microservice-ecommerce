@@ -39,7 +39,7 @@ k9s:
       errorColor: '#bf616a'
       highlightColor: '#ebcb8b'
       killColor: '#d08770'
-      completedColor: '#4c566a'
+      completedColor: '#616e88'
     title:
       fgColor: '#d8dee9'
       bgColor: default

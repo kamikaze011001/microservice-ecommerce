@@ -19,4 +19,4 @@ k9s:
   logger:
     tail: 200
     buffer: 5000
-    sinceSeconds: -1
+    sinceSeconds: -1   # -1 = no time window, show all log lines
