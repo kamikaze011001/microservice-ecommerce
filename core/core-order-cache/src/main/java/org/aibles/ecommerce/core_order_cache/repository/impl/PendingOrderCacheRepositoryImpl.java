@@ -194,6 +194,14 @@ public class PendingOrderCacheRepositoryImpl implements PendingOrderCacheReposit
             return true;
         }
 
+        for (Map.Entry<String, Long> entry : productQuantities.entrySet()) {
+            if (entry.getValue() == null || entry.getValue() <= 0L) {
+                log.error("(checkAndReserveAvailableAtomic) Non-positive quantity for product {} — rejecting reservation",
+                        entry.getKey());
+                return false;
+            }
+        }
+
         List<String> args = new ArrayList<>();
         args.add(keyPrefix);                                       // ARGV[1]
         args.add(String.valueOf(productQuantities.size()));        // ARGV[2]

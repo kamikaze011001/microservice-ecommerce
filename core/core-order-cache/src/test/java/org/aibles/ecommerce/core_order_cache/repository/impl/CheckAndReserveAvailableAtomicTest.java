@@ -105,6 +105,7 @@ class CheckAndReserveAvailableAtomicTest {
         assertThat(scriptField).contains("available < quantities[i]");
         assertThat(scriptField).contains("DECRBY");
         assertThat(scriptField).doesNotContain("INCRBY");
+        assertThat(scriptField).contains("or 0");
     }
 
     @Test
@@ -138,6 +139,22 @@ class CheckAndReserveAvailableAtomicTest {
         assertThat(new String(argBytes[3])).isEqualTo("prod-B");
         assertThat(new String(argBytes[4])).isEqualTo("2");
         assertThat(new String(argBytes[5])).isEqualTo("5");
+    }
+
+    @Test
+    void negativeQuantity_returnsFalse_withoutCallingRedis() {
+        boolean result = repo.checkAndReserveAvailableAtomic("productAvailable:", Map.of("prod-1", -5L));
+
+        assertThat(result).isFalse();
+        verify(redisTemplate, never()).execute(any(RedisCallback.class));
+    }
+
+    @Test
+    void zeroQuantity_returnsFalse_withoutCallingRedis() {
+        boolean result = repo.checkAndReserveAvailableAtomic("productAvailable:", Map.of("prod-1", 0L));
+
+        assertThat(result).isFalse();
+        verify(redisTemplate, never()).execute(any(RedisCallback.class));
     }
 
     private String captureScript() {
