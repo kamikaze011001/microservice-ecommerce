@@ -24,6 +24,14 @@ public class InventoryProduct {
 
     private String imageUrl;
 
+    /**
+     * Materialized available stock count. Authoritative committed stock:
+     * decremented atomically at payment-success commit via a conditional
+     * UPDATE (stock >= :n guard). Seeded on boot into Redis available counter.
+     */
+    @Builder.Default
+    private Long stock = 0L;
+
     public static InventoryProduct from(final ProductUpdate productUpdate) {
         InventoryProduct inventoryProduct = new InventoryProduct();
         inventoryProduct.setId(productUpdate.getId().toString());
@@ -32,6 +40,7 @@ public class InventoryProduct {
         inventoryProduct.setImageUrl(productUpdate.getImageUrl() != null
                 ? productUpdate.getImageUrl().toString()
                 : null);
+        inventoryProduct.setStock(0L);
         return inventoryProduct;
     }
 }
