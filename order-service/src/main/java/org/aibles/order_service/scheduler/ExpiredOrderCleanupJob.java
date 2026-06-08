@@ -99,7 +99,7 @@ public class ExpiredOrderCleanupJob {
      *
      * Steps:
      * 1. Acquire distributed locks for all products (in sorted order)
-     * 2. Decrement productQuantityQueue for each product
+     * 2. Release inventory reservation — incr AVAILABLE_PRODUCT_KEY for each product
      * 3. Remove order from pending orders ZSET
      * 4. Delete order metadata (orderQueue, orderPrice)
      * 5. Release locks
@@ -162,20 +162,20 @@ public class ExpiredOrderCleanupJob {
     }
 
     /**
-     * Rolls back product quantity reservations by decrementing Redis queue.
+     * Releases product quantity reservations by incrementing the available counter.
      */
     private void rollbackProductReservations(Map<String, Long> productQuantities) {
-        log.debug("(rollbackProductReservations) Rolling back reservations for {} products", productQuantities.size());
+        log.debug("(rollbackProductReservations) Releasing reservations for {} products", productQuantities.size());
 
         for (Map.Entry<String, Long> entry : productQuantities.entrySet()) {
             String productId = entry.getKey();
             Long quantity = entry.getValue();
 
             try {
-                redisRepository.decr(RedisConstant.QUEUE_PRODUCT_KEY + productId, quantity);
-                log.debug("(rollbackProductReservations) Rolled back {} units for product: {}", quantity, productId);
+                redisRepository.incr(RedisConstant.AVAILABLE_PRODUCT_KEY + productId, quantity);
+                log.debug("(rollbackProductReservations) Released {} units back to available for product: {}", quantity, productId);
             } catch (Exception e) {
-                log.error("(rollbackProductReservations) Failed to rollback product: {}", productId, e);
+                log.error("(rollbackProductReservations) Failed to release reservation for product: {}", productId, e);
             }
         }
     }
