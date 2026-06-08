@@ -6,7 +6,7 @@
 
 **Architecture:** Two independent layers. Layer 1 (primary fix): replace the snapshot-based `QUEUE_PRODUCT_KEY` reserved-counter with a new `AVAILABLE_PRODUCT_KEY` counter that the Lua script checks and decrements atomically — no external snapshot, no TOCTOU. Layer 2 (DB floor): add a materialized `stock` column to `inventory_product` and use an atomic conditional `UPDATE … WHERE stock >= :n` at payment-success commit so the DB cannot go negative either. On boot, the seeder derives `available:{pid}` from `stock` for Redis recovery.
 
-**Tech Stack:** Spring Boot 3.3.6, Spring Data Redis, Redis Lua scripting (`DECRBY`), Flyway (existing V1 migration pattern), JPA `@Modifying @Query`, Mockito (unit tests — no embedded infra required in CI), k6 (boundary regression in k8s).
+**Tech Stack:** Spring Boot 3.3.6, Spring Data Redis, Redis Lua scripting (`DECRBY`), Hibernate `hbm2ddl.auto=update` (schema is managed by Hibernate — Flyway is NOT on the classpath; the `db/migration/V1` file is dead), JPA `@Modifying @Query` (incl. a native boot data-backfill), Mockito (unit tests — no embedded infra required in CI), k6 (boundary regression in k8s).
 
 ---
 
@@ -19,9 +19,8 @@
 | `core/core-order-cache/src/main/java/org/aibles/ecommerce/core_order_cache/repository/impl/PendingOrderCacheRepositoryImpl.java` | Modify | Add `CHECK_AND_RESERVE_AVAILABLE_LUA_SCRIPT` + `checkAndReserveAvailableAtomic` impl |
 | `core/core-order-cache/src/test/java/org/aibles/ecommerce/core_order_cache/repository/impl/CheckAndReserveAvailableAtomicTest.java` | Create | Unit tests for the new Lua method |
 | `inventory-service/src/main/java/org/aibles/ecommerce/inventory_service/entity/InventoryProduct.java` | Modify | Add `private Long stock = 0L;` field |
-| `inventory-service/src/main/resources/db/migration/V2__add_stock_to_inventory_product.sql` | Create | Flyway migration: add `stock` column, backfill from ledger |
-| `inventory-service/src/main/java/org/aibles/ecommerce/inventory_service/repository/master/MasterInventoryProductRepository.java` | Modify | Add `decrementStockIfSufficient` (conditional floor) + `adjustStock` (admin) |
-| `inventory-service/src/main/java/org/aibles/ecommerce/inventory_service/configuration/AvailableStockSeeder.java` | Create | `ApplicationRunner` that seeds `available:{pid}` from `inventory_product.stock` on boot |
+| `inventory-service/src/main/java/org/aibles/ecommerce/inventory_service/repository/master/MasterInventoryProductRepository.java` | Modify | Add `backfillStockFromLedger` (boot data-backfill — Task 4), `decrementStockIfSufficient` (conditional floor) + `adjustStock` (admin) (Task 5). NOTE: the `stock` column DDL is created automatically by Hibernate `hbm2ddl.auto=update`; Flyway is NOT on the classpath. |
+| `inventory-service/src/main/java/org/aibles/ecommerce/inventory_service/configuration/AvailableStockSeeder.java` | Create | `ApplicationRunner` that backfills `stock` from the ledger (master), then seeds `available:{pid}` from `inventory_product.stock` on boot |
 | `inventory-service/src/main/java/org/aibles/ecommerce/inventory_service/configuration/InventoryServiceConfiguration.java` | Modify | Add `@Bean AvailableStockSeeder availableStockSeeder(...)` |
 | `inventory-service/src/main/java/org/aibles/ecommerce/inventory_service/service/InventoryServiceImpl.java` | Modify | `processInventoryUpdate`: remove Redis `decr`, add DB conditional floor; `list()`: revert to slave read; `update()`: sync `stock` + `available` |
 | `inventory-service/src/test/java/org/aibles/ecommerce/inventory_service/configuration/AvailableStockSeederTest.java` | Create | Unit tests for the seeder |
@@ -603,50 +602,123 @@ git commit -m "feat(inventory-service): add stock field to InventoryProduct enti
 
 ---
 
-## Task 4: Flyway migration — add `stock` column to `inventory_product`
+## Task 4: Add `backfillStockFromLedger` boot data-backfill to `MasterInventoryProductRepository`
 
 **Files:**
-- Create: `inventory-service/src/main/resources/db/migration/V2__add_stock_to_inventory_product.sql`
+- Modify: `inventory-service/src/main/java/org/aibles/ecommerce/inventory_service/repository/master/MasterInventoryProductRepository.java`
+- Test: `inventory-service/src/test/java/org/aibles/ecommerce/inventory_service/repository/master/MasterInventoryProductBackfillContractTest.java`
 
-**Context:** `MasterDatasourceConfiguration.java` sets `hibernate.hbm2ddl.auto=update` AND Spring Boot auto-detects Flyway from the existing `V1__inventory_product_image_url.sql`. Flyway runs first, then Hibernate update reconciles. The migration adds the column AND backfills `stock` from the existing `product_quantity_history` ledger for live systems.
+**Context — IMPORTANT, the original Flyway approach does not work in this project:**
+This project has **no Flyway on the classpath** (verified: `flyway-core` is in no pom; the existing `db/migration/V1__inventory_product_image_url.sql` is a dead file that never executes). Schema is managed **entirely by Hibernate**: `MasterDatasourceConfiguration.java` builds the master `EntityManagerFactory` manually with `hibernate.hbm2ddl.auto=update`. That means:
 
-- [ ] **Step 1: Create the migration file**
+1. **The `stock` column DDL is already handled** — Hibernate `hbm2ddl.auto=update` auto-adds the `stock` column from the `InventoryProduct.stock` field added in Task 3. No `ALTER TABLE` is needed and a Flyway file would silently do nothing.
+2. **Only the data backfill needs code.** On first boot, Hibernate creates `stock` with its default (`0`) for every existing row — so without a backfill the Task 6 seeder would seed `available = 0` for all products and the store could sell nothing. We replace the Flyway `UPDATE` with a **native boot-time backfill query** invoked by the Task 6 seeder before it reads stock.
 
-```sql
--- V2: Add materialized `stock` column to inventory_product.
--- This column is the authoritative committed-stock floor:
---   - DECREMENTED atomically at payment-success via UPDATE ... WHERE stock >= :n
---   - INCREMENTED at admin restock
---   - SEEDED into Redis available:{pid} on inventory-service boot
---
--- Backfill: existing rows get SUM(product_quantity_history.quantity) or 0
--- so the column is immediately valid for the boot seeder on first deploy.
+This backfill (`stock = GREATEST(0, SUM(product_quantity_history.quantity))`) is **idempotent and self-healing**: during normal operation `stock` and `SUM(ledger)` are decremented together (Task 7), so re-running it on every boot is a no-op after the first deploy and reconciles any drift.
 
-ALTER TABLE inventory_product
-    ADD COLUMN stock BIGINT NOT NULL DEFAULT 0;
+This task adds ONLY the backfill query. The conditional-floor (`decrementStockIfSufficient`) and `adjustStock` methods on the same repository are added in Task 5.
 
-UPDATE inventory_product ip
-SET ip.stock = GREATEST(0, COALESCE(
-    (SELECT SUM(pqh.quantity)
-     FROM product_quantity_history pqh
-     WHERE pqh.product_id = ip.id),
-    0
-));
+- [ ] **Step 1: Write a failing contract test for the new method**
+
+Create `inventory-service/src/test/java/org/aibles/ecommerce/inventory_service/repository/master/MasterInventoryProductBackfillContractTest.java`:
+
+```java
+package org.aibles.ecommerce.inventory_service.repository.master;
+
+import org.junit.jupiter.api.Test;
+import static org.mockito.Mockito.*;
+
+/**
+ * Contract test — verifies the backfill method exists on the interface and returns
+ * the affected-row count. Real SQL behavior is verified by the k8s boundary regression.
+ */
+class MasterInventoryProductBackfillContractTest {
+
+    @Test
+    void backfillStockFromLedger_methodExists_andReturnsInt() {
+        MasterInventoryProductRepository repo = mock(MasterInventoryProductRepository.class);
+        when(repo.backfillStockFromLedger()).thenReturn(3);
+
+        int rows = repo.backfillStockFromLedger();
+
+        verify(repo).backfillStockFromLedger();
+        org.assertj.core.api.Assertions.assertThat(rows).isEqualTo(3);
+    }
+}
 ```
 
-- [ ] **Step 2: Verify migration version sequence**
+- [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-ls /path/to/microservice-ecommerce/inventory-service/src/main/resources/db/migration/
+cd /path/to/microservice-ecommerce/inventory-service
+mvn test -Dtest=MasterInventoryProductBackfillContractTest -q
 ```
 
-Expected output: `V1__inventory_product_image_url.sql  V2__add_stock_to_inventory_product.sql`
+Expected: FAIL — `backfillStockFromLedger` does not exist.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Add the native backfill query to `MasterInventoryProductRepository`**
+
+Add ONLY the `backfillStockFromLedger` method (and the imports it needs). Leave room for Task 5's methods. The file after this task:
+
+```java
+package org.aibles.ecommerce.inventory_service.repository.master;
+
+import org.aibles.ecommerce.inventory_service.entity.InventoryProduct;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Repository
+public interface MasterInventoryProductRepository extends JpaRepository<InventoryProduct, String> {
+
+    List<InventoryProduct> findByIdIn(List<String> ids);
+
+    /**
+     * One-time / self-healing data backfill of the materialized `stock` column from the
+     * append-only `product_quantity_history` ledger. Runs at inventory-service boot
+     * (invoked by AvailableStockSeeder) BEFORE the Redis available counters are seeded.
+     *
+     * The `stock` COLUMN itself is created by Hibernate hbm2ddl.auto=update from the
+     * InventoryProduct.stock field — this query only populates its DATA. Native query
+     * because it correlates two tables with GREATEST/COALESCE (no clean JPQL form).
+     *
+     * Idempotent: stock and SUM(ledger) move together during normal operation, so this
+     * is a no-op on every boot after the first deploy and reconciles any drift.
+     * Returns the number of rows updated.
+     *
+     * `@Transactional` is required: this is a `@Modifying` query invoked from a
+     * non-transactional ApplicationRunner (the seeder), so the method must open its
+     * own JTA transaction or it throws TransactionRequiredException at boot.
+     */
+    @Modifying
+    @Transactional
+    @Query(value =
+        "UPDATE inventory_product ip " +
+        "SET ip.stock = GREATEST(0, COALESCE(" +
+        "  (SELECT SUM(pqh.quantity) FROM product_quantity_history pqh WHERE pqh.product_id = ip.id), 0))",
+        nativeQuery = true)
+    int backfillStockFromLedger();
+}
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-git add inventory-service/src/main/resources/db/migration/V2__add_stock_to_inventory_product.sql
-git commit -m "feat(inventory-service): Flyway V2 migration — add stock column, backfill from quantity history"
+mvn test -Dtest=MasterInventoryProductBackfillContractTest -q
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add inventory-service/src/main/java/org/aibles/ecommerce/inventory_service/repository/master/MasterInventoryProductRepository.java \
+        inventory-service/src/test/java/org/aibles/ecommerce/inventory_service/repository/master/MasterInventoryProductBackfillContractTest.java
+git commit -m "feat(inventory-service): add backfillStockFromLedger boot data-backfill (replaces non-functional Flyway approach)"
 ```
 
 ---
@@ -715,6 +787,8 @@ Expected: FAIL — `decrementStockIfSufficient` and `adjustStock` do not exist.
 
 - [ ] **Step 3: Add the two query methods to `MasterInventoryProductRepository`**
 
+Add `decrementStockIfSufficient` and `adjustStock` alongside the existing `backfillStockFromLedger` from Task 4 (keep it — do not remove it). The full file after this task:
+
 ```java
 package org.aibles.ecommerce.inventory_service.repository.master;
 
@@ -724,6 +798,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -731,6 +806,21 @@ import java.util.List;
 public interface MasterInventoryProductRepository extends JpaRepository<InventoryProduct, String> {
 
     List<InventoryProduct> findByIdIn(List<String> ids);
+
+    /**
+     * One-time / self-healing data backfill of `stock` from the product_quantity_history
+     * ledger (added in Task 4). Invoked at boot by AvailableStockSeeder before seeding Redis.
+     * Native query because it correlates two tables with GREATEST/COALESCE.
+     * `@Transactional` because it is a `@Modifying` query called from a non-transactional runner.
+     */
+    @Modifying
+    @Transactional
+    @Query(value =
+        "UPDATE inventory_product ip " +
+        "SET ip.stock = GREATEST(0, COALESCE(" +
+        "  (SELECT SUM(pqh.quantity) FROM product_quantity_history pqh WHERE pqh.product_id = ip.id), 0))",
+        nativeQuery = true)
+    int backfillStockFromLedger();
 
     /**
      * Atomically decrements `stock` by `n` ONLY if `stock >= n`.
@@ -786,9 +876,10 @@ package org.aibles.ecommerce.inventory_service.configuration;
 import org.aibles.ecommerce.core_redis.constant.RedisConstant;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.ecommerce.inventory_service.entity.InventoryProduct;
-import org.aibles.ecommerce.inventory_service.repository.slave.SlaveInventoryProductRepository;
+import org.aibles.ecommerce.inventory_service.repository.master.MasterInventoryProductRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.boot.DefaultApplicationArguments;
 
 import java.util.List;
@@ -797,15 +888,29 @@ import static org.mockito.Mockito.*;
 
 class AvailableStockSeederTest {
 
-    private SlaveInventoryProductRepository slaveInventoryProductRepository;
+    private MasterInventoryProductRepository masterInventoryProductRepository;
     private RedisRepository redisRepository;
     private AvailableStockSeeder seeder;
 
     @BeforeEach
     void setUp() {
-        slaveInventoryProductRepository = mock(SlaveInventoryProductRepository.class);
+        masterInventoryProductRepository = mock(MasterInventoryProductRepository.class);
         redisRepository = mock(RedisRepository.class);
-        seeder = new AvailableStockSeeder(slaveInventoryProductRepository, redisRepository);
+        seeder = new AvailableStockSeeder(masterInventoryProductRepository, redisRepository);
+    }
+
+    @Test
+    void run_backfillsStockBeforeReadingProducts() throws Exception {
+        when(masterInventoryProductRepository.findAll()).thenReturn(List.of());
+
+        seeder.run(new DefaultApplicationArguments());
+
+        // The backfill MUST run before findAll() — otherwise on first boot stock is all-zero
+        // and we'd seed available=0 everywhere. Both reads go to MASTER (read-after-write:
+        // the backfill writes master; a slave read could miss it due to replication lag).
+        InOrder inOrder = inOrder(masterInventoryProductRepository);
+        inOrder.verify(masterInventoryProductRepository).backfillStockFromLedger();
+        inOrder.verify(masterInventoryProductRepository).findAll();
     }
 
     @Test
@@ -818,7 +923,7 @@ class AvailableStockSeederTest {
         p2.setId("prod-2");
         p2.setStock(15L);
 
-        when(slaveInventoryProductRepository.findAll()).thenReturn(List.of(p1, p2));
+        when(masterInventoryProductRepository.findAll()).thenReturn(List.of(p1, p2));
 
         seeder.run(new DefaultApplicationArguments());
 
@@ -836,7 +941,7 @@ class AvailableStockSeederTest {
         p.setId("prod-zero");
         p.setStock(0L);
 
-        when(slaveInventoryProductRepository.findAll()).thenReturn(List.of(p));
+        when(masterInventoryProductRepository.findAll()).thenReturn(List.of(p));
 
         seeder.run(new DefaultApplicationArguments());
 
@@ -852,7 +957,7 @@ class AvailableStockSeederTest {
         p.setId("prod-negative");
         p.setStock(-5L);  // pre-fix oversell artefact
 
-        when(slaveInventoryProductRepository.findAll()).thenReturn(List.of(p));
+        when(masterInventoryProductRepository.findAll()).thenReturn(List.of(p));
 
         seeder.run(new DefaultApplicationArguments());
 
@@ -867,7 +972,7 @@ class AvailableStockSeederTest {
         p.setId("prod-null-stock");
         p.setStock(null);
 
-        when(slaveInventoryProductRepository.findAll()).thenReturn(List.of(p));
+        when(masterInventoryProductRepository.findAll()).thenReturn(List.of(p));
 
         seeder.run(new DefaultApplicationArguments());
 
@@ -876,11 +981,13 @@ class AvailableStockSeederTest {
     }
 
     @Test
-    void run_handlesEmptyProductList() throws Exception {
-        when(slaveInventoryProductRepository.findAll()).thenReturn(List.of());
+    void run_seedsNothingInRedisWhenNoProducts() throws Exception {
+        when(masterInventoryProductRepository.findAll()).thenReturn(List.of());
 
         seeder.run(new DefaultApplicationArguments());
 
+        // backfill still runs (it's harmless on an empty table); Redis is never touched
+        verify(masterInventoryProductRepository).backfillStockFromLedger();
         verifyNoInteractions(redisRepository);
     }
 }
@@ -904,15 +1011,20 @@ import lombok.extern.slf4j.Slf4j;
 import org.aibles.ecommerce.core_redis.constant.RedisConstant;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.ecommerce.inventory_service.entity.InventoryProduct;
-import org.aibles.ecommerce.inventory_service.repository.slave.SlaveInventoryProductRepository;
+import org.aibles.ecommerce.inventory_service.repository.master.MasterInventoryProductRepository;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 
 import java.util.List;
 
 /**
- * Seeds the Redis `available:{productId}` counters from the authoritative
- * `inventory_product.stock` column on inventory-service startup.
+ * On inventory-service startup: (1) backfills the materialized `inventory_product.stock`
+ * column from the product_quantity_history ledger, then (2) seeds the Redis
+ * `available:{productId}` counters from that stock.
+ *
+ * Reads and writes go through the MASTER repository on purpose: the backfill writes
+ * master, and the subsequent read of `stock` must see that write. Reading from a slave
+ * could miss it due to replication lag and seed `available = 0`.
  *
  * On Redis loss/restart, this runner reseeds all counters from the DB floor,
  * restoring reservation capability without manual intervention.
@@ -922,20 +1034,26 @@ import java.util.List;
 @Slf4j
 public class AvailableStockSeeder implements ApplicationRunner {
 
-    private final SlaveInventoryProductRepository slaveInventoryProductRepository;
+    private final MasterInventoryProductRepository masterInventoryProductRepository;
     private final RedisRepository redisRepository;
 
-    public AvailableStockSeeder(SlaveInventoryProductRepository slaveInventoryProductRepository,
+    public AvailableStockSeeder(MasterInventoryProductRepository masterInventoryProductRepository,
                                 RedisRepository redisRepository) {
-        this.slaveInventoryProductRepository = slaveInventoryProductRepository;
+        this.masterInventoryProductRepository = masterInventoryProductRepository;
         this.redisRepository = redisRepository;
     }
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
+        // (1) Backfill the stock column from the ledger BEFORE reading it. On first boot
+        // Hibernate has just created `stock` with default 0 for every row; without this
+        // the seed below would set available=0 everywhere. Idempotent on later boots.
+        int backfilled = masterInventoryProductRepository.backfillStockFromLedger();
+        log.info("(AvailableStockSeeder) Backfilled stock from ledger for {} rows", backfilled);
+
         log.info("(AvailableStockSeeder) Seeding productAvailable counters from inventory_product.stock");
 
-        List<InventoryProduct> products = slaveInventoryProductRepository.findAll();
+        List<InventoryProduct> products = masterInventoryProductRepository.findAll();
 
         for (InventoryProduct product : products) {
             long stock = product.getStock() != null ? Math.max(0L, product.getStock()) : 0L;
@@ -1015,9 +1133,9 @@ public class InventoryServiceConfiguration {
 
     @Bean
     public AvailableStockSeeder availableStockSeeder(
-            SlaveInventoryProductRepository slaveInventoryProductRepository,
+            MasterInventoryProductRepository masterInventoryProductRepository,
             RedisRepository redisRepository) {
-        return new AvailableStockSeeder(slaveInventoryProductRepository, redisRepository);
+        return new AvailableStockSeeder(masterInventoryProductRepository, redisRepository);
     }
 }
 ```
