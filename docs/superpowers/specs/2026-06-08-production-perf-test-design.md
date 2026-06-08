@@ -67,6 +67,8 @@ Login happens at the detail→cart gate (only sessions that will add to cart pay
 - after add-to-cart: `1–3s`
 - after checkout before pay: `1–2s`
 
+**Think-time vs. the stress profile:** the ranges above are the *realistic* model (smoke/soak). In the **stress** profile — an open arrival-rate capacity probe — multi-second think-times would pin VUs and cap the achievable rate at `maxVUs` instead of stressing the system. So stress **compresses** think-time by a fixed factor (`THINK_SCALE = 0.1` under `PROFILE=stress`, `1.0` otherwise), keeping the funnel *shape* while letting the arrival rate actually load the SUT.
+
 **Payment decision mix:** 90% approve / 5% cancel / 5% fail — identical to `payment-flow.js`, exercising saga success **and** compensation. The 302 redirect-follow logic (rewriting `api.microecom.local` → in-cluster gateway DNS, stopping at the SPA host hop) is copied verbatim from `payment-flow.js`.
 
 **Request bodies (snake_case wire format — `@JsonNaming(SnakeCaseStrategy)`):**
