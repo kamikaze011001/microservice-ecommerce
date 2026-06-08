@@ -32,6 +32,13 @@ import org.springframework.scheduling.annotation.EnableAsync;
 public class InventoryServiceConfiguration {
 
     @Bean
+    public AvailableStockSeeder availableStockSeeder(
+            MasterInventoryProductRepository masterInventoryProductRepository,
+            RedisRepository redisRepository) {
+        return new AvailableStockSeeder(masterInventoryProductRepository, redisRepository);
+    }
+
+    @Bean
     public InventoryService inventoryService(MasterInventoryProductRepository masterInventoryProductRepository,
                                              SlaveInventoryProductRepository slaveInventoryProductRepository,
                                              MasterProductQuantityHistoryRepo masterProductQuantityHistoryRepo,
