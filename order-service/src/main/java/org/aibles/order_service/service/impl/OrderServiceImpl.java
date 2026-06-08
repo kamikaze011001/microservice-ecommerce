@@ -200,8 +200,9 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
-     * Validates inventory availability and atomically reserves products.
-     * Uses Lua script to prevent TOCTOU race conditions.
+     * Validates product existence and prices via gRPC, then atomically reserves inventory
+     * using the self-contained available-counter Lua script.
+     * NO maxInventory snapshot is fetched — the Redis available counter is the authority.
      */
     private InventoryReservationResult validateAndReserveInventoryAtomic(
             Map<String, Long> productQuantityMap,
@@ -209,37 +210,27 @@ public class OrderServiceImpl implements OrderService {
 
         log.info("(validateAndReserveInventoryAtomic) Validating and reserving inventory for {} products", productIds.size());
 
-        // Fetch inventory data from inventory service
+        // Fetch product data (price + existence) — quantity is no longer used as a ceiling
         InventoryProductIdsRequest inventoryRequest = new InventoryProductIdsRequest(productIds);
         InventoryProductIdsResponse inventoryResponse = fetchInventoryData(inventoryRequest);
 
         // Build price map and validate all prices exist
         Map<String, Double> priceMap = buildAndValidatePriceMap(inventoryResponse);
 
-        // Build max inventory map for atomic reservation
-        Map<String, Long> maxInventoryMap = inventoryResponse.getInventoryProducts().stream()
-                .filter(p -> p.getQuantity() != null)
-                .collect(Collectors.toMap(
-                        InventoryProductResponse::getId,
-                        InventoryProductResponse::getQuantity
-                ));
-
-        // Validate product existence (availability check is done atomically by Lua script)
+        // Validate product existence (Lua script handles the availability check atomically)
         validateProductExistence(inventoryResponse.getInventoryProducts(), productQuantityMap);
 
-        // Atomically check and reserve using Lua script
-        boolean reserved = pendingOrderCacheRepository.checkAndReserveAtomic(
-                RedisConstant.QUEUE_PRODUCT_KEY,
-                productQuantityMap,
-                maxInventoryMap
+        // Atomically check and decrement the available counter (no external snapshot)
+        boolean reserved = pendingOrderCacheRepository.checkAndReserveAvailableAtomic(
+                RedisConstant.AVAILABLE_PRODUCT_KEY,
+                productQuantityMap
         );
 
         if (!reserved) {
-            log.error("(validateAndReserveInventoryAtomic) Atomic reservation failed - race condition detected or insufficient inventory");
+            log.warn("(validateAndReserveInventoryAtomic) Atomic reservation failed — insufficient available stock");
             throw new InvalidProductQuantityException(new ArrayList<>(productIds));
         }
 
-        // Calculate total order price
         double totalPrice = calculateTotalPrice(priceMap, productQuantityMap);
 
         return InventoryReservationResult.builder()
@@ -278,7 +269,7 @@ public class OrderServiceImpl implements OrderService {
 
     /**
      * Validates that all requested products exist and have valid inventory data.
-     * Availability check is handled atomically by Lua script in checkAndReserveAtomic().
+     * Availability check is handled atomically by Lua script in checkAndReserveAvailableAtomic().
      */
     private void validateProductExistence(
             List<InventoryProductResponse> inventoryProducts,
@@ -355,21 +346,23 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
-     * Rolls back inventory reservations by decrementing Redis counters.
+     * Releases inventory reservations by incrementing the available counter.
+     * Called when order creation fails after a successful reservation.
      */
     private void rollbackInventoryReservation(Map<String, Long> productQuantityMap) {
         if (productQuantityMap == null || productQuantityMap.isEmpty()) {
             return;
         }
 
-        log.warn("(rollbackInventoryReservation) Rolling back reservations for {} products", productQuantityMap.size());
+        log.warn("(rollbackInventoryReservation) Releasing reservations (incr available) for {} products",
+                productQuantityMap.size());
 
         for (Map.Entry<String, Long> entry : productQuantityMap.entrySet()) {
             try {
-                redisRepository.decr(RedisConstant.QUEUE_PRODUCT_KEY + entry.getKey(), entry.getValue());
-                log.debug("(rollbackInventoryReservation) Rolled back {} units for product {}", entry.getValue(), entry.getKey());
+                redisRepository.incr(RedisConstant.AVAILABLE_PRODUCT_KEY + entry.getKey(), entry.getValue());
+                log.debug("(rollbackInventoryReservation) Released {} units for product {}", entry.getValue(), entry.getKey());
             } catch (Exception e) {
-                log.error("(rollbackInventoryReservation) Failed to rollback product: {}", entry.getKey(), e);
+                log.error("(rollbackInventoryReservation) Failed to release product: {}", entry.getKey(), e);
             }
         }
     }
@@ -445,8 +438,12 @@ public class OrderServiceImpl implements OrderService {
         log.debug("(processOrderStatusChange) Removed order {} from pending orders ZSET", orderId);
     }
 
+    /**
+     * Releases inventory reservations for canceled/failed orders
+     * by incrementing the available counter for each product.
+     */
     private void updateInventoryCacheWithLocks(Map<String, Long> productQuantityMap) {
-        log.info("(updateInventoryCacheWithLocks) Updating inventory cache with locks for products: {}", productQuantityMap.keySet());
+        log.info("(updateInventoryCacheWithLocks) Releasing inventory reservations for products: {}", productQuantityMap.keySet());
         if (productQuantityMap.isEmpty()) {
             return;
         }
@@ -457,16 +454,14 @@ public class OrderServiceImpl implements OrderService {
         DistributedLockContext lockContext = new DistributedLockContext(productIds);
 
         try {
-            // Acquire all locks
             for (String productId : productIds) {
                 String lockKey = RedisConstant.LOCK_QUEUE_PRODUCT_KEY + productId;
                 RLock lock = acquireLockWithRetry(lockKey, lockContext);
                 lockContext.addLock(productId, lock);
             }
 
-            // Decrement inventory cache
             for (Map.Entry<String, Long> entry : productQuantityMap.entrySet()) {
-                redisRepository.decr(RedisConstant.QUEUE_PRODUCT_KEY + entry.getKey(), entry.getValue());
+                redisRepository.incr(RedisConstant.AVAILABLE_PRODUCT_KEY + entry.getKey(), entry.getValue());
             }
 
         } finally {
