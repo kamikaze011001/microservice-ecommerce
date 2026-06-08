@@ -2049,6 +2049,16 @@ git commit -m "fix(order-service-test): update OrderCreateSnapshotTest stub for 
 
 This is the acceptance gate. Seed a product to 60 units, drive 50 VUs all-approve for 90s, let the saga settle, then verify `SUM(product_quantity_history)` floors at 0 and `inventory_product.stock` floors at 0.
 
+> **RESULT (2026-06-08): PASSED.** Seeded `67c000000000000000000004` to 60; ran 50 VUs × 90s (2252 iterations, `http_req_failed` 46.78% = expected out-of-stock fail-closed). Settled state: ledger `SUM(quantity)` = **0**, `inventory_product.stock` = **0** (was **−1** before the fix). Oversell race eliminated.
+>
+> **Verified command reference** (the originally-drafted commands below had wrong params — corrected here):
+> - MySQL root creds are `-uroot -proot` (NOT `-pecommerce_master`); pod is `mysql-0`. DB-qualify the table: `ecommerce_dev.product_quantity_history`.
+> - Redis is a **Deployment** with **no password**: exec `deploy/redis -- redis-cli` (NOT `redis-0` / `-a ...`).
+> - Keep each `mysql -e "..."` on a **single line** (no `\` continuation — it detaches the SQL from `-e`).
+> - Core-module changes require rebuilding the cores image first: `SVC=cores k8s/images/build.sh` **before** `make k8s-rebuild svc=...` (which passes `SKIP_CORES=1`).
+> - Seed-to-60 (no admin token needed): INSERT a `+60` row into `product_quantity_history` (id `UUID()`), `UPDATE inventory_product SET stock=60`, `redis-cli SET productAvailable:<id> 60`.
+> - Acceptance query: `kubectl -n infra exec mysql-0 -- mysql -uroot -proot -N -e "SELECT SUM(quantity) FROM ecommerce_dev.product_quantity_history WHERE product_id='67c000000000000000000004';"` → must be **≥ 0**.
+
 **Prerequisites:** k8s cluster is up and running (`make k8s-status` shows all services healthy).
 
 - [ ] **Step 1: Rebuild and push inventory-service and order-service images**
