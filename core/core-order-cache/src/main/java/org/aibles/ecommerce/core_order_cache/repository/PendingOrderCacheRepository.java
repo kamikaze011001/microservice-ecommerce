@@ -60,4 +60,15 @@ public interface PendingOrderCacheRepository {
      * @return Optional containing the order price, or empty if order not found
      */
     Optional<Double> getOrderPrice(String orderId);
+
+    /**
+     * Atomically checks and decrements the `available` counter for each product.
+     * The counter itself is the source of truth — no external maxInventory snapshot is needed.
+     * All-or-nothing: if any product has available < requested, returns false and nothing is decremented.
+     *
+     * @param keyPrefix The prefix for Redis keys (e.g., "productAvailable:")
+     * @param productQuantities Map of product ID to quantity to reserve
+     * @return true if all products were successfully reserved, false if any product has insufficient stock
+     */
+    boolean checkAndReserveAvailableAtomic(String keyPrefix, Map<String, Long> productQuantities);
 }
