@@ -115,20 +115,19 @@ public class InventoryServiceImpl implements InventoryService {
     public InventoryProductIdsResponse list(InventoryProductIdsRequest request) {
         log.info("(list)request: {}", request);
         List<InventoryProduct> inventoryProducts = masterInventoryProductRepository.findByIdIn(request.getIds());
-        // Authoritative (master) stock SUM: this response feeds order-service's
-        // reservation ceiling (maxInventory) for the atomic Lua reserve. Reading
-        // it from an async slave returned stale-high stock under load, so the
-        // reserve over-permitted and oversold to negative. Read from master.
-        List<ProductQuantitySummary> quantitySummaries = masterProductQuantityHistoryRepo.sumQuantitiesByProductIds(request.getIds());
+        // Browse/display reads tolerate slave staleness — reservation no longer uses this SUM
+        // (the AVAILABLE_PRODUCT_KEY Redis counter is now the reservation authority).
+        // Reverted to slave per the oversell fix design (locked decision #2).
+        List<ProductQuantitySummary> quantitySummaries =
+                slaveProductQuantityHistoryRepo.sumQuantitiesByProductIds(request.getIds());
 
         Map<String, Long> productQuantityMap = quantitySummaries.stream().collect(
                 Collectors.toMap(ProductQuantitySummary::getProductId, ProductQuantitySummary::getTotalQuantity)
         );
 
         List<InventoryProductResponse> inventoryProductResponses = new ArrayList<>();
-        InventoryProductResponse inventoryProductResponse;
         for (InventoryProduct inventoryProduct : inventoryProducts) {
-            inventoryProductResponse = InventoryProductResponse.builder()
+            InventoryProductResponse inventoryProductResponse = InventoryProductResponse.builder()
                     .id(inventoryProduct.getId())
                     .name(inventoryProduct.getName())
                     .price(inventoryProduct.getPrice())
@@ -152,11 +151,21 @@ public class InventoryServiceImpl implements InventoryService {
 
         long actualQuantity = Boolean.TRUE.equals(isAdd) ? quantity : -quantity;
 
+        // Ledger row (history/compat — keep as-is)
         ProductQuantityHistory productQuantityHistory = new ProductQuantityHistory();
         productQuantityHistory.setProductId(id);
         productQuantityHistory.setQuantity(actualQuantity);
-
         masterProductQuantityHistoryRepo.save(productQuantityHistory);
+
+        // Sync materialized stock column (admin ops: use adjustStock, operator accepts responsibility)
+        masterInventoryProductRepository.adjustStock(id, actualQuantity);
+
+        // Sync Redis available counter
+        if (actualQuantity > 0) {
+            redisRepository.incr(RedisConstant.AVAILABLE_PRODUCT_KEY + id, actualQuantity);
+        } else if (actualQuantity < 0) {
+            redisRepository.decr(RedisConstant.AVAILABLE_PRODUCT_KEY + id, Math.abs(actualQuantity));
+        }
 
         ProductQuantityUpdated eventData = ProductQuantityUpdated.newBuilder()
                 .setProductId(id)
@@ -225,13 +234,16 @@ public class InventoryServiceImpl implements InventoryService {
 
     /**
      * Processes inventory update for a successful payment.
-     * Decrements inventory for all products in the order.
-     * Also releases queue reservations and removes order from pending orders.
+     * Layer 1: does NOT touch Redis available counter (the unit was already removed at reserve time).
+     * Layer 2: decrements inventory_product.stock with an atomic conditional floor (stock >= n).
+     *          If 0 rows updated → would-be oversell blocked; log alert, skip ledger row.
+     * Keeps the product_quantity_history ledger write for history/compat when DB floor passes.
      */
     private void processInventoryUpdate(String orderId) {
         log.info("(processInventoryUpdate) Processing inventory update for order: {}", orderId);
 
-        Optional<Map<String, Long>> productQuantityFromOrderOptional = pendingOrderCacheRepository.getProductQuantitiesForOrder(orderId);
+        Optional<Map<String, Long>> productQuantityFromOrderOptional =
+                pendingOrderCacheRepository.getProductQuantitiesForOrder(orderId);
         if (productQuantityFromOrderOptional.isEmpty()) {
             log.warn("(processInventoryUpdate) orderId: {} is invalid or already processed", orderId);
             return;
@@ -240,7 +252,7 @@ public class InventoryServiceImpl implements InventoryService {
         Map<String, Long> productQuantityFromOrder = productQuantityFromOrderOptional.get();
 
         if (productQuantityFromOrder.isEmpty()) {
-            log.warn("(processInventoryUpdate) orderId: {} has no product", orderId);
+            log.warn("(processInventoryUpdate) orderId: {} has no products", orderId);
             return;
         }
 
@@ -255,22 +267,37 @@ public class InventoryServiceImpl implements InventoryService {
 
             ProductQuantityUpdated productQuantityUpdated;
             MongoSavedEvent mongoSavedEvent;
-            ProductQuantityHistory productQuantityHistory;
 
             for (Map.Entry<String, Long> entry : productQuantityFromOrder.entrySet()) {
-                // 1. Decrement actual inventory in database
-                productQuantityHistory = new ProductQuantityHistory();
-                productQuantityHistory.setProductId(entry.getKey());
-                productQuantityHistory.setQuantity(entry.getValue() * -1);
+                String productId = entry.getKey();
+                long qty = entry.getValue();
+
+                // Layer 2: atomic conditional DB decrement (floor at 0)
+                int rows = masterInventoryProductRepository.decrementStockIfSufficient(productId, qty);
+
+                if (rows == 0) {
+                    // DB floor triggered: this commit would have caused an oversell.
+                    // Log an error-level alert — this must never happen in normal operation.
+                    log.error("(processInventoryUpdate) DB floor blocked would-be oversell — " +
+                              "productId={} requestedDecrement={} currentStock<qty; skipping ledger write",
+                              productId, qty);
+                    // Skip the ledger row for this product to keep SUM(history) consistent
+                    continue;
+                }
+
+                // Layer 1 (commit path): do NOT touch Redis available counter.
+                // The unit was removed from available at reserve time. No Redis change here.
+
+                // Ledger row for history/compat (only when DB floor passes)
+                ProductQuantityHistory productQuantityHistory = new ProductQuantityHistory();
+                productQuantityHistory.setProductId(productId);
+                productQuantityHistory.setQuantity(qty * -1);
                 masterProductQuantityHistoryRepo.save(productQuantityHistory);
 
-                // 2. Release queue reservation (decrement queue counter)
-                redisRepository.decr(RedisConstant.QUEUE_PRODUCT_KEY + entry.getKey(), entry.getValue());
-
-                // 3. Publish inventory update event
+                // Publish inventory update event
                 productQuantityUpdated = ProductQuantityUpdated.newBuilder()
-                        .setProductId(entry.getKey())
-                        .setQuantity(entry.getValue() * -1)
+                        .setProductId(productId)
+                        .setQuantity(qty * -1)
                         .build();
                 mongoSavedEvent = new MongoSavedEvent(this,
                         EcommerceEvent.PRODUCT_QUANTITY_UPDATED.getValue(),
@@ -278,12 +305,12 @@ public class InventoryServiceImpl implements InventoryService {
                 applicationEventPublisher.publishEvent(mongoSavedEvent);
             }
 
-            // 4. Remove order from pending orders (cleanup)
+            // Remove order from pending orders (cleanup)
             pendingOrderCacheRepository.removeFromPendingOrders(orderId);
             log.info("(processInventoryUpdate) Successfully processed inventory and cleaned up order: {}", orderId);
 
         } catch (Exception e) {
-            log.error("(processInventoryUpdate) error happen when update quantity for success orderId: {}", orderId, e);
+            log.error("(processInventoryUpdate) Error processing inventory for orderId: {}", orderId, e);
             throw new InternalErrorException();
         } finally {
             releaseLockInReverse(productIds, locks);
