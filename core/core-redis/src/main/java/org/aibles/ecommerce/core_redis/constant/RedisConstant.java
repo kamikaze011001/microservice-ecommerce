@@ -7,4 +7,6 @@ public class RedisConstant {
     public static final String QUEUE_PRODUCT_KEY = "productQuantityQueue:";
 
     public static final String LOCK_QUEUE_PRODUCT_KEY = "lock:productQueue:";
+
+    public static final String AVAILABLE_PRODUCT_KEY = "productAvailable:";
 }
