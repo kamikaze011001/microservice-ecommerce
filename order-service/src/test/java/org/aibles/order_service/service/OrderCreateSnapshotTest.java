@@ -96,8 +96,8 @@ class OrderCreateSnapshotTest {
         when(inventoryGrpcClientService.fetchInventoryData(anyList()))
                 .thenReturn(inventoryResponse);
 
-        // Stub atomic reservation → success
-        when(pendingOrderCacheRepository.checkAndReserveAtomic(any(), any(), any()))
+        // Stub atomic reservation → success (uses new available-counter Lua script)
+        when(pendingOrderCacheRepository.checkAndReserveAvailableAtomic(any(), any()))
                 .thenReturn(true);
 
         // Stub Redisson fair lock — acquire always succeeds

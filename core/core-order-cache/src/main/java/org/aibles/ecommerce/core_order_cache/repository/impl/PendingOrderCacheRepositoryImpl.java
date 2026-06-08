@@ -75,6 +75,45 @@ public class PendingOrderCacheRepositoryImpl implements PendingOrderCacheReposit
             "\n" +
             "return 1  -- Success\n";
 
+    /**
+     * Lua script for self-contained atomic check-and-reserve of the `available` counter.
+     * NO external maxInventory snapshot is accepted — the counter IS the authority.
+     */
+    private static final String CHECK_AND_RESERVE_AVAILABLE_LUA_SCRIPT =
+            "local keyPrefix = ARGV[1]\n" +
+            "local numProducts = tonumber(ARGV[2])\n" +
+            "local argOffset = 3\n" +
+            "\n" +
+            "local productIds = {}\n" +
+            "local quantities = {}\n" +
+            "\n" +
+            "for i = 1, numProducts do\n" +
+            "    productIds[i] = ARGV[argOffset]\n" +
+            "    argOffset = argOffset + 1\n" +
+            "end\n" +
+            "\n" +
+            "for i = 1, numProducts do\n" +
+            "    quantities[i] = tonumber(ARGV[argOffset])\n" +
+            "    argOffset = argOffset + 1\n" +
+            "end\n" +
+            "\n" +
+            "-- Phase 1: Check available for all products (no external snapshot)\n" +
+            "for i = 1, numProducts do\n" +
+            "    local key = keyPrefix .. productIds[i]\n" +
+            "    local available = tonumber(redis.call('GET', key)) or 0\n" +
+            "    if available < quantities[i] then\n" +
+            "        return 0  -- Insufficient available, abort all-or-nothing\n" +
+            "    end\n" +
+            "end\n" +
+            "\n" +
+            "-- Phase 2: All checks passed, decrement all available counters\n" +
+            "for i = 1, numProducts do\n" +
+            "    local key = keyPrefix .. productIds[i]\n" +
+            "    redis.call('DECRBY', key, quantities[i])\n" +
+            "end\n" +
+            "\n" +
+            "return 1  -- Success\n";
+
     public PendingOrderCacheRepositoryImpl(RedisTemplate<String, Object> redisTemplate, ObjectMapper objectMapper) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
@@ -141,6 +180,62 @@ public class PendingOrderCacheRepositoryImpl implements PendingOrderCacheReposit
             return success;
         } catch (Exception e) {
             log.error("(checkAndReserveAtomic) Exception while executing Lua script", e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean checkAndReserveAvailableAtomic(String keyPrefix, Map<String, Long> productQuantities) {
+        log.info("(checkAndReserveAvailableAtomic) Executing atomic available check-and-reserve for {} products with keyPrefix: {}",
+                productQuantities.size(), keyPrefix);
+
+        if (productQuantities.isEmpty()) {
+            log.warn("(checkAndReserveAvailableAtomic) Empty product quantities map, nothing to reserve");
+            return true;
+        }
+
+        for (Map.Entry<String, Long> entry : productQuantities.entrySet()) {
+            if (entry.getValue() == null || entry.getValue() <= 0L) {
+                log.error("(checkAndReserveAvailableAtomic) Non-positive quantity for product {} — rejecting reservation",
+                        entry.getKey());
+                return false;
+            }
+        }
+
+        List<String> args = new ArrayList<>();
+        args.add(keyPrefix);                                       // ARGV[1]
+        args.add(String.valueOf(productQuantities.size()));        // ARGV[2]
+
+        List<String> productIds = new ArrayList<>(productQuantities.keySet());
+        args.addAll(productIds);                                   // ARGV[3..n]
+
+        for (String productId : productIds) {
+            args.add(String.valueOf(productQuantities.get(productId))); // ARGV[n+1..2n]
+        }
+
+        try {
+            Long result = redisTemplate.execute((RedisCallback<Long>) connection -> {
+                byte[][] argBytes = args.stream()
+                        .map(arg -> arg.getBytes(StandardCharsets.UTF_8))
+                        .toArray(byte[][]::new);
+
+                return connection.scriptingCommands().eval(
+                        CHECK_AND_RESERVE_AVAILABLE_LUA_SCRIPT.getBytes(StandardCharsets.UTF_8),
+                        ReturnType.INTEGER,
+                        0,
+                        argBytes
+                );
+            });
+
+            boolean success = result != null && result == 1L;
+            if (success) {
+                log.info("(checkAndReserveAvailableAtomic) Successfully reserved available inventory for products: {}", productIds);
+            } else {
+                log.warn("(checkAndReserveAvailableAtomic) Failed to reserve — insufficient available stock for products: {}", productIds);
+            }
+            return success;
+        } catch (Exception e) {
+            log.error("(checkAndReserveAvailableAtomic) Exception while executing Lua script", e);
             return false;
         }
     }

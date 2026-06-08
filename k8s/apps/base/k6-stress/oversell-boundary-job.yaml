@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-oversell-boundary
+  namespace: apps
+  labels: { app: k6-oversell-boundary }
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 1800
+  template:
+    metadata:
+      labels: { app: k6-oversell-boundary }
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:0.54.0
+          args: ["run", "/scripts/boundary-flow.js"]
+          env:
+            - { name: BASE_URL, value: "http://gateway.apps.svc.cluster.local:6868" }
+            - { name: INGRESS_ORIGIN, value: "http://api.microecom.local" }
+            - { name: PRODUCT_ID, value: "67c000000000000000000004" }
+          resources:
+            requests: { cpu: "200m", memory: "128Mi" }
+            limits:   { cpu: "1000m", memory: "256Mi" }
+          volumeMounts:
+            - { name: script, mountPath: /scripts }
+      volumes:
+        - name: script
+          configMap:
+            name: k6-oversell-script
