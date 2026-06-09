@@ -45,6 +45,10 @@ help:
 	@echo "  make k8s-rebuild svc=NAME — rebuild one image + rollout restart"
 	@echo "  make k8s-payment-stress      — fire k6 payment-saga load Job (opt-in)"
 	@echo "  make k8s-payment-stress-logs — tail k6 payment-stress output"
+	@echo "  make k8s-storefront-smoke    — production funnel, 50VU/3m smoke gate"
+	@echo "  make k8s-storefront-soak     — production funnel, 30m soak (leak/drift)"
+	@echo "  make k8s-storefront-stress   — production funnel, open-model stress ramp"
+	@echo "  make k8s-storefront-logs     — tail k6 storefront output"
 	@echo "  make k9s [ENV=local|eks]     — open k9s monitor on the chosen cluster"
 
 # ============================================================================
@@ -334,7 +338,7 @@ k8s-seed-perftest:
 k8s-seed-images:
 	@scripts/seed/k8s-product-images.sh
 
-.PHONY: k8s-apps k8s-apps-down k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs k9s
+.PHONY: k8s-apps k8s-apps-down k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs k8s-storefront-smoke k8s-storefront-soak k8s-storefront-stress k8s-storefront-run k8s-storefront-logs k9s
 
 # Apply all 8 service Deployments via the local overlay.
 # k8s-app-secrets: build the `app-secrets` Secret in the apps namespace from
@@ -399,6 +403,33 @@ k8s-payment-stress:
 
 k8s-payment-stress-logs:
 	@kubectl -n apps logs -f -l app=k6-payment-stress --tail=-1
+
+# Fire the production-shaped STOREFRONT funnel load Job (browse -> detail ->
+# login -> cart -> order -> pay). Three profiles select the k6 scenario via
+# PROFILE. The script configMap is created imperatively (stable name
+# k6-storefront-script) and PROFILE_PLACEHOLDER in the Job is rewritten per
+# target. Re-runnable — deletes the previous Job first (Jobs are immutable).
+#   make k8s-storefront-smoke   # 50 VU / 3m fast gate
+#   make k8s-storefront-soak    # 30m steady (leak/drift) — read trend on #19665
+#   make k8s-storefront-stress  # open-model arrival-rate ramp to the ceiling
+k8s-storefront-smoke:
+	@$(MAKE) --no-print-directory k8s-storefront-run PROFILE=smoke
+k8s-storefront-soak:
+	@$(MAKE) --no-print-directory k8s-storefront-run PROFILE=soak
+k8s-storefront-stress:
+	@$(MAKE) --no-print-directory k8s-storefront-run PROFILE=stress
+
+# Internal: PROFILE must be set by one of the targets above.
+k8s-storefront-run:
+	@kubectl -n apps delete job k6-storefront --ignore-not-found
+	@kubectl -n apps create configmap k6-storefront-script \
+	  --from-file=k8s/apps/base/k6-stress/storefront-flow.js --dry-run=client -o yaml | kubectl apply -f -
+	@sed 's/PROFILE_PLACEHOLDER/$(PROFILE)/' k8s/apps/base/k6-stress/storefront-job.yaml | kubectl apply -f -
+	@echo "k6 storefront [$(PROFILE)] running. Watch with: make k8s-storefront-logs"
+	@echo "Watch HPA: kubectl -n apps get hpa -w"
+
+k8s-storefront-logs:
+	@kubectl -n apps logs -f -l app=k6-storefront --tail=-1
 
 # Launch k9s (terminal UI) on a chosen environment, using the repo's committed
 # config (skin + namespace hotkeys). Switch contexts live inside k9s with :ctx.
