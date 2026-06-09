@@ -1,9 +1,16 @@
 {
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true,
-    "claude-mem@thedotmack": true,
     "learning-output-style@claude-plugins-official": true,
-    "claude-md-management@claude-plugins-official": true,
-    "shipwithai-advisor@shipwithai": true
+    "claude-md-management@claude-plugins-official": true
+  },
+  "env": {
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+    "OTEL_METRICS_EXPORTER": "otlp",
+    "OTEL_LOGS_EXPORTER": "otlp",
+    "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
+    "OTEL_RESOURCE_ATTRIBUTES": "project.name=microservice-ecommerce",
+    "OTEL_METRIC_EXPORT_INTERVAL": "20000"
   }
 }
