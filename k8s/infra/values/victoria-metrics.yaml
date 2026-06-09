@@ -98,6 +98,17 @@ server:
           static_configs:
             - targets: [kafka-exporter.infra.svc.cluster.local:9308]
 
+        # 5. mysqld-exporter — one target per DB instance; relabel to a friendly
+        #    `instance` (primary / replica-0 / replica-1) for the dashboard var.
+        - job_name: mysqld-exporter
+          static_configs:
+            - targets: [mysqld-exporter-primary.infra.svc.cluster.local:9104]
+              labels: { instance: primary }
+            - targets: [mysqld-exporter-replica-0.infra.svc.cluster.local:9104]
+              labels: { instance: replica-0 }
+            - targets: [mysqld-exporter-replica-1.infra.svc.cluster.local:9104]
+              labels: { instance: replica-1 }
+
 # The chart's ClusterRole grants nodes + nodes/metrics but NOT nodes/proxy. The
 # kubelet-cadvisor job scrapes /metrics/cadvisor THROUGH the API server proxy
 # (/api/v1/nodes/<node>/proxy/...), which requires `get` on the nodes/proxy

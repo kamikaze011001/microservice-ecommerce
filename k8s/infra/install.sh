@@ -81,7 +81,8 @@ kubectl apply \
   -f "$MANIFESTS/minio.yaml" \
   -f "$MANIFESTS/minio-ingress.yaml" \
   -f "$MANIFESTS/kafka.yaml" \
-  -f "$MANIFESTS/kafka-exporter.yaml"
+  -f "$MANIFESTS/kafka-exporter.yaml" \
+  -f "$MANIFESTS/mysqld-exporter.yaml"
 
 # Wait for each to be Ready. The mongodb `bootstrap` and minio `setup` sidecars
 # gate pod-readiness on a completion sentinel, so a Ready pod guarantees the
@@ -143,6 +144,10 @@ for rep in mysql-replica-0 mysql-replica-1; do
   fi
 done
 echo "MySQL replication ready (1 primary + 2 replicas)"
+
+kubectl -n infra rollout status deployment/mysqld-exporter-primary   --timeout=2m
+kubectl -n infra rollout status deployment/mysqld-exporter-replica-0 --timeout=2m
+kubectl -n infra rollout status deployment/mysqld-exporter-replica-1 --timeout=2m
 
 helm upgrade --install vault hashicorp/vault \
   --namespace infra --version 0.27.0 \
