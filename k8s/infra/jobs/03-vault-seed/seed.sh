@@ -67,7 +67,8 @@ put_if_missing ecommerce \
   spring.mail.port="587" \
   spring.mail.protocol="smtp" \
   spring.mail.properties.mail.smtp.auth="true" \
-  spring.mail.properties.mail.smtp.starttls.enable="true"
+  spring.mail.properties.mail.smtp.starttls.enable="true" \
+  management.metrics.distribution.percentiles-histogram.http.server.requests="true"
   # NOTE: spring.mail.username/password are NOT seeded here. They are user-owned
   # creds supplied via the app-secrets k8s Secret (k8s/.env → envFrom on
   # authorization-server); application.yml reads them as ${APPLICATION_MAIL_*}.
