@@ -93,6 +93,11 @@ server:
               action: keep
               regex: kube-state-metrics
 
+        # 4. kafka-exporter — topic offsets + consumer-group lag (infra ns).
+        - job_name: kafka-exporter
+          static_configs:
+            - targets: [kafka-exporter.infra.svc.cluster.local:9308]
+
 # The chart's ClusterRole grants nodes + nodes/metrics but NOT nodes/proxy. The
 # kubelet-cadvisor job scrapes /metrics/cadvisor THROUGH the API server proxy
 # (/api/v1/nodes/<node>/proxy/...), which requires `get` on the nodes/proxy

@@ -80,7 +80,8 @@ kubectl apply \
   -f "$MANIFESTS/redis.yaml" \
   -f "$MANIFESTS/minio.yaml" \
   -f "$MANIFESTS/minio-ingress.yaml" \
-  -f "$MANIFESTS/kafka.yaml"
+  -f "$MANIFESTS/kafka.yaml" \
+  -f "$MANIFESTS/kafka-exporter.yaml"
 
 # Wait for each to be Ready. The mongodb `bootstrap` and minio `setup` sidecars
 # gate pod-readiness on a completion sentinel, so a Ready pod guarantees the
@@ -92,6 +93,7 @@ kubectl -n infra rollout status statefulset/mongodb       --timeout=5m
 kubectl -n infra rollout status deployment/redis    --timeout=3m
 kubectl -n infra rollout status statefulset/minio   --timeout=5m
 kubectl -n infra rollout status statefulset/kafka   --timeout=5m
+kubectl -n infra rollout status deployment/kafka-exporter --timeout=2m
 
 # ── MySQL replication: 1 primary + 2 replicas (GTID auto-position) ────────────
 # Mirrors docker/scripts/init-mysql.sh, idempotent. The repl user is created on
