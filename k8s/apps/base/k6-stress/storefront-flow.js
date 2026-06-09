@@ -196,6 +196,10 @@ export default function () {
   const detailRes = http.get(`${BASE}/product-service/v1/products/${pid}`,
     { tags: { name: 'detail' } });
   check(detailRes, { 'detail 200': (r) => r.status === 200 });
+  // Snapshot the price the shopper sees on the detail page; the cart line stores
+  // this snapshot, so a later catalog price change can't mutate an in-flight cart.
+  // Fall back to a nominal price if a transient detail miss left it null.
+  const price = detailRes.json('data.price') || 9.99;
   thinkTime(2, 6);
 
   // 3) Login — conditional 0.667 (=> 40% cumulative). Only sessions that will
@@ -211,7 +215,7 @@ export default function () {
 
   // 4) Add to cart (authenticated) — same 40% cohort as login.
   const cartRes = http.post(`${BASE}/order-service/v1/shopping-carts:add-item`,
-    JSON.stringify({ product_id: pid, quantity: 1 }),
+    JSON.stringify({ product_id: pid, quantity: 1, price }),
     { headers: authHeaders, tags: { name: 'add_cart' } });
   check(cartRes, { 'cart 200': (r) => r.status === 200 });
   thinkTime(1, 3);
