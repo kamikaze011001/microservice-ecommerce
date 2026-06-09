@@ -47,6 +47,17 @@ helm upgrade --install vmsingle vm/victoria-metrics-single \
   -f k8s/infra/values/victoria-metrics.yaml \
   --wait --timeout 5m
 
+# Custom dashboards (JVM/Kafka/MySQL) → ConfigMap mounted by Grafana's `custom`
+# provider. Created imperatively from the JSON files (kubectl's embedded
+# kustomize forbids out-of-tree file refs; same pattern as the seed Jobs).
+# Must exist before the grafana pod starts (the chart mounts it as a volume).
+# Glob *.json explicitly so a stray file (e.g. macOS .DS_Store) never becomes a
+# configmap key that Grafana would then fail to parse on every reload.
+kubectl create configmap grafana-custom-dashboards \
+  --namespace monitoring \
+  $(find k8s/infra/dashboards -name '*.json' | sort | sed 's/^/--from-file=/') \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 helm upgrade --install grafana grafana/grafana \
   --namespace monitoring \
   --version 10.5.15 \
