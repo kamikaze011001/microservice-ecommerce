@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-storefront
+  namespace: apps
+  labels: { app: k6-storefront }
+spec:
+  # Don't auto-restart on failure — a failed threshold is real signal, not retry.
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels: { app: k6-storefront }
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:0.54.0
+          args: ["run", "-o", "experimental-prometheus-rw", "/scripts/storefront-flow.js"]
+          env:
+            # Profile selector. The Makefile target rewrites the placeholder
+            # value below (smoke|soak|stress) via sed before apply, so this
+            # literal never runs as-is.
+            - { name: PROFILE, value: "PROFILE_PLACEHOLDER" }
+            # In-cluster gateway Service DNS. The script rewrites the mock's
+            # browser-facing api.microecom.local origin back to this, so no
+            # hostAliases / ingress ClusterIP is needed (see storefront-flow.js).
+            - { name: BASE_URL, value: "http://gateway.apps.svc.cluster.local:6868" }
+            - { name: INGRESS_ORIGIN, value: "http://api.microecom.local" }
+            # Real seeded catalog ObjectIds (docker/product.json -> Mongo,
+            # inventoried by `make k8s-seed-inventory`). The script's default
+            # (test-product-1..3) is fake in this split architecture, so this
+            # override is required.
+            - { name: PRODUCT_IDS, value: "67c000000000000000000001,67c000000000000000000002,67c000000000000000000003" }
+            - { name: K6_PROMETHEUS_RW_SERVER_URL, value: "http://vmsingle.monitoring.svc.cluster.local:8428/api/v1/write" }
+            - { name: K6_PROMETHEUS_RW_TREND_STATS, value: "p(95),p(99),avg,min,max" }
+          resources:
+            # Higher memory ceiling than payment-job (256Mi): the stress profile
+            # holds up to maxVUs=150 plus remote-write buffering.
+            requests: { cpu: "200m", memory: "128Mi" }
+            limits:   { cpu: "1000m", memory: "512Mi" }
+          volumeMounts:
+            - { name: script, mountPath: /scripts }
+      volumes:
+        - name: script
+          configMap:
+            name: k6-storefront-script
