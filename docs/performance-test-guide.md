@@ -317,3 +317,39 @@ pods under load."*
 - **Reproducibility:** users are seeded by a bootstrap Job wired into
   `make k8s-bootstrap`; the test points at real catalog product IDs; metrics
   flow to Grafana — so anyone can re-run and get comparable numbers.
+
+## Running the production-shaped funnel (storefront-flow.js)
+
+Prerequisites: cluster up (`make k8s-up` or equivalent) and perftest fixtures
+seeded once (`make k8s-seed-perftest`).
+
+```bash
+make k8s-storefront-smoke    # ~4.5m — fast gate; expect 0% errors, checks ~100%
+make k8s-storefront-soak     # 30m   — leak/drift; READ THE TREND on Grafana #19665
+make k8s-storefront-stress   # ~15m  — open-model ramp; reports the discovered ceiling
+make k8s-storefront-logs     # tail the running Job's k6 output + end summary
+```
+
+Override knobs inline, e.g. a shorter soak or a higher stress peak:
+```bash
+# edit via env in the Job, or re-run with a tweaked storefront-job.yaml:
+#   SOAK_DURATION=10m SOAK_VUS=20   (soak)
+#   STRESS_PEAK_RATE=200 STRESS_MAX_VUS=250   (stress)
+```
+
+### What "pass" means per profile
+
+- **smoke** — `http_req_failed < 5%`, `checks > 95%`, `create_payment p95 < 2s`,
+  `login p95 < 800ms`. k6 prints a green check per threshold.
+- **soak** — `http_req_failed < 1%`, `checks > 99%`, browse/detail p95 < 500ms,
+  `login p95 < 1500ms`. **k6 thresholds alone are not the soak verdict** — open
+  Grafana dashboard **#19665** and confirm there is **no upward p95 or RSS trend**
+  over the 30m window. A flat trend = no leak/drift (the thing the soak exists to
+  catch). k6 cannot assert a trend; the eyeball on #19665 is the real gate.
+- **stress** — thresholds are `abortOnFail: false`, so the ramp always completes.
+  Read off the **arrival rate and concurrency at which `http_req_failed` first
+  crosses 5%** — that is the discovered ceiling. Watch `kubectl -n apps get hpa -w`
+  during the run to confirm order-service / auth HPA scaled.
+
+The existing `make k8s-payment-stress` (pure-saga baseline) is unchanged and
+remains the apples-to-apples regression comparison.
