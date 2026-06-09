@@ -162,6 +162,10 @@ latency) p95/p99; `vus` / `vus_max`.
 
 ### Where the metrics go (Grafana)
 
+> **Live monitoring runbook:** for where to look *during* a run (k6 logs, Grafana,
+> k9s, consumer-group lag) plus healthy-vs-red-flag signals, see
+> [`stress-test-monitoring.md`](stress-test-monitoring.md).
+
 The k6 Job remote-writes live metrics to **VictoriaMetrics**
 (`vmsingle.monitoring.svc.cluster.local:8428`). View them on the provisioned
 **Grafana k6 dashboard (gnetId #19665)**:
