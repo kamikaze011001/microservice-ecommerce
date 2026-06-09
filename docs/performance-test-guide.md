@@ -342,7 +342,8 @@ Override knobs inline, e.g. a shorter soak or a higher stress peak:
 - **smoke** — `http_req_failed < 5%`, `checks > 95%`, `create_payment p95 < 2s`,
   `login p95 < 800ms`. k6 prints a green check per threshold.
 - **soak** — `http_req_failed < 1%`, `checks > 99%`, browse/detail p95 < 500ms,
-  `login p95 < 1500ms`. **k6 thresholds alone are not the soak verdict** — open
+  `create_payment p95 < 2s`, `login p95 < 1500ms`. **k6 thresholds alone are not
+  the soak verdict** — open
   Grafana dashboard **#19665** and confirm there is **no upward p95 or RSS trend**
   over the 30m window. A flat trend = no leak/drift (the thing the soak exists to
   catch). k6 cannot assert a trend; the eyeball on #19665 is the real gate.
