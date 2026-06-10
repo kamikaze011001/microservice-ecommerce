@@ -14,6 +14,7 @@ import org.aibles.payment_service.entity.Payment;
 import org.aibles.payment_service.exception.OrderInvalidException;
 import org.aibles.payment_service.repository.master.MasterPaymentRepo;
 import org.aibles.payment_service.repository.slave.SlavePaymentRepo;
+import org.springframework.web.client.ResourceAccessException;
 
 import java.util.List;
 import java.util.Optional;
@@ -67,6 +68,11 @@ public class PaymentServiceImpl implements PaymentService {
         } catch (PaypalRestTemplateException e) {
             paymentRecorder.recordFailure(orderId);
             return BaseResponse.from(e.getStatus(), e.getCode(), e.getMessage());
+        } catch (ResourceAccessException e) {
+            // Connect/read timeout — the error handler never ran (no response arrived)
+            log.error("(purchase)paypal unreachable for orderId: {}", orderId, e);
+            paymentRecorder.recordFailure(orderId);
+            return BaseResponse.from(504, "PAYPAL_UNREACHABLE", e.getMessage());
         }
 
         paymentRecorder.recordPurchase(orderId, totalPrice, paypalOrderSimple.getId());
@@ -83,7 +89,7 @@ public class PaymentServiceImpl implements PaymentService {
             paypalCaptureResponse = paypalService.captureOrder(token);
             PaypalOrderDetail paypalOrderDetail = paypalService.getOrderDetails(token);
             orderId = paypalOrderDetail.getPurchaseUnits().get(0).getCustomId();
-        } catch (PaypalRestTemplateException | IndexOutOfBoundsException | NullPointerException e) {
+        } catch (PaypalRestTemplateException | ResourceAccessException | IndexOutOfBoundsException | NullPointerException e) {
             log.error("(handleSuccessPayment)paypal failure for token: {}", token, e);
             Optional<Payment> paymentOptional = masterPaymentRepo.findByToken(token);
             if (paymentOptional.isEmpty()) {
@@ -125,7 +131,7 @@ public class PaymentServiceImpl implements PaymentService {
         try {
             PaypalOrderDetail paypalOrderDetail = paypalService.getOrderDetails(token);
             orderId = paypalOrderDetail.getPurchaseUnits().get(0).getCustomId();
-        } catch (PaypalRestTemplateException | IndexOutOfBoundsException | NullPointerException e) {
+        } catch (PaypalRestTemplateException | ResourceAccessException | IndexOutOfBoundsException | NullPointerException e) {
             log.error("(handleCancelPayment)paypal failure for token: {}", token, e);
             Optional<Payment> paymentOptional = masterPaymentRepo.findByToken(token);
             if (paymentOptional.isEmpty()) {
