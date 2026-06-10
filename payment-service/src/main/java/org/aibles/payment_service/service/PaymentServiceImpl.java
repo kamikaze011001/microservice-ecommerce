@@ -1,11 +1,6 @@
 package org.aibles.payment_service.service;
 
 import lombok.extern.slf4j.Slf4j;
-import org.aibles.ecommerce.common_dto.avro_kafka.PaymentCanceled;
-import org.aibles.ecommerce.common_dto.avro_kafka.PaymentFailed;
-import org.aibles.ecommerce.common_dto.avro_kafka.PaymentSuccess;
-import org.aibles.ecommerce.common_dto.event.EcommerceEvent;
-import org.aibles.ecommerce.common_dto.event.MongoSavedEvent;
 import org.aibles.ecommerce.common_dto.response.BaseResponse;
 import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheRepository;
 import org.aibles.ecommerce.core_paypal.dto.CreatePaypalOrderRequest;
@@ -14,19 +9,23 @@ import org.aibles.ecommerce.core_paypal.dto.paypal.PaypalOrderDetail;
 import org.aibles.ecommerce.core_paypal.dto.paypal.PaypalOrderSimple;
 import org.aibles.ecommerce.core_paypal.dto.paypal.PaypalRestTemplateException;
 import org.aibles.ecommerce.core_paypal.service.PaypalService;
-import org.aibles.payment_service.constant.PaymentStatus;
-import org.aibles.payment_service.constant.PaymentType;
 import org.aibles.payment_service.dto.PaymentResponse;
 import org.aibles.payment_service.entity.Payment;
 import org.aibles.payment_service.exception.OrderInvalidException;
 import org.aibles.payment_service.repository.master.MasterPaymentRepo;
 import org.aibles.payment_service.repository.slave.SlavePaymentRepo;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.ResourceAccessException;
 
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Call-then-record: PayPal HTTP calls run OUTSIDE any transaction (a ~1.3s
+ * HTTP call inside a JTA tx held Atomikos slots and saturated maxActives=50 —
+ * stress run 2026-06-10). All DB writes + their events go through
+ * {@link PaymentRecorder}'s short @Transactional methods. Do NOT add
+ * @Transactional here — TransactionBoundaryTest guards this.
+ */
 @Slf4j
 public class PaymentServiceImpl implements PaymentService {
 
@@ -38,18 +37,17 @@ public class PaymentServiceImpl implements PaymentService {
 
     private final SlavePaymentRepo slavePaymentRepo;
 
-    private final ApplicationEventPublisher eventPublisher;
+    private final PaymentRecorder paymentRecorder;
 
-    public PaymentServiceImpl(PaypalService paypalService, PendingOrderCacheRepository pendingOrderCacheRepository, MasterPaymentRepo masterPaymentRepo, SlavePaymentRepo slavePaymentRepo, ApplicationEventPublisher eventPublisher) {
+    public PaymentServiceImpl(PaypalService paypalService, PendingOrderCacheRepository pendingOrderCacheRepository, MasterPaymentRepo masterPaymentRepo, SlavePaymentRepo slavePaymentRepo, PaymentRecorder paymentRecorder) {
         this.paypalService = paypalService;
         this.pendingOrderCacheRepository = pendingOrderCacheRepository;
         this.masterPaymentRepo = masterPaymentRepo;
         this.slavePaymentRepo = slavePaymentRepo;
-        this.eventPublisher = eventPublisher;
+        this.paymentRecorder = paymentRecorder;
     }
 
     @Override
-    @Transactional
     public BaseResponse purchase(String orderId) {
         log.info("(purchase)orderId: {}", orderId);
         double totalPrice = pendingOrderCacheRepository.getOrderPrice(orderId).orElse(0.0);
@@ -68,49 +66,21 @@ public class PaymentServiceImpl implements PaymentService {
         try {
             paypalOrderSimple = paypalService.createOrder(List.of(paymentRequest));
         } catch (PaypalRestTemplateException e) {
-            masterPaymentRepo.updateStatus(orderId, PaymentStatus.FAILED);
-            PaymentFailed paymentFailed = PaymentFailed.newBuilder()
-                    .setOrderId(orderId)
-                    .build();
-            MongoSavedEvent mongoSavedEvent = new MongoSavedEvent(
-                    this,
-                    EcommerceEvent.PAYMENT_FAILED.getValue(),
-                    paymentFailed);
-            eventPublisher.publishEvent(mongoSavedEvent);
+            paymentRecorder.recordFailure(orderId);
             return BaseResponse.from(e.getStatus(), e.getCode(), e.getMessage());
+        } catch (ResourceAccessException e) {
+            // Connect/read timeout — the error handler never ran (no response arrived)
+            log.error("(purchase)paypal unreachable for orderId: {}", orderId, e);
+            paymentRecorder.recordFailure(orderId);
+            return BaseResponse.from(504, "PAYPAL_UNREACHABLE", e.getMessage());
         }
 
-        // Upsert: reuse the existing Payment row for this order if one exists (the
-        // user cancelled a prior attempt and is retrying). The whole lifecycle —
-        // findByOrderId (Optional) and markSuccess/updateStatus (UPDATE ... WHERE
-        // orderId) — assumes ONE Payment per order, so a blind insert on retry
-        // produced a second row and handleSuccessPayment threw
-        // NonUniqueResultException. Look up via the MASTER repo for read-your-writes
-        // (a slave lookup could lag and miss the just-written row → duplicate again).
-        Payment payment = masterPaymentRepo.findByOrderId(orderId)
-                .map(existing -> {
-                    existing.setType(PaymentType.PURCHASE);
-                    existing.setStatus(PaymentStatus.PROCESSING);
-                    existing.setToken(paypalOrderSimple.getId());
-                    existing.setTotalPrice(totalPrice);
-                    existing.setCaptureId(null);
-                    return existing;
-                })
-                .orElseGet(() -> Payment.builder()
-                        .type(PaymentType.PURCHASE)
-                        .orderId(orderId)
-                        .status(PaymentStatus.PROCESSING)
-                        .token(paypalOrderSimple.getId())
-                        .totalPrice(totalPrice)
-                        .build());
-
-        masterPaymentRepo.save(payment);
+        paymentRecorder.recordPurchase(orderId, totalPrice, paypalOrderSimple.getId());
 
         return BaseResponse.ok(paypalOrderSimple);
     }
 
     @Override
-    @Transactional
     public String handleSuccessPayment(String token) {
         log.info("(handle paypal success)token: {}", token);
         String orderId;
@@ -119,13 +89,13 @@ public class PaymentServiceImpl implements PaymentService {
             paypalCaptureResponse = paypalService.captureOrder(token);
             PaypalOrderDetail paypalOrderDetail = paypalService.getOrderDetails(token);
             orderId = paypalOrderDetail.getPurchaseUnits().get(0).getCustomId();
-        } catch (PaypalRestTemplateException | IndexOutOfBoundsException | NullPointerException e) {
+        } catch (PaypalRestTemplateException | ResourceAccessException | IndexOutOfBoundsException | NullPointerException e) {
             log.error("(handleSuccessPayment)paypal failure for token: {}", token, e);
             Optional<Payment> paymentOptional = masterPaymentRepo.findByToken(token);
             if (paymentOptional.isEmpty()) {
                 return null;
             }
-            handleFailedPayment(paymentOptional.get().getOrderId());
+            paymentRecorder.recordFailure(paymentOptional.get().getOrderId());
             return paymentOptional.get().getOrderId();
         }
 
@@ -137,7 +107,7 @@ public class PaymentServiceImpl implements PaymentService {
             if (paymentOptional.isEmpty()) {
                 return null;
             }
-            handleFailedPayment(paymentOptional.get().getOrderId());
+            paymentRecorder.recordFailure(paymentOptional.get().getOrderId());
             return paymentOptional.get().getOrderId();
         }
 
@@ -150,36 +120,24 @@ public class PaymentServiceImpl implements PaymentService {
 
         Payment payment = paymentOptional.get();
         String captureId = paypalCaptureResponse.getPurchaseUnits().get(0).getPayments().getCaptures().get(0).getId();
-        masterPaymentRepo.markSuccess(payment.getOrderId(), PaymentStatus.SUCCESS, captureId);
-
-        PaymentSuccess paymentSuccess = PaymentSuccess.newBuilder()
-                .setOrderId(orderId)
-                .build();
-
-        MongoSavedEvent mongoSavedEvent = new MongoSavedEvent(
-                this,
-                EcommerceEvent.PAYMENT_SUCCESS.getValue(),
-                paymentSuccess
-        );
-        eventPublisher.publishEvent(mongoSavedEvent);
+        paymentRecorder.recordSuccess(payment.getOrderId(), captureId);
         return orderId;
     }
 
     @Override
-    @Transactional
     public String handleCancelPayment(String token) {
         log.info("(handle paypal cancel)token: {}", token);
         String orderId;
         try {
             PaypalOrderDetail paypalOrderDetail = paypalService.getOrderDetails(token);
             orderId = paypalOrderDetail.getPurchaseUnits().get(0).getCustomId();
-        } catch (PaypalRestTemplateException | IndexOutOfBoundsException | NullPointerException e) {
+        } catch (PaypalRestTemplateException | ResourceAccessException | IndexOutOfBoundsException | NullPointerException e) {
             log.error("(handleCancelPayment)paypal failure for token: {}", token, e);
             Optional<Payment> paymentOptional = masterPaymentRepo.findByToken(token);
             if (paymentOptional.isEmpty()) {
                 return null;
             }
-            handleFailedPayment(paymentOptional.get().getOrderId());
+            paymentRecorder.recordFailure(paymentOptional.get().getOrderId());
             return paymentOptional.get().getOrderId();
         }
 
@@ -189,20 +147,11 @@ public class PaymentServiceImpl implements PaymentService {
             if (paymentOptional.isEmpty()) {
                 return null;
             }
-            handleFailedPayment(paymentOptional.get().getOrderId());
+            paymentRecorder.recordFailure(paymentOptional.get().getOrderId());
             return paymentOptional.get().getOrderId();
         }
 
-        masterPaymentRepo.updateStatus(orderId, PaymentStatus.CANCELED);
-
-        PaymentCanceled paymentCanceled = PaymentCanceled.newBuilder()
-                .setOrderId(orderId)
-                .build();
-
-        MongoSavedEvent mongoSavedEvent = new MongoSavedEvent(
-                this, EcommerceEvent.PAYMENT_CANCELED.getValue(), paymentCanceled);
-
-        eventPublisher.publishEvent(mongoSavedEvent);
+        paymentRecorder.recordCancel(orderId);
         return orderId;
     }
 
@@ -212,20 +161,5 @@ public class PaymentServiceImpl implements PaymentService {
         return slavePaymentRepo.findByOrderId(orderId)
                 .map(PaymentResponse::from)
                 .orElse(null);
-    }
-
-    private void handleFailedPayment(String orderId) {
-        masterPaymentRepo.updateStatus(orderId, PaymentStatus.FAILED);
-
-        PaymentFailed paymentFailed = PaymentFailed.newBuilder()
-                .setOrderId(orderId)
-                .build();
-
-        MongoSavedEvent mongoSavedEvent = new MongoSavedEvent(
-                this,
-                EcommerceEvent.PAYMENT_FAILED.getValue(),
-                paymentFailed
-        );
-        eventPublisher.publishEvent(mongoSavedEvent);
     }
 }

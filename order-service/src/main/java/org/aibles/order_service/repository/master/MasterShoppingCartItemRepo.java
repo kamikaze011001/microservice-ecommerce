@@ -12,4 +12,15 @@ public interface MasterShoppingCartItemRepo extends JpaRepository<ShoppingCartIt
     @Modifying
     @Query("update ShoppingCartItem sci set sci.quantity = :quantity where sci.id = :itemId")
     void updateItem(String itemId, Long quantity);
+
+    // Race-free merge: relies on the uq_cart_product unique key. Concurrent adds
+    // for the same (cart, product) sum quantities instead of inserting duplicates.
+    @Modifying
+    @Query(value = """
+            INSERT INTO shopping_cart_item (id, shopping_cart_id, product_id, quantity, price)
+            VALUES (:id, :cartId, :productId, :quantity, :price) AS new
+            ON DUPLICATE KEY UPDATE quantity = shopping_cart_item.quantity + new.quantity,
+                                    price = new.price
+            """, nativeQuery = true)
+    void upsertItem(String id, String cartId, String productId, Long quantity, Double price);
 }

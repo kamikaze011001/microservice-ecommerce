@@ -22,6 +22,12 @@ spec:
             # value below (smoke|soak|stress) via sed before apply, so this
             # literal never runs as-is.
             - { name: PROFILE, value: "PROFILE_PLACEHOLDER" }
+            # Stress-profile knobs (only read when PROFILE=stress). The
+            # Makefile rewrites these placeholders per run; defaults match
+            # the script's built-ins (120 sessions/s peak, 150 maxVUs, 15m).
+            - { name: STRESS_PEAK_RATE, value: "PEAK_RATE_PLACEHOLDER" }
+            - { name: STRESS_MAX_VUS, value: "MAX_VUS_PLACEHOLDER" }
+            - { name: STRESS_DURATION, value: "DURATION_PLACEHOLDER" }
             # In-cluster gateway Service DNS. The script rewrites the mock's
             # browser-facing api.microecom.local origin back to this, so no
             # hostAliases / ingress ClusterIP is needed (see storefront-flow.js).
@@ -36,9 +42,9 @@ spec:
             - { name: K6_PROMETHEUS_RW_TREND_STATS, value: "p(95),p(99),avg,min,max" }
           resources:
             # Higher memory ceiling than payment-job (256Mi): the stress profile
-            # holds up to maxVUs=150 plus remote-write buffering.
+            # holds up to maxVUs=300 (ceiling-hunt runs) plus remote-write buffering.
             requests: { cpu: "200m", memory: "128Mi" }
-            limits:   { cpu: "1000m", memory: "512Mi" }
+            limits:   { cpu: "1000m", memory: "1Gi" }
           volumeMounts:
             - { name: script, mountPath: /scripts }
       volumes:

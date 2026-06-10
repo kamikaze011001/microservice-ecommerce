@@ -412,6 +412,11 @@ k8s-payment-stress-logs:
 #   make k8s-storefront-smoke   # 50 VU / 3m fast gate
 #   make k8s-storefront-soak    # 30m steady (leak/drift) — read trend on #19665
 #   make k8s-storefront-stress  # open-model arrival-rate ramp to the ceiling
+# Stress knobs (override on the make line for ceiling-hunt runs):
+#   make k8s-storefront-stress PEAK_RATE=200 MAX_VUS=300
+PEAK_RATE ?= 120
+MAX_VUS ?= 150
+STRESS_DUR ?= 15m
 k8s-storefront-smoke:
 	@$(MAKE) --no-print-directory k8s-storefront-run PROFILE=smoke
 k8s-storefront-soak:
@@ -424,7 +429,11 @@ k8s-storefront-run:
 	@kubectl -n apps delete job k6-storefront --ignore-not-found
 	@kubectl -n apps create configmap k6-storefront-script \
 	  --from-file=k8s/apps/base/k6-stress/storefront-flow.js --dry-run=client -o yaml | kubectl apply -f -
-	@sed 's/PROFILE_PLACEHOLDER/$(PROFILE)/' k8s/apps/base/k6-stress/storefront-job.yaml | kubectl apply -f -
+	@sed -e 's/PROFILE_PLACEHOLDER/$(PROFILE)/' \
+	     -e 's/PEAK_RATE_PLACEHOLDER/$(PEAK_RATE)/' \
+	     -e 's/MAX_VUS_PLACEHOLDER/$(MAX_VUS)/' \
+	     -e 's/DURATION_PLACEHOLDER/$(STRESS_DUR)/' \
+	     k8s/apps/base/k6-stress/storefront-job.yaml | kubectl apply -f -
 	@echo "k6 storefront [$(PROFILE)] running. Watch with: make k8s-storefront-logs"
 	@echo "Watch HPA: kubectl -n apps get hpa -w"
 

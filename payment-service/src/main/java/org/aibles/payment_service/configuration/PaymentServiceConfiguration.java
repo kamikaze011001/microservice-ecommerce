@@ -9,6 +9,7 @@ import org.aibles.ecommerce.core_redis.configuration.EnableCoreRedis;
 import org.aibles.ecommerce.core_routing_db.configuration.EnableDatasourceRouting;
 import org.aibles.payment_service.repository.master.MasterPaymentRepo;
 import org.aibles.payment_service.repository.slave.SlavePaymentRepo;
+import org.aibles.payment_service.service.PaymentRecorder;
 import org.aibles.payment_service.service.PaymentService;
 import org.aibles.payment_service.service.PaymentServiceImpl;
 import org.springframework.context.ApplicationEventPublisher;
@@ -30,11 +31,17 @@ import org.springframework.scheduling.annotation.EnableAsync;
 public class PaymentServiceConfiguration {
 
     @Bean
+    public PaymentRecorder paymentRecorder(MasterPaymentRepo masterPaymentRepo,
+                                           ApplicationEventPublisher eventPublisher) {
+        return new PaymentRecorder(masterPaymentRepo, eventPublisher);
+    }
+
+    @Bean
     public PaymentService paymentService(PaypalService paypalService,
                                          PendingOrderCacheRepository pendingOrderCacheRepository,
                                          MasterPaymentRepo masterPaymentRepo,
                                          SlavePaymentRepo slavePaymentRepo,
-                                         ApplicationEventPublisher eventPublisher) {
-        return new PaymentServiceImpl(paypalService, pendingOrderCacheRepository, masterPaymentRepo, slavePaymentRepo, eventPublisher);
+                                         PaymentRecorder paymentRecorder) {
+        return new PaymentServiceImpl(paypalService, pendingOrderCacheRepository, masterPaymentRepo, slavePaymentRepo, paymentRecorder);
     }
 }
