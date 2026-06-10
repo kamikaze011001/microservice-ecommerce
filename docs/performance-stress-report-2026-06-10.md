@@ -98,3 +98,37 @@ Nothing failed before minute ~10. These are capacity-edge defects, not regressio
 | 4 | Watch items (Mongo CPU, primary conns, replica balance) | capacity headroom | cheap insurance before the next, bigger run | config |
 
 After 1–3, re-run the same 15-min/150-VU profile and push the ramp until the *next* knee appears.
+
+---
+
+## Fixes applied + re-run results (2026-06-10, second run 13:10–13:25 UTC)
+
+All three problems were fixed on branch `fix/stress-20260610-cart-payment-replication` and verified with an identical 15-min/150-VU re-run. Plan: `docs/superpowers/plans/2026-06-10-stress-fixes-cart-payment-replication.md`.
+
+**What changed:**
+
+| Problem | Fix |
+|---|---|
+| P1 cart race | Dedup migration (`V2__shopping_cart_item_dedup_unique.sql`, quantities summed into keeper row) + unique key `uq_cart_product (shopping_cart_id, product_id)` + atomic `INSERT ... ON DUPLICATE KEY UPDATE` on the master (`MasterShoppingCartItemRepo.upsertItem`); slave read removed from the write path; `SlaveShoppingCartItemRepo` deleted |
+| P2 payment JTA cap | Call-then-record: PayPal HTTP leaves the transaction entirely; DB writes + CDC events moved to a new `PaymentRecorder` bean with short `@Transactional` methods; guarded by a reflection test (`TransactionBoundaryTest`). Plus PayPal RestTemplate timeouts (3s connect / 10s read, timeouts now recorded as `PaymentFailed`) and Atomikos `max_actives` 50→200 as headroom |
+| P3 replication lag | Primary: `binlog-transaction-dependency-tracking=WRITESET` + XXHASH64 + group-commit batching, `max_connections` 151→300. Replicas: `replica-parallel-workers` 4→8. Mongo CPU limit 800m→1500m (saga CDC path) |
+
+**Re-run vs baseline:**
+
+| Metric | Baseline | Re-run | Target |
+|---|---|---|---|
+| Checks passing | 99.75% (462 failed) | **100.00%** (190,457/190,457) | 100% ✅ |
+| `http_req_failed` | 0.20% (387) | **0.00% (0)** | — ✅ |
+| `cart 200` failures | 279 (`NonUniqueResultException`) | **0** (0 exceptions, both pods) | 0 ✅ |
+| `payment 200` / `has links` failures | 75 / 75 (`maxActives=50` saturation) | **0 / 0** (0 max-actives errors) | 0 ✅ |
+| `flow settled` failures | 33 | **0** | 0 ✅ |
+| Payment p95 at peak | 957ms | **152ms** (`create_payment`, k6) | <500ms ✅ |
+| Replica lag (max over run) | 15s | **1s** | ≤2s ✅ |
+| Overall p95 / max | 149ms / 3.06s | **96ms / 2.11s** | — |
+| Dropped iterations | 202 | 92 | — |
+
+Functional smokes also passed before the run: cart double-add merged into one line (quantity summed, third add no 500); one full order→pay→approve round via mock-paypal settled the order at `COMPLETED` with the success event published from `PaymentRecorder`.
+
+The only ERROR lines in payment-service during the run were two deliberate `decision=fail` k6 flows (mock-paypal 422 on capture → `PaymentFailed` path) — expected business outcomes, handled correctly.
+
+**Still open (carried forward):** replica round-robin imbalance, no lag alerting (panel exists, no alert stack), gateway GC re-check at the next, higher knee. The system now passes cleanly at 211 req/s — the next stress run should push the ramp until a new knee appears.
