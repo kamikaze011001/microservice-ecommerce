@@ -80,6 +80,14 @@ spec:
             - --gtid-mode=ON
             - --enforce-gtid-consistency=ON
             - --default-authentication-plugin=mysql_native_password
+            # Parity with docker/mysql.yml. WRITESET dependency tracking is what
+            # lets the replicas' LOGICAL_CLOCK parallel workers actually apply
+            # transactions concurrently (15s lag at peak, stress 2026-06-10).
+            - --max-connections=300
+            - --binlog-transaction-dependency-tracking=WRITESET
+            - --transaction-write-set-extraction=XXHASH64
+            - --binlog-group-commit-sync-delay=1000
+            - --binlog-group-commit-sync-no-delay-count=10
           volumeMounts:
             - name: data
               mountPath: /var/lib/mysql

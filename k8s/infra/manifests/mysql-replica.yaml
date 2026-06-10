@@ -108,7 +108,7 @@ spec:
             - --enforce-gtid-consistency=ON
             - --default-authentication-plugin=mysql_native_password
             - --read-only=ON
-            - --replica-parallel-workers=4
+            - --replica-parallel-workers=8
             - --replica-parallel-type=LOGICAL_CLOCK
             - --replica-preserve-commit-order=ON
           volumeMounts:
