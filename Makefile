@@ -50,6 +50,9 @@ help:
 	@echo "  make k8s-storefront-stress   — production funnel, open-model stress ramp"
 	@echo "  make k8s-storefront-logs     — tail k6 storefront output"
 	@echo "  make k9s [ENV=local|eks]     — open k9s monitor on the chosen cluster"
+	@echo ""
+	@echo "AWS (ephemeral EKS):"
+	@echo "  make aws-bootstrap    — one-time: TF state bucket + lock table + budget alarm"
 
 # ============================================================================
 # First-run / daily loop
@@ -480,3 +483,13 @@ k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build-reuse k8s-seed k8s-seed-images
 # Use k8s-apps-down for a softer reset (keeps infra/data).
 k8s-down: k8s-apps-down k8s-cluster-down
 	@echo "==> k8s cluster destroyed"
+
+# ============================================================================
+# AWS (ephemeral EKS) — see docs/superpowers/specs/2026-06-10-aws-deployment-design.md
+# ============================================================================
+.PHONY: aws-bootstrap
+
+# One-time, persistent stack: TF remote-state bucket + DynamoDB lock + budget
+# alarm. Idempotent. Requires aws/bootstrap/terraform.tfvars (budget_email).
+aws-bootstrap:
+	@scripts/aws/bootstrap.sh

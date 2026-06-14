@@ -1,0 +1,7 @@
+# Never commit state, lock metadata, provider plugins, or real secrets
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log

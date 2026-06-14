@@ -10,3 +10,10 @@ target
 .claude/scheduled_tasks.lock
 node_modules/
 logs/
+
+# Terraform (AWS deploy) — state and secrets stay local
+aws/**/.terraform/
+aws/**/*.tfstate
+aws/**/*.tfstate.*
+aws/**/*.tfvars
+!aws/**/*.tfvars.example
