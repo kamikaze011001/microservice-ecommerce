@@ -53,6 +53,9 @@ help:
 	@echo ""
 	@echo "AWS (ephemeral EKS):"
 	@echo "  make aws-bootstrap    — one-time: TF state bucket + lock table + budget alarm"
+	@echo "  make aws-up           — apply aws/main (VPC+EKS+ALB) + wire kubectl"
+	@echo "  make aws-down         — delete ingress, wait, then terraform destroy"
+	@echo "  make aws-leak-check   — list still-billing resources after teardown"
 
 # ============================================================================
 # First-run / daily loop
@@ -487,9 +490,23 @@ k8s-down: k8s-apps-down k8s-cluster-down
 # ============================================================================
 # AWS (ephemeral EKS) — see docs/superpowers/specs/2026-06-10-aws-deployment-design.md
 # ============================================================================
-.PHONY: aws-bootstrap
+.PHONY: aws-bootstrap aws-up aws-down aws-leak-check
 
 # One-time, persistent stack: TF remote-state bucket + DynamoDB lock + budget
 # alarm. Idempotent. Requires aws/bootstrap/terraform.tfvars (budget_email).
 aws-bootstrap:
 	@scripts/aws/bootstrap.sh
+
+# Bring up the ephemeral environment (aws/main: VPC + EKS + ALB controller) and
+# point kubectl at the cluster. ~15-20 min on a cold apply.
+aws-up:
+	@scripts/aws/up.sh
+
+# Tear down safely: delete the Ingress so the controller removes the ALB, wait,
+# then terraform destroy. Always run before ending a session.
+aws-down:
+	@scripts/aws/down.sh
+
+# Confirm nothing is still billing after a teardown (ALBs, NAT, EIPs, EBS, EKS).
+aws-leak-check:
+	@scripts/aws/leak-check.sh
