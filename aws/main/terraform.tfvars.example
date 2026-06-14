@@ -1,0 +1,5 @@
+# All Phase 1 defaults are sane; copy to terraform.tfvars (gitignored) only if you
+# want to override. Examples:
+# node_instance_types = ["t4g.xlarge"]
+# node_desired_size   = 3
+# node_min_size       = 3
