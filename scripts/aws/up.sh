@@ -11,7 +11,8 @@ terraform -chdir="$DIR" apply -auto-approve
 
 aws eks update-kubeconfig \
   --name "$(terraform -chdir="$DIR" output -raw cluster_name)" \
-  --region "$(terraform -chdir="$DIR" output -raw region)"
+  --region "$(terraform -chdir="$DIR" output -raw region)" \
+  --alias microecom-eks
 
 echo "✅ up. kubectl is pointed at the cluster."
 echo "   Deploy the smoke target with: kubectl apply -f aws/manifests/hello-nginx.yaml"

@@ -50,6 +50,7 @@ help:
 	@echo "  make k8s-storefront-stress   — production funnel, open-model stress ramp"
 	@echo "  make k8s-storefront-logs     — tail k6 storefront output"
 	@echo "  make k9s [ENV=local|eks]     — open k9s monitor on the chosen cluster"
+	@echo "  make k8s-use [ENV=local|eks] — switch kubectl context (k8s-ctx prints current)"
 	@echo ""
 	@echo "AWS (ephemeral EKS):"
 	@echo "  make aws-bootstrap    — one-time: TF state bucket + lock table + budget alarm"
@@ -510,3 +511,16 @@ aws-down:
 # Confirm nothing is still billing after a teardown (ALBs, NAT, EIPs, EBS, EKS).
 aws-leak-check:
 	@scripts/aws/leak-check.sh
+
+.PHONY: k8s-use k8s-ctx
+
+k8s-ctx:
+	@kubectl config current-context
+
+k8s-use:
+	@case "$(ENV)" in \
+	""|local) ctx=kind-microecom ;; \
+	eks)      ctx=microecom-eks ;; \
+	*) echo "Unknown ENV '$(ENV)' — use ENV=local or ENV=eks"; exit 1 ;; \
+	esac; \
+	kubectl config use-context "$$ctx" && echo "==> now on $$ctx"
