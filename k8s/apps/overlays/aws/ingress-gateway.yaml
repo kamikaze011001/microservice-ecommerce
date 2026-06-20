@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gateway-alb
+  namespace: apps
+  labels: { app: gateway }
+  annotations:
+    # Public-facing ALB (lives in the public subnets tagged kubernetes.io/role/elb).
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    # target-type: ip → the ALB registers pod IPs directly as targets. Works
+    # because the gateway pods sit in the private subnets tagged
+    # kubernetes.io/role/internal-elb (Phase 1). instance mode would instead
+    # need a NodePort Service.
+    alb.ingress.kubernetes.io/target-type: ip
+    # Health-check the Spring Boot MANAGEMENT port (19093), not the traffic port
+    # (6868). Actuator lives only on the management port; a check against 6868
+    # would hit a gateway route and 404. /readiness is the same signal the pod's
+    # readinessProbe uses, so the ALB only sends traffic once the JVM is ready.
+    alb.ingress.kubernetes.io/healthcheck-port: "19093"
+    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health/readiness
+spec:
+  ingressClassName: alb
+  rules:
+    # No host: match every Host header. Local uses host api.microecom.local +
+    # nginx; on EKS we hit the raw *.elb.amazonaws.com DNS, so a host rule would
+    # 404. Phase 3 can add a real hostname once DNS/ACM are in place.
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  name: http   # Service port 6868, named "http"

@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# ── Phase 2: gateway ONLY ────────────────────────────────────────────────────
+# This overlay proves the image→pod→ALB path with the single service that has no
+# boot dependency on Vault/DB/Redis/Kafka (gateway uses optional:vault://). The
+# full overlay (Vault AppRole, replicas, HPA, PDB, zone affinity — see README.md)
+# lands in Phase 3.
+resources:
+  - namespace.yaml          # base deploys into `apps` but doesn't create it
+  - ../../base/gateway      # deployment + service + rbac + hpa (+ nginx ingress, deleted below)
+  - ingress-gateway.yaml    # ALB replacement for the nginx ingress
+
+# ── Swap the dev registry for ECR ────────────────────────────────────────────
+# The base image is `localhost:5001/gateway:dev`. The images[].name MUST match
+# the base WITHOUT its tag, or the transformer silently no-ops and the pod tries
+# to pull from localhost:5001 on the EKS node (ImagePullBackOff).
+images:
+  - name: localhost:5001/gateway
+    newName: 583178372344.dkr.ecr.ap-southeast-1.amazonaws.com/gateway
+    newTag: dev
+
+# ── Drop the base nginx Ingress ──────────────────────────────────────────────
+# base/gateway ships a host-based Ingress with ingressClassName: nginx. EKS has
+# no nginx IngressClass, and the ALB controller's validating webhook
+# (vingress.elbv2.k8s.aws) rejects any Ingress whose class isn't found — so
+# `kubectl apply -k` would fail outright on it. Delete it here; the ALB
+# replacement is ingress-gateway.yaml (named gateway-alb to avoid an id clash at
+# kustomize accumulation time).
+patches:
+  - path: patch-gateway-vault-off.yaml
+  - target:
+      kind: Ingress
+      name: gateway
+      namespace: apps
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: gateway
+        namespace: apps
