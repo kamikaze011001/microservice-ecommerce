@@ -1,0 +1,73 @@
+# k8s/infra/overlays/aws/storageclass-gp3.yaml  —  [CHECKPOINT — HUMAN ✍️]  (Phase 2, Task 4)
+#
+# WHY THIS FILE EXISTS
+# Task 3 installed the EBS CSI *driver* (the thing that can create disks). But a
+# driver alone provisions nothing — Kubernetes needs a StorageClass to say
+# "when a PVC asks for storage, use THIS driver with THESE settings." This file
+# is that StorageClass.
+#
+# THE KEY DETAIL — why it must be the DEFAULT class:
+# Our infra manifests don't name a StorageClass. Proof:
+#   - k8s/infra/manifests/kafka.yaml   volumeClaimTemplates -> 10Gi, no storageClassName
+#   - k8s/infra/manifests/mongodb.yaml volumeClaimTemplates ->  4Gi, no storageClassName
+# A PVC with no storageClassName binds to whichever class carries the
+# "default" annotation. So this gp3 class MUST be marked default, or every one
+# of those PVCs sits in Pending forever. (We keep the manifests portable — they
+# carry no AWS-specific class name; the cluster's default decides the backend.)
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# [HUMAN ✍️]  Write a StorageClass with these properties:
+#
+#   apiVersion: storage.k8s.io/v1
+#   kind: StorageClass
+#   metadata:
+#     name: gp3
+#     annotations:
+#       storageclass.kubernetes.io/is-default-class: "true"   # <- the default flag
+#   provisioner: ebs.csi.aws.com            # the driver Task 3 installed
+#   volumeBindingMode: WaitForFirstConsumer # <- DON'T provision until a pod is
+#                                           #    scheduled, so the EBS volume is
+#                                           #    created in the SAME AZ as the pod
+#   allowVolumeExpansion: true              # let PVCs grow later without recreate
+#   parameters:
+#     type: gp3                             # gp3 > gp2: cheaper, baseline 3000 IOPS
+#     encrypted: "true"                     # encrypt at rest (free, good hygiene)
+#
+# 🧨 GOTCHA — the pre-existing default class:
+# EKS ships a `gp2` StorageClass already marked default. If you create gp3 ALSO
+# marked default, you have TWO defaults and Kubernetes picks arbitrarily. After
+# you apply this file, demote gp2:
+#
+#   kubectl patch storageclass gp2 \
+#     -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+#
+# (Claude will fold that patch into infra-up.sh in Task 5 so it's not a manual
+#  step you can forget — but know WHY it's there.)
+#
+# Docs:
+#  - StorageClass:     https://kubernetes.io/docs/concepts/storage/storage-classes/
+#  - EBS CSI params:   https://github.com/kubernetes-sigs/aws-ebs-csi-driver/blob/master/docs/parameters.md
+#
+# 🎓 Interview prep — be ready to explain:
+#   - WaitForFirstConsumer vs Immediate: Immediate provisions the disk the moment
+#     the PVC is created — but in a multi-AZ cluster the disk might land in a
+#     different AZ than the pod, and an EBS volume CANNOT cross AZs, so the pod
+#     never schedules. WaitForFirstConsumer delays provisioning until the
+#     scheduler picks a node, then creates the disk in that node's AZ.
+#   - gp3 vs gp2: gp3 decouples IOPS/throughput from size and is ~20% cheaper per GB.
+#   - Why "default class" is a cluster-wide contract, not a per-PVC setting.
+#
+# Write the StorageClass below this line, then tell Claude "review".
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  type: gp3
+  encrypted: "true"
