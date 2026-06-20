@@ -60,6 +60,26 @@ module "eks" {
       min_size       = var.node_min_size
       max_size       = var.node_max_size
       desired_size   = var.node_desired_size
+
+      # [CHECKPOINT — HUMAN ✍️]  Pin this node group to a SINGLE AZ.
+      #
+      # WHY: EBS volumes are AZ-locked. Without this line the node group's ASG
+      # spans both private subnets (both AZs) and is free to rebalance all
+      # capacity into one AZ after a SPOT reclaim — stranding the stateful EBS
+      # volumes (kafka/mongo/vm) in an AZ with no node. Pin nodes + volumes to
+      # the same AZ and they always co-locate.
+      #
+      # HOW: override the cluster-level subnet_ids for just THIS group with one
+      # private subnet. module.vpc.private_subnets is a list ordered by AZ, so
+      # index [0] = the first AZ (ap-southeast-1a). Write a `subnet_ids = [...]`
+      # line that selects a single element of module.vpc.private_subnets.
+      #
+      # TRADE-OFF to note: this kills AZ redundancy for the node group. Fine for
+      # a single-replica sandbox tier; prod would run one node group per AZ.
+      # Docs: registry.terraform.io/modules/terraform-aws-modules/eks/aws/latest
+      #
+      # subnet_ids = [ ... ]   ← write this line, then tell Claude "review"
+      subnet_ids = [module.vpc.private_subnets[0]]
     }
   }
 }

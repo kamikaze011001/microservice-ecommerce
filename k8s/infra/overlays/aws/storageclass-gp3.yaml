@@ -71,3 +71,11 @@ allowVolumeExpansion: true
 parameters:
   type: gp3
   encrypted: "true"
+  # Format xfs, not the EBS CSI default (ext4). ext4 creates a `lost+found`
+  # directory at the filesystem root; Kafka scans its log.dir and crashes on any
+  # non-topic-partition entry ("Found directory .../lost+found"). xfs has no
+  # lost+found, so Kafka (and Mongo — xfs is MongoDB's recommended FS) start
+  # clean. This is a filesystem concern, so it lives here in the AWS storage
+  # layer — the portable app manifests (kafka.yaml) stay untouched, and kind is
+  # unaffected (it uses its own local-path provisioner, not this class).
+  csi.storage.k8s.io/fstype: xfs

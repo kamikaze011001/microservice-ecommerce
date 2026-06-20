@@ -72,10 +72,18 @@ kubectl apply -f "$MANIFESTS/kafka-connect.yaml"
 kubectl -n infra rollout status deployment/kafka-connect --timeout=10m
 
 # ── Observability: VictoriaMetrics single + Grafana ──────────────────────────
+# The values files enable an nginx-class Ingress (vm/grafana.microecom.local) for
+# local kind + ingress-nginx. On EKS there is NO ingress-nginx, and the AWS Load
+# Balancer Controller's validating webhook rejects any Ingress whose class isn't
+# found ("IngressClass nginx not found"). Phase 2 reaches these via port-forward,
+# so disable both ingresses here via --set — the shared values files stay
+# untouched and local behavior is unchanged. (Same portability principle as the
+# xfs StorageClass fix: AWS-specific deltas live in the AWS path, not the base.)
 echo "▶ installing VictoriaMetrics (single)"
 helm upgrade --install vmsingle vm/victoria-metrics-single \
   --namespace monitoring --version 0.39.0 \
   -f k8s/infra/values/victoria-metrics.yaml \
+  --set server.ingress.enabled=false \
   --wait --timeout 5m
 
 # Custom dashboards (JVM/Kafka/MySQL) → ConfigMap that Grafana mounts as a volume,
@@ -91,6 +99,7 @@ echo "▶ installing Grafana"
 helm upgrade --install grafana grafana/grafana \
   --namespace monitoring --version 10.5.15 \
   -f k8s/infra/values/grafana.yaml \
+  --set ingress.enabled=false \
   --wait --timeout 5m
 
 # ── Register the Mongo CDC connector (best-effort) ───────────────────────────
