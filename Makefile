@@ -56,6 +56,7 @@ help:
 	@echo "  make aws-bootstrap    — one-time: TF state bucket + lock table + budget alarm"
 	@echo "  make aws-up           — apply aws/main (VPC+EKS+ALB) + wire kubectl"
 	@echo "  make aws-push [svc=…] — build arm64 images, push to ECR (default: gateway)"
+	@echo "  make aws-infra-up     — deploy infra subset (Kafka/Mongo/observability) on EBS"
 	@echo "  make aws-down         — delete ingress, wait, then terraform destroy"
 	@echo "  make aws-leak-check   — list still-billing resources after teardown"
 
@@ -492,7 +493,7 @@ k8s-down: k8s-apps-down k8s-cluster-down
 # ============================================================================
 # AWS (ephemeral EKS) — see docs/superpowers/specs/2026-06-10-aws-deployment-design.md
 # ============================================================================
-.PHONY: aws-bootstrap aws-up aws-push aws-down aws-leak-check
+.PHONY: aws-bootstrap aws-up aws-push aws-infra-up aws-down aws-leak-check
 
 # One-time, persistent stack: TF remote-state bucket + DynamoDB lock + budget
 # alarm. Idempotent. Requires aws/bootstrap/terraform.tfvars (budget_email).
@@ -513,6 +514,11 @@ aws-down:
 # `svc=all` pushes the whole catalog, `svc=<name>` a single service.
 aws-push:
 	@scripts/aws/push-images.sh $(svc)
+
+# Deploy the Phase 2 self-hosted infra subset (Kafka/SR/Connect/Mongo/VM/Grafana)
+# onto the EKS cluster. PVCs bind to gp3 → real EBS volumes. Run after `make aws-up`.
+aws-infra-up:
+	@scripts/aws/infra-up.sh
 
 # Confirm nothing is still billing after a teardown (ALBs, NAT, EIPs, EBS, EKS).
 aws-leak-check:
