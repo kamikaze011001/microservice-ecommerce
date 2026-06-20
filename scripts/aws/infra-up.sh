@@ -39,6 +39,39 @@ helm repo add vm https://victoriametrics.github.io/helm-charts/ 2>/dev/null || t
 helm repo add grafana https://grafana.github.io/helm-charts 2>/dev/null || true
 helm repo update vm grafana
 
+# ── External Secrets Operator (ESO) + ClusterSecretStore ─────────────────────
+# ESO materializes AWS Secrets Manager secrets into native k8s Secrets, which the
+# JVM apps consume via configtree (Phase 3). The controller's SA uses IRSA — no
+# static AWS keys. installCRDs=true installs the ExternalSecret/ClusterSecretStore
+# CRDs. Ordering is load-bearing: the SA must exist BEFORE the Helm install,
+# because the chart runs with serviceAccount.create=false and a pod whose
+# serviceAccountName doesn't exist is rejected by SA admission — `helm --wait`
+# would then deadlock until timeout. So: stamp+apply the SA, THEN helm (pod
+# schedules with the IRSA-annotated SA from creation, no restart needed), THEN
+# apply the ClusterSecretStore (which needs the CRD the chart just installed).
+echo "▶ installing External Secrets Operator"
+helm repo add external-secrets https://charts.external-secrets.io 2>/dev/null || true
+helm repo update external-secrets
+
+# 1. SA first, with the real IRSA role ARN from terraform (Task 2 must be applied).
+ESO_ROLE_ARN="$(cd aws/main && terraform output -raw eso_irsa_role_arn)" || {
+  echo "ERROR: 'terraform output eso_irsa_role_arn' failed — run Task 2 first (cd aws/main && terraform apply)" >&2
+  exit 1
+}
+sed "s|PLACEHOLDER_ESO_ROLE_ARN|${ESO_ROLE_ARN}|" \
+  "$MANIFESTS/external-secrets-sa.yaml" | kubectl apply -f -
+
+# 2. Helm install (chart uses our pre-created SA; --wait blocks until controller is up).
+helm upgrade --install external-secrets external-secrets/external-secrets \
+  --namespace infra --version 0.10.4 \
+  --set installCRDs=true \
+  --set serviceAccount.create=false \
+  --set serviceAccount.name=external-secrets \
+  --wait --timeout 5m
+
+# 3. ClusterSecretStore last (needs the CRD the chart installed in step 2).
+kubectl apply -f "$MANIFESTS/external-secrets-store.yaml"
+
 # ── MongoDB keyfile Secret (auth + replica set) ──────────────────────────────
 # Create only if missing — re-runs must NOT rotate it, or the already-initialized
 # single-member replica set breaks. (Same rule as install.sh.)
