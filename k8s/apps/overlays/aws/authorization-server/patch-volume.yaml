@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authorization-server
+  namespace: apps
+spec:
+  template:
+    spec:
+      containers:
+        - name: authorization-server
+          volumeMounts:
+            - { name: app-config, mountPath: /etc/app-config, readOnly: true }
+      volumes:
+        - name: app-config
+          secret:
+            secretName: authorization-server-config

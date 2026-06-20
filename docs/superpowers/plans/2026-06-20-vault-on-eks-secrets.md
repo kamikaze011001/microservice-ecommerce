@@ -727,7 +727,7 @@ Create `k8s/apps/overlays/aws/authorization-server/kustomization.yaml`:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../base/authorization-server
+  - ../../../base/authorization-server   # 3 levels up: overlays/aws/<svc>/ → apps/
   - externalsecret.yaml
 components:
   - ../components/spring-secrets
@@ -843,7 +843,7 @@ Create `k8s/apps/overlays/aws/gateway/kustomization.yaml`:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../base/gateway
+  - ../../../base/gateway   # 3 levels up: overlays/aws/gateway/ → apps/
   - externalsecret.yaml
 components:
   - ../components/spring-secrets

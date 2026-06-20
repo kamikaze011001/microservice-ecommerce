@@ -10,6 +10,7 @@ resources:
   - namespace.yaml          # base deploys into `apps` but doesn't create it
   - ../../base/gateway      # deployment + service + rbac + hpa (+ nginx ingress, deleted below)
   - ingress-gateway.yaml    # ALB replacement for the nginx ingress
+  - authorization-server    # its own kustomization dir (ESO configtree mechanism proof)
 
 # ── Swap the dev registry for ECR ────────────────────────────────────────────
 # The base image is `localhost:5001/gateway:dev`. The images[].name MUST match
