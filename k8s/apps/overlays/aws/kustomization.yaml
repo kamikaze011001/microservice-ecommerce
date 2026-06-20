@@ -8,4 +8,11 @@ resources:
   - namespace.yaml
   - gateway                 # ESO pattern (was a top-level vault-off patch in Phase 2)
   - authorization-server
+  - product-service
+  - inventory-service
+  - order-service
+  - orchestrator-service
+  - payment-service
+  - bff-service
+  - mock-paypal-service
   - ingress-gateway.yaml    # the ALB Ingress replacement (unchanged)
