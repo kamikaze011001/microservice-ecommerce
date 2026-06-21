@@ -493,7 +493,7 @@ k8s-down: k8s-apps-down k8s-cluster-down
 # ============================================================================
 # AWS (ephemeral EKS) — see docs/superpowers/specs/2026-06-10-aws-deployment-design.md
 # ============================================================================
-.PHONY: aws-bootstrap aws-up aws-push aws-infra-up aws-down aws-leak-check
+.PHONY: aws-bootstrap aws-up aws-push aws-infra-up aws-down aws-leak-check aws-all
 
 # One-time, persistent stack: TF remote-state bucket + DynamoDB lock + budget
 # alarm. Idempotent. Requires aws/bootstrap/terraform.tfvars (budget_email).
@@ -523,6 +523,13 @@ aws-infra-up:
 # Confirm nothing is still billing after a teardown (ALBs, NAT, EIPs, EBS, EKS).
 aws-leak-check:
 	@scripts/aws/leak-check.sh
+
+# Full from-scratch bring-up: cluster+RDS → images → infra → seed-mongo →
+# secrets → apps(+gate) → seed-rds → seed-inventory. The cloud twin of
+# `make k8s-bootstrap`. Every step bills AWS — run it yourself. Default reuses
+# ECR images (they survive aws-down); PUSH=all rebuilds after a code change.
+aws-all:
+	@scripts/aws/up-all.sh
 
 .PHONY: k8s-use k8s-ctx
 
