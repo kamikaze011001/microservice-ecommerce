@@ -65,10 +65,10 @@ DNS=svc.cluster.local
 # access-key is the sentinel that flips S3Config to DefaultCredentialsProvider
 # (IRSA web-identity) instead of static keys — see core-s3 S3Config.java. The
 # bucket + public-base-url come from terraform so they can't drift.
-put core-s3 "$(jq -n --arg bucket "$S3_BUCKET" --arg base "$S3_BASE_URL" '{
+put core-s3 "$(jq -n --arg bucket "$S3_BUCKET" --arg base "$S3_BASE_URL" --arg region "$REGION" '{
   "s3.endpoint":"",
   "s3.public-endpoint":"",
-  "s3.region":"ap-southeast-1","s3.bucket":$bucket,
+  "s3.region":$region,"s3.bucket":$bucket,
   "s3.access-key":"","s3.secret-key":"","s3.path-style":"false",
   "s3.public-base-url":$base,
   "s3.presign-ttl":"PT5M","s3.max-upload-size":"5242880",
