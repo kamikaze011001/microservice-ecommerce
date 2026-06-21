@@ -32,7 +32,21 @@
 #       security_groups = [module.eks.node_security_group_id]   # NOT a cidr_block
 #   - egress all: from/to 0, protocol "-1", cidr_blocks = ["0.0.0.0/0"]
 # TODO(HUMAN): write resource "aws_security_group" "redis" here
-#
+resource "aws_security_group" "redis" {
+  vpc_id = module.vpc.vpc_id
+  ingress {
+    protocol        = "tcp"
+    from_port       = 6379
+    to_port         = 6379
+    security_groups = [module.eks.node_security_group_id]
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
 # ─────────────────────────────────────────────────────────────────────────────
 # PART B — [HUMAN ✍️]  the cache subnet group   resource "aws_elasticache_subnet_group" "main"
 #   - name        = "${var.project}-redis"
@@ -40,7 +54,10 @@
 #       (Nodes are pinned to private_subnets[0]; ElastiCache is NOT AZ-locked like
 #        EBS, so cross-AZ reach from the node to the cache is fine.)
 # TODO(HUMAN): write resource "aws_elasticache_subnet_group" "main" here
-#
+resource "aws_elasticache_subnet_group" "main" {
+  name       = "${var.project}-redis"
+  subnet_ids = module.vpc.private_subnets
+}
 # ─────────────────────────────────────────────────────────────────────────────
 # PART C — [HUMAN ✍️]  the Redis node   resource "aws_elasticache_replication_group" "redis"
 #   Requirements:
@@ -61,7 +78,20 @@
 #     becomes a one-number change and the endpoint the app reads never moves.
 #   Docs: https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/elasticache_replication_group
 # TODO(HUMAN): write resource "aws_elasticache_replication_group" "redis" here
-#
+resource "aws_elasticache_replication_group" "redis" {
+  replication_group_id       = "${var.project}-redis"
+  description                = "microecom cache (Phase 4b, single node)"
+  engine                     = "redis"
+  engine_version             = "7.1"
+  node_type                  = "cache.t4g.micro"
+  num_cache_clusters         = 1
+  automatic_failover_enabled = false
+  transit_encryption_enabled = false
+  port                       = 6379
+  parameter_group_name       = "default.redis7"
+  subnet_group_name          = aws_elasticache_subnet_group.main.name
+  security_group_ids         = [aws_security_group.redis.id]
+}
 # ─────────────────────────────────────────────────────────────────────────────
 # PART D — [HUMAN ✍️]  output (seed-secrets.sh reads this)
 #   output "redis_primary_endpoint" {
@@ -81,3 +111,6 @@
 #
 # Write PART A–D above the TODO markers, then tell Claude "review".
 # ─────────────────────────────────────────────────────────────────────────────
+output "redis_primary_endpoint" {
+  value = aws_elasticache_replication_group.redis.primary_endpoint_address
+}
