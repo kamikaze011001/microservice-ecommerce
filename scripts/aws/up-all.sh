@@ -44,8 +44,10 @@ banner "Step 0/9 · preflight (credentials + tfvars)"
 load_env_file() {  # load_env_file <path>  — export its KEY=VALUE pairs if present
   local f="$1"
   [ -f "$f" ] || return 0
-  set -a; # shellcheck disable=SC1090
-  . "$f"; set +a
+  # Pair set -a / set +a so a parse failure inside the file can't strand auto-export
+  # on for the rest of the script (which would leak later vars into child envs).
+  # shellcheck disable=SC1090
+  { set -a; . "$f"; set +a; } || { set +a; return 1; }
 }
 load_env_file "$ROOT/docker/.env"
 load_env_file "$ROOT/k8s/.env"
@@ -54,8 +56,10 @@ load_env_file "$ROOT/k8s/.env"
 #    the AWS JWK is byte-identical (the gateway caches JWKS by kid). An exported
 #    APPLICATION_JWK wins if set.
 if [ -z "${APPLICATION_JWK:-}" ]; then
+  # 2>/dev/null + || true so a missing/renamed seed.sh yields an empty var and the
+  # friendly `need APPLICATION_JWK` below fires — not a raw sed error under set -e.
   APPLICATION_JWK="$(sed -n "s/^[[:space:]]*application\.jwk='\(.*\)'[[:space:]]*\\\\\{0,1\}[[:space:]]*$/\1/p" \
-    "$ROOT/k8s/infra/jobs/03-vault-seed/seed.sh" | head -n1)"
+    "$ROOT/k8s/infra/jobs/03-vault-seed/seed.sh" 2>/dev/null | head -n1 || true)"
   export APPLICATION_JWK
 fi
 
@@ -104,13 +108,28 @@ banner "Step 5/9 · seed Secrets Manager (RDS JDBC URLs + app config)"
 
 # ── Step 6 — apps + the one hard sequencing gate ──────────────────────────────
 banner "Step 6/9 · deploy apps overlay"
+# Guard the only kubectl this orchestrator issues directly (the leaf scripts at
+# steps 3-5/7-8 carry their own guard) so a stray context can't apply onto kind.
+CTX="$(kubectl config current-context)"
+if [[ "$CTX" != "microecom-eks" ]]; then
+  echo "✋ kubectl context is '$CTX', not 'microecom-eks'. Aborting before apply." >&2
+  echo "   Run: aws eks update-kubeconfig --name microecom-eks --region ap-southeast-1 --alias microecom-eks" >&2
+  exit 1
+fi
 kubectl apply -k "$ROOT/k8s/apps/overlays/aws"
 
 # Both gate a post-apps SQL seed: auth-server's ddl-auto creates the account
-# schema (step 7), inventory-service's creates the stock tables (step 8).
+# schema (step 7), inventory-service's creates the stock tables (step 8). On
+# timeout, surface state instead of dying on kubectl's bare "timed out" (these
+# are the two hardest deps to debug — ExternalSecret/DB/IRSA crashloops).
 echo "▶ waiting for authorization-server + inventory-service (they create the RDS schema) ..."
-kubectl -n apps rollout status deploy/authorization-server --timeout=600s
-kubectl -n apps rollout status deploy/inventory-service --timeout=600s
+for d in authorization-server inventory-service; do
+  kubectl -n apps rollout status "deploy/$d" --timeout=600s \
+    || { echo "ERROR: $d failed to roll out. Recent state:" >&2
+         kubectl -n apps describe "deploy/$d" 2>&1 | tail -30 >&2
+         echo "  Dig in: kubectl -n apps logs deploy/$d --previous" >&2
+         exit 1; }
+done
 echo "▶ waiting for the rest of the apps (best-effort) ..."
 for d in gateway product-service order-service orchestrator-service \
          payment-service bff-service mock-paypal-service; do
