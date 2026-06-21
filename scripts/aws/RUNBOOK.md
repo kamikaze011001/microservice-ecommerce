@@ -5,7 +5,7 @@ and the failure points; or just run `make aws-all` and let the orchestrator do i
 
 ## What persists vs. what rebuilds across `aws-down`
 
-`aws-down` destroys **`aws/main` only** (VPC, EKS, ALB, RDS). The separate
+`aws-down` destroys **`aws/main` only** (VPC, EKS, ALB, RDS, ElastiCache). The separate
 **`aws/bootstrap`** stack — ECR images, Terraform state bucket, DynamoDB lock —
 **survives**. So a from-scratch re-run reuses your pushed images unless you
 changed code (then `PUSH=all`).
@@ -26,6 +26,7 @@ become readable as Terraform outputs only after this apply (~15–20 min).
 ```bash
 kubectl get nodes                                   # nodes Ready
 terraform -chdir=aws/main output rds_primary_endpoint
+terraform -chdir=aws/main output redis_primary_endpoint
 ```
 
 ### 2. Images — `make aws-push svc=all` (skip if ECR is warm)
@@ -52,8 +53,9 @@ kubectl -n bootstrap logs job/mongo-seed | tail -5  # "...counts ... OK"
 ```
 
 ### 5. Secrets — `scripts/aws/seed-secrets.sh`
-**Why before apps:** pushes the RDS JDBC URLs (from step-1 outputs) + app config
-into Secrets Manager; the apps' ExternalSecrets sync from here. Reads PayPal/mail
+**Why before apps:** pushes the RDS JDBC URLs + the ElastiCache Redis host (from
+step-1 outputs) + app config into Secrets Manager; the apps' ExternalSecrets sync
+from here. Reads PayPal/mail
 from `docker/.env`/`k8s/.env` and the JWK from `seed.sh` if not already exported.
 **Verify:** `aws secretsmanager get-secret-value --secret-id app/ecommerce --profile microecom --query SecretString --output text | head -c 80`
 

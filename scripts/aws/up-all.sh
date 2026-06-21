@@ -13,12 +13,12 @@
 # (ErrImagePull).
 #
 # ORDER (each step depends on the one before — do not reshuffle):
-#   1 up.sh        VPC+EKS+ALB+ESO IRSA+RDS, kubeconfig (RDS outputs exist after)
+#   1 up.sh        VPC+EKS+ALB+ESO IRSA+RDS+ElastiCache, kubeconfig (endpoints exist after)
 #   2 push-images  reuse existing ECR images, or PUSH=all to rebuild
 #   3 infra-up.sh  ESO + ClusterSecretStore + Mongo/Kafka/SR/Connect/VM/Grafana
 #                  + the Mongo CDC connector (must precede app ExternalSecrets)
 #   4 seed-mongo   api_role + product + qty-history → Mongo (needs Mongo up)
-#   5 seed-secrets RDS JDBC URLs + app config → Secrets Manager (needs step-1
+#   5 seed-secrets RDS JDBC URLs + Redis host + app config → Secrets Manager (needs step-1
 #                  outputs; must precede apps so ExternalSecrets resolve real vals)
 #   6 apps         kubectl apply -k overlay; GATE on auth-server + inventory-svc
 #   7 seed-rds     accounts/roles/users → RDS (schema from auth-server ddl-auto)
@@ -85,7 +85,7 @@ fi
 echo "✓ creds resolved (PayPal, mail, JWK), db_master_password set, PUSH=${PUSH}"
 
 # ── Step 1 — cluster + RDS ────────────────────────────────────────────────────
-banner "Step 1/9 · terraform apply (VPC + EKS + ALB + ESO IRSA + RDS) — ~15-20 min"
+banner "Step 1/9 · terraform apply (VPC + EKS + ALB + ESO IRSA + RDS + ElastiCache) — ~15-20 min"
 "$ROOT/scripts/aws/up.sh"
 
 # ── Step 2 — images ───────────────────────────────────────────────────────────
