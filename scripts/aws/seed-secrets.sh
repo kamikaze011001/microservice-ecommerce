@@ -43,6 +43,8 @@ RDS_PRIMARY="$(tf_out rds_primary_endpoint)"
 RDS_REPLICA="$(tf_out rds_replica_endpoint)"
 REDIS_HOST="$(tf_out redis_primary_endpoint)"
 DB_PASS="$(tf_out db_master_password)"
+S3_BUCKET="$(tf_out s3_bucket_name)"
+S3_BASE_URL="$(tf_out s3_public_base_url)"
 
 put() {  # put <service> <json>
   local svc="$1" json="$2"
@@ -58,12 +60,17 @@ put() {  # put <service> <json>
 
 DNS=svc.cluster.local
 
-put core-s3 "$(jq -n '{
-  "s3.endpoint":"http://minio.infra.'"$DNS"':9000",
-  "s3.public-endpoint":"http://media.microecom.local",
-  "s3.region":"us-east-1","s3.bucket":"ecommerce-media",
-  "s3.access-key":"minioadmin","s3.secret-key":"minioadmin","s3.path-style":"true",
-  "s3.public-base-url":"http://media.microecom.local/ecommerce-media",
+# Phase 4c — real AWS S3. Blank endpoint/public-endpoint ⇒ AWS SDK default
+# (the public S3 host, signed correctly for the browser presign). Blank
+# access-key is the sentinel that flips S3Config to DefaultCredentialsProvider
+# (IRSA web-identity) instead of static keys — see core-s3 S3Config.java. The
+# bucket + public-base-url come from terraform so they can't drift.
+put core-s3 "$(jq -n --arg bucket "$S3_BUCKET" --arg base "$S3_BASE_URL" '{
+  "s3.endpoint":"",
+  "s3.public-endpoint":"",
+  "s3.region":"ap-southeast-1","s3.bucket":$bucket,
+  "s3.access-key":"","s3.secret-key":"","s3.path-style":"false",
+  "s3.public-base-url":$base,
   "s3.presign-ttl":"PT5M","s3.max-upload-size":"5242880",
   "s3.allowed-types":"image/jpeg,image/png,image/webp"
 }')"
