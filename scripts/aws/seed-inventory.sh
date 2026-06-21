@@ -48,6 +48,16 @@ TABLES="$(run_mysql ecommerce_dev -N -e "
   SELECT COUNT(*) FROM information_schema.tables
   WHERE table_schema='ecommerce_dev'
     AND table_name IN ('inventory_product','product_quantity_history');" 2>&1 </dev/null || true)"
+# Catch connection/auth/db errors BEFORE digit-stripping — an error string like
+# "Can't connect to MySQL server on 'host:3306'" would otherwise yield a big
+# number that sails past the `< 2` gate and we'd "seed" against nothing. Mirrors
+# the guard in seed-rds.sh.
+if printf '%s' "$TABLES" | grep -qiE "can't connect|unknown database|access denied|error 2003|error 1045"; then
+  echo "✋ cannot reach RDS / query failed:" >&2
+  printf '%s\n' "$TABLES" | grep -iE "error|can't|denied|connect" | tail -2 >&2
+  echo "   Check RDS is up and the apps namespace can reach it on 3306, then re-run." >&2
+  exit 1
+fi
 NTAB="$(printf '%s' "$TABLES" | tr -dc '0-9')"
 if [ "${NTAB:-0}" -lt 2 ]; then
   echo "✋ inventory tables not ready (found ${NTAB:-0}/2)." >&2
@@ -65,7 +75,7 @@ SQL_PRODUCTS="$(jq -r '
   + "\"" + ._id."$oid" + "\", "
   + "\"" + (.name | gsub("\""; "\\\"")) + "\", "
   + (.price | tostring) + ", "
-  + (if .imageUrl then "\"" + (.imageUrl | gsub("\""; "\\\"") | gsub("http://localhost:9000/"; "http://media.microecom.local/")) + "\"" else "NULL" end)
+  + (if (.imageUrl // "" | length) > 0 then "\"" + (.imageUrl | gsub("\""; "\\\"") | gsub("http://localhost:9000/"; "http://media.microecom.local/")) + "\"" else "NULL" end)
   + ");"' "$PRODUCTS_JSON")"
 
 SQL_QTY="$(jq -r '
@@ -80,5 +90,9 @@ SQL_QTY="$(jq -r '
 PROD_ROWS="$(printf '%s\n' "$SQL_PRODUCTS" | grep -c INSERT || true)"
 QTY_ROWS="$(printf '%s\n' "$SQL_QTY" | grep -c INSERT || true)"
 echo "▶ seeding inventory_product (${PROD_ROWS} rows) + product_quantity_history (${QTY_ROWS} rows) ..."
-printf '%s\n%s\n' "$SQL_PRODUCTS" "$SQL_QTY" | run_mysql ecommerce_dev
-echo "✅ inventory stock seed complete."
+# Pipe the INSERTs + a labelled post-seed count in ONE mysql session (no extra
+# pod): INSERT IGNORE swallows PK conflicts silently, so echo the resulting table
+# counts as proof rather than trusting a bare exit 0.
+printf '%s\n%s\nSELECT CONCAT("inventory_product=", COUNT(*)) FROM inventory_product;\nSELECT CONCAT("product_quantity_history=", COUNT(*)) FROM product_quantity_history;\n' \
+  "$SQL_PRODUCTS" "$SQL_QTY" | run_mysql ecommerce_dev -N
+echo "✅ inventory stock seed complete (see the row counts above)."
