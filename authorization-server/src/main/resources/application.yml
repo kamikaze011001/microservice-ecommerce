@@ -13,7 +13,7 @@ spring:
         application-name: authorization-server
         additional-contexts: core-s3
   config:
-    import: "vault://secret/ecommerce,vault://secret/authorization-server,vault://secret/core-s3"
+    import: "optional:vault://secret/ecommerce,optional:vault://secret/authorization-server,optional:vault://secret/core-s3"
   mail:
     username: ${APPLICATION_MAIL_USERNAME}
     password: ${APPLICATION_MAIL_PASSWORD}
