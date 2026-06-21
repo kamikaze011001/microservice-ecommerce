@@ -23,17 +23,34 @@ set -euo pipefail
 export AWS_PROFILE="${AWS_PROFILE:-microecom}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 JOB_DIR="$ROOT/k8s/infra/jobs/02-mongo-seed"
+TF="$ROOT/aws/main"
+
+command -v jq >/dev/null 2>&1 || { echo "jq is required (brew install jq)" >&2; exit 1; }
+S3_BASE_URL="$(terraform -chdir="$TF" output -raw s3_public_base_url 2>/dev/null)" \
+  || { echo "ERROR: terraform output 's3_public_base_url' missing — run 'terraform apply' (Phase 4c) first" >&2; exit 1; }
 
 # bootstrap ns is created by infra-up.sh; ensure it exists so this is runnable
 # standalone too.
 kubectl get ns bootstrap >/dev/null 2>&1 || kubectl create ns bootstrap
+
+# The seeded imageUrl points at local MinIO (http://localhost:9000/ecommerce-media/
+# products/...). On AWS the storefront reads imageUrl straight from this Mongo
+# `product` collection, so rewrite the host to the S3 virtual-hosted URL — the
+# bucket moves into the host, so the `ecommerce-media/` path segment is dropped.
+PRODUCT_JSON_AWS="$(mktemp "${TMPDIR:-/tmp}/product-aws.XXXXXX")"
+trap 'rm -f "$PRODUCT_JSON_AWS"' EXIT
+jq --arg base "$S3_BASE_URL" '
+  map(if (.imageUrl // "" | length) > 0
+      then .imageUrl |= gsub("http://localhost:9000/ecommerce-media/"; $base + "/")
+      else . end)
+' "$ROOT/docker/product.json" > "$PRODUCT_JSON_AWS"
 
 echo "▶ (re)creating mongo-seed configmaps in bootstrap ns ..."
 kubectl -n bootstrap create configmap mongo-seed-scripts \
   --from-file="$JOB_DIR/seed.sh" --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n bootstrap create configmap mongo-seed-data \
   --from-file="$ROOT/docker/api_role.json" \
-  --from-file="$ROOT/docker/product.json" \
+  --from-file=product.json="$PRODUCT_JSON_AWS" \
   --from-file="$ROOT/docker/product-quantity-history.json" \
   --dry-run=client -o yaml | kubectl apply -f -
 
