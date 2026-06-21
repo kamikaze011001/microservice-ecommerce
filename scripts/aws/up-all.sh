@@ -8,7 +8,9 @@
 # WHAT PERSISTS across aws-down: aws/bootstrap (ECR repos, TF state, lock table)
 # is a SEPARATE stack — aws-down only destroys aws/main, so pushed ECR images
 # SURVIVE. That's why image push defaults to "reuse"; set PUSH=all after a code
-# change to rebuild.
+# change to rebuild. FIRST-EVER run on a fresh account (ECR repos exist but are
+# empty) MUST use PUSH=all, or step 6 deploys image tags that aren't there yet
+# (ErrImagePull).
 #
 # ORDER (each step depends on the one before — do not reshuffle):
 #   1 up.sh        VPC+EKS+ALB+ESO IRSA+RDS, kubeconfig (RDS outputs exist after)
