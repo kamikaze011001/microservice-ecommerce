@@ -39,8 +39,13 @@ kubectl -n bootstrap create configmap mongo-seed-data \
 
 echo "▶ applying mongo-seed Job ..."
 kubectl -n bootstrap delete job mongo-seed --ignore-not-found >/dev/null
-kubectl apply -f "$JOB_DIR/job.yaml"
+kubectl -n bootstrap apply -f "$JOB_DIR/job.yaml"
 
 echo "▶ waiting for mongo-seed to complete (the Job verifies non-empty counts) ..."
-kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/mongo-seed
+# This is a critical-path gate (no api_role ⇒ gateway 403s every route), so on
+# failure surface the Job logs instead of dying on a bare 5-min timeout.
+kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/mongo-seed \
+  || { echo "⚠ mongo-seed Job did not complete. Logs:" >&2
+       kubectl -n bootstrap logs job/mongo-seed >&2
+       exit 1; }
 echo "✅ mongo seed complete (api_role + product + productQuantityHistory)."
