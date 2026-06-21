@@ -7,6 +7,7 @@ components:
   - ../components/spring-secrets
 patches:
   - path: patch-volume.yaml
+  - path: patch-sa.yaml
 images:
   - name: localhost:5001/product-service
     newName: 583178372344.dkr.ecr.ap-southeast-1.amazonaws.com/product-service

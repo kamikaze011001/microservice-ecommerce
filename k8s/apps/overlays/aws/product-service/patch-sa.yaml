@@ -1,0 +1,12 @@
+# Point the product-service pods at the IRSA ServiceAccount (created imperatively
+# by up-all.sh from s3-irsa-serviceaccounts.yaml). The SA's role-arn annotation is
+# what the IRSA webhook reads to inject the web-identity token for S3 presign.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-service
+  namespace: apps
+spec:
+  template:
+    spec:
+      serviceAccountName: product-service
