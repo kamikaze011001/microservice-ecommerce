@@ -27,6 +27,21 @@ REGION="${AWS_REGION:-ap-southeast-1}"
 # from the env or a file to avoid a second copy drifting; export APPLICATION_JWK.
 : "${APPLICATION_JWK:?set APPLICATION_JWK (the private RSA JWK JSON from seed.sh)}"
 
+# ── Managed-endpoint discovery (Phase 4a — RDS) ──────────────────────────────
+# Read the RDS coordinates straight from terraform state so the seeded JDBC URLs
+# can never drift from what was actually provisioned. Run this seed AFTER
+# `terraform apply`; the outputs won't exist before then. -raw strips the quotes;
+# db_master_password is a sensitive output but -raw still returns it.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+TF="$ROOT/aws/main"
+tf_out() {  # tf_out <output-name>
+  terraform -chdir="$TF" output -raw "$1" 2>/dev/null \
+    || { echo "ERROR: terraform output '$1' missing — run 'terraform apply' (Phase 4a) first" >&2; exit 1; }
+}
+RDS_PRIMARY="$(tf_out rds_primary_endpoint)"
+RDS_REPLICA="$(tf_out rds_replica_endpoint)"
+DB_PASS="$(tf_out db_master_password)"
+
 put() {  # put <service> <json>
   local svc="$1" json="$2"
   echo "▶ app/${svc}"
@@ -52,15 +67,16 @@ put core-s3 "$(jq -n '{
 }')"
 
 put ecommerce "$(jq -n \
-  --arg mu "$APPLICATION_MAIL_USERNAME" --arg mp "$APPLICATION_MAIL_PASSWORD" '{
-  "spring.datasource.master.url":"jdbc:mysql://mysql.infra.'"$DNS"':3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
-  "spring.datasource.master.username":"root","spring.datasource.master.password":"root",
+  --arg mu "$APPLICATION_MAIL_USERNAME" --arg mp "$APPLICATION_MAIL_PASSWORD" \
+  --arg dpw "$DB_PASS" --arg mhost "$RDS_PRIMARY" --arg rhost "$RDS_REPLICA" '{
+  "spring.datasource.master.url":("jdbc:mysql://"+$mhost+":3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"),
+  "spring.datasource.master.username":"admin","spring.datasource.master.password":$dpw,
   "spring.datasource.master.driver-class-name":"com.mysql.cj.jdbc.Driver",
-  "spring.datasource.slave1.url":"jdbc:mysql://mysql-replica.infra.'"$DNS"':3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
-  "spring.datasource.slave1.username":"root","spring.datasource.slave1.password":"root",
+  "spring.datasource.slave1.url":("jdbc:mysql://"+$rhost+":3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"),
+  "spring.datasource.slave1.username":"admin","spring.datasource.slave1.password":$dpw,
   "spring.datasource.slave1.driver-class-name":"com.mysql.cj.jdbc.Driver",
-  "spring.datasource.slave2.url":"jdbc:mysql://mysql-replica.infra.'"$DNS"':3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
-  "spring.datasource.slave2.username":"root","spring.datasource.slave2.password":"root",
+  "spring.datasource.slave2.url":("jdbc:mysql://"+$rhost+":3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"),
+  "spring.datasource.slave2.username":"admin","spring.datasource.slave2.password":$dpw,
   "spring.datasource.slave2.driver-class-name":"com.mysql.cj.jdbc.Driver",
   "spring.data.redis.host":"redis-master.infra.'"$DNS"'","spring.data.redis.port":"6379",
   "spring.data.redis.password":"","spring.data.redis.database":"0",
@@ -121,10 +137,11 @@ put order-service "$(jq -n '{
   "application.kafka.group-id.order.update-status":"order.update-status"
 }')"
 
-put orchestrator-service "$(jq -n '{
+put orchestrator-service "$(jq -n \
+  --arg dpw "$DB_PASS" --arg mhost "$RDS_PRIMARY" '{
   "server.port":"9999",
-  "spring.datasource.url":"jdbc:mysql://mysql.infra.'"$DNS"':3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
-  "spring.datasource.username":"root","spring.datasource.password":"root",
+  "spring.datasource.url":("jdbc:mysql://"+$mhost+":3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"),
+  "spring.datasource.username":"admin","spring.datasource.password":$dpw,
   "spring.datasource.driver-class-name":"com.mysql.cj.jdbc.Driver",
   "application.kafka.topics.mongo.event":"ecommerce_db.ecommerce_inventory.event",
   "application.kafka.topics.product-service.product.update-quantity":"product-service.product.update-quantity",

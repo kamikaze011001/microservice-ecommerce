@@ -53,3 +53,13 @@ variable "node_max_size" {
   type        = number
   default     = 3
 }
+
+# Phase 4a — RDS master password. No default on purpose: it must be supplied via
+# the gitignored terraform.tfvars so a secret never lands in version control.
+# seed-secrets.sh reads the SAME value back via the sensitive output below, so the
+# password the apps receive can never drift from what RDS was created with.
+variable "db_master_password" {
+  description = "Master password for the RDS MySQL instance (set in gitignored terraform.tfvars)"
+  type        = string
+  sensitive   = true
+}
