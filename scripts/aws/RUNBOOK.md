@@ -81,9 +81,15 @@ after `inventory-service` started. Without this, cart shows "0 available".
 Idempotent (`INSERT IGNORE`).
 **Verify:** the script prints row counts seeded (or the tables-not-ready message).
 
-### 9. S3 product images — DEFERRED to Phase 4c
-No object store on AWS yet (no bucket/IRSA; `core-s3` still points at an
-undeployed MinIO). Catalog images 404 until 4c; browse/cart/checkout work.
+### 9. S3 product images — `scripts/aws/seed-images.sh`
+Uploads the 30 sample JPGs (`docker/seed-images/<category>/<slug>.jpg`) to
+`s3://<bucket>/products/<productId>/<slug>.jpg` — the key the seeded `imageUrl`
+points at. The bucket name comes from the `s3_bucket_name` terraform output;
+`core-s3` reaches S3 via IRSA (blank `s3.access-key` → SDK default chain). The
+bucket has `force_destroy = true`, so it is emptied + destroyed by `aws-down`
+(re-run this step after a fresh `aws-up`). Idempotent (`aws s3 cp` overwrites).
+**Verify:** `aws s3 ls s3://<bucket>/products/ --recursive --profile microecom`
+lists the objects; the storefront catalog renders real images.
 
 ## Teardown
 ```bash

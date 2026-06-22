@@ -23,7 +23,7 @@
 #   6 apps         kubectl apply -k overlay; GATE on auth-server + inventory-svc
 #   7 seed-rds     accounts/roles/users → RDS (schema from auth-server ddl-auto)
 #   8 seed-inv     inventory stock → RDS (tables from inventory-svc ddl-auto)
-#   9 [Phase 4c]   S3 product images — skipped (no bucket until 4c)
+#   9 seed-images  upload sample product JPGs to the S3 media bucket (Phase 4c)
 #
 # Every step bills AWS — this is the USER's to run. Idempotent-ish: each leaf
 # reconciles, so a re-run after a mid-way failure resumes safely.
@@ -118,6 +118,17 @@ if [[ "$CTX" != "microecom-eks" ]]; then
   echo "   Run: aws eks update-kubeconfig --name microecom-eks --region ap-southeast-1 --alias microecom-eks" >&2
   exit 1
 fi
+# Stamp the S3 IRSA role ARN onto the product-service + authorization-server
+# ServiceAccounts and apply them BEFORE the apps overlay (mirror infra-up.sh's ESO
+# stamp). The IRSA webhook injects the web-identity token when a pod is admitted
+# based on its SA annotation, so the annotated SA must exist before app pods are
+# created — annotating after would need a restart. The context guard above already
+# pinned us to microecom-eks.
+S3_ROLE_ARN="$(terraform -chdir="$TF" output -raw s3_irsa_role_arn)" \
+  || { echo "ERROR: 'terraform output s3_irsa_role_arn' failed — run step 1 (terraform apply) first" >&2; exit 1; }
+sed "s|PLACEHOLDER_S3_ROLE_ARN|${S3_ROLE_ARN}|g" \
+  "$ROOT/k8s/apps/overlays/aws/s3-irsa-serviceaccounts.yaml" | kubectl apply -f -
+
 kubectl apply -k "$ROOT/k8s/apps/overlays/aws"
 
 # Both gate a post-apps SQL seed: auth-server's ddl-auto creates the account
@@ -148,9 +159,8 @@ banner "Step 8/9 · seed RDS inventory stock"
 "$ROOT/scripts/aws/seed-inventory.sh"
 
 # ── Step 9 — S3 product images (Phase 4c) ─────────────────────────────────────
-banner "Step 9/9 · S3 product images — DEFERRED"
-echo "▶ skipped: no object store on AWS until Phase 4c (S3 + IRSA). The catalog"
-echo "  renders with broken <img> links; browse/cart/checkout work without images."
+banner "Step 9/9 · seed S3 product images"
+"$ROOT/scripts/aws/seed-images.sh"
 
 banner "DONE · stack is up"
 ALB="$(kubectl -n apps get ingress gateway-alb \
