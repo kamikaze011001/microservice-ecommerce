@@ -34,6 +34,7 @@ command -v jq >/dev/null 2>&1 || { echo "jq is required (brew install jq)" >&2; 
 
 RDS_HOST="$(terraform -chdir="$TF" output -raw rds_primary_endpoint)"
 DB_PASS="$(terraform -chdir="$TF" output -raw db_master_password)"
+S3_BASE_URL="$(terraform -chdir="$TF" output -raw s3_public_base_url)"
 
 # Run `mysql <args>` in a one-shot pod; SQL (when loading) is piped via stdin.
 run_mysql() {  # run_mysql <mysql-args...>   (optional SQL on stdin)
@@ -67,15 +68,15 @@ fi
 
 # Build INSERT IGNORE statements. Same jq as scripts/seed/k8s-inventory.sh; the
 # image_url host rewrite mirrors seed-mongo.sh's catalog rewrite so order_item
-# snapshots match the catalog. (S3 isn't wired until Phase 4c, so the host is a
-# placeholder either way — kept consistent with Mongo.)
-SQL_PRODUCTS="$(jq -r '
+# snapshots match the catalog — both point at the S3 virtual-hosted URL (the
+# bucket lives in the host, so the ecommerce-media/ path segment is dropped).
+SQL_PRODUCTS="$(jq -r --arg base "$S3_BASE_URL" '
   .[] |
   "INSERT IGNORE INTO inventory_product (id, name, price, image_url) VALUES ("
   + "\"" + ._id."$oid" + "\", "
   + "\"" + (.name | gsub("\""; "\\\"")) + "\", "
   + (.price | tostring) + ", "
-  + (if (.imageUrl // "" | length) > 0 then "\"" + (.imageUrl | gsub("\""; "\\\"") | gsub("http://localhost:9000/"; "http://media.microecom.local/")) + "\"" else "NULL" end)
+  + (if (.imageUrl // "" | length) > 0 then "\"" + (.imageUrl | gsub("\""; "\\\"") | gsub("http://localhost:9000/ecommerce-media/"; $base + "/")) + "\"" else "NULL" end)
   + ");"' "$PRODUCTS_JSON")"
 
 SQL_QTY="$(jq -r '
