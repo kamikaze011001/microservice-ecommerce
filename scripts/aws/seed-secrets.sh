@@ -42,6 +42,7 @@ tf_out() {  # tf_out <output-name>
 RDS_PRIMARY="$(tf_out rds_primary_endpoint)"
 RDS_REPLICA="$(tf_out rds_replica_endpoint)"
 REDIS_HOST="$(tf_out redis_primary_endpoint)"
+REDIS_AUTH="$(tf_out redis_auth_token)"
 DB_PASS="$(tf_out db_master_password)"
 S3_BUCKET="$(tf_out s3_bucket_name)"
 S3_BASE_URL="$(tf_out s3_public_base_url)"
@@ -77,7 +78,7 @@ put core-s3 "$(jq -n --arg bucket "$S3_BUCKET" --arg base "$S3_BASE_URL" --arg r
 
 put ecommerce "$(jq -n \
   --arg mu "$APPLICATION_MAIL_USERNAME" --arg mp "$APPLICATION_MAIL_PASSWORD" \
-  --arg dpw "$DB_PASS" --arg mhost "$RDS_PRIMARY" --arg rhost "$RDS_REPLICA" --arg redishost "$REDIS_HOST" '{
+  --arg dpw "$DB_PASS" --arg mhost "$RDS_PRIMARY" --arg rhost "$RDS_REPLICA" --arg redishost "$REDIS_HOST" --arg redispw "$REDIS_AUTH" '{
   "spring.datasource.master.url":("jdbc:mysql://"+$mhost+":3306/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"),
   "spring.datasource.master.username":"admin","spring.datasource.master.password":$dpw,
   "spring.datasource.master.driver-class-name":"com.mysql.cj.jdbc.Driver",
@@ -88,7 +89,8 @@ put ecommerce "$(jq -n \
   "spring.datasource.slave2.username":"admin","spring.datasource.slave2.password":$dpw,
   "spring.datasource.slave2.driver-class-name":"com.mysql.cj.jdbc.Driver",
   "spring.data.redis.host":$redishost,"spring.data.redis.port":"6379",
-  "spring.data.redis.password":"","spring.data.redis.database":"0", # Option A (Phase 4b): no Redis AUTH — transit_encryption_enabled=false, see elasticache.tf
+  "spring.data.redis.password":$redispw,"spring.data.redis.database":"0",
+  "spring.data.redis.ssl.enabled":"true", # Phase 4d: TLS in transit + RedisAUTH — token from elasticache.tf random_password
 
   "spring.data.mongodb.uri":"mongodb://ecommerce:ecommerce123@mongodb.infra.'"$DNS"':27017/ecommerce_inventory?authSource=admin",
   "spring.data.mongodb.database":"ecommerce_inventory",
