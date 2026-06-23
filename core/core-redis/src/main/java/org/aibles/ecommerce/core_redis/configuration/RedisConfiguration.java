@@ -35,12 +35,13 @@ public class RedisConfiguration {
     public RedissonClient redissonClient(
             @Value("${spring.data.redis.host:localhost}") String host,
             @Value("${spring.data.redis.port:6379}") int port,
-            @Value("${spring.data.redis.password:}") String password
+            @Value("${spring.data.redis.password:}") String password,
+            @Value("${spring.data.redis.ssl.enabled:false}") boolean sslEnabled
     ) {
         Config config = new Config();
 
         SingleServerConfig serverConfig = config.useSingleServer()
-                .setAddress("redis://" + host + ":" + port)
+                .setAddress(buildAddress(sslEnabled, host, port))
                 .setConnectionMinimumIdleSize(1)
                 .setConnectionPoolSize(10);
 
@@ -49,5 +50,10 @@ public class RedisConfiguration {
         }
 
         return Redisson.create(config);
+    }
+
+    static String buildAddress(boolean sslEnabled, String host, int port) {
+        String scheme = sslEnabled ? "rediss://" : "redis://";
+        return scheme + host + ":" + port;
     }
 }
