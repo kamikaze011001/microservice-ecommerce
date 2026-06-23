@@ -80,7 +80,7 @@ resource "aws_s3_bucket_cors_configuration" "media" {
   bucket = aws_s3_bucket.media.id
   cors_rule {
     allowed_methods = ["PUT", "GET"]
-    allowed_origins = ["http://microecom.local", "https://microecom.local"]
+    allowed_origins = ["http://microecom.local", "https://microecom.local", "http://*.elb.amazonaws.com", "https://*.elb.amazonaws.com"]
     allowed_headers = ["*"]
     max_age_seconds = 3000
   }
@@ -104,6 +104,7 @@ resource "aws_s3_bucket_cors_configuration" "media" {
 #        }
 #      Both SAs share ONE role (both need the same two-prefix access).
 resource "aws_iam_policy" "s3_media" {
+  name = "${var.project}-s3-media"
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -150,9 +151,3 @@ output "s3_public_base_url" { value = "https://${aws_s3_bucket.media.bucket}.s3.
 #     virtual-hosted URL (path-style=false).
 #
 # Write the data source (data.tf) + PARTS A–E below, then tell Claude "review".
-
-# TODO(HUMAN): PART A — aws_s3_bucket "media"
-# TODO(HUMAN): PART B — aws_s3_bucket_public_access_block + aws_s3_bucket_policy "media"
-# TODO(HUMAN): PART C — aws_s3_bucket_cors_configuration "media"
-# TODO(HUMAN): PART D — aws_iam_policy "s3_media" + module "s3_irsa"
-# TODO(HUMAN): PART E — outputs s3_bucket_name / s3_irsa_role_arn / s3_public_base_url
