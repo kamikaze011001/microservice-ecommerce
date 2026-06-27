@@ -12,15 +12,23 @@ metadata:
     # kubernetes.io/role/internal-elb (Phase 1). instance mode would instead
     # need a NodePort Service.
     alb.ingress.kubernetes.io/target-type: ip
+    # HTTPS: terminate TLS on the ALB. listen-ports opens BOTH :80 and :443; ssl-redirect
+    # 301-bounces every :80 request to :443. There is NO certificate-arn — the controller
+    # auto-discovers the ACM cert whose domain matches the `host:` rule below
+    # (shop.microecom.click). That cert is created in aws/main/dns.tf.
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
     # NOTE: health checks are NOT set here. With two backends (gateway + frontend)
     # an Ingress-level check would apply to BOTH target groups, and the gateway's
     # 19093/actuator probe would fail the static SPA. Each Service carries its own
     # alb.ingress.kubernetes.io/healthcheck-* annotations instead (per-target-group).
 spec:
   ingressClassName: alb
-  # No host: match every Host header. On EKS we hit the raw *.elb.amazonaws.com
-  # DNS, so a host rule would 404. Phase 5b adds shop.microecom.click once
-  # Route 53 + ACM are in place.
+  # host: shop.microecom.click on every rule (Phase 5b). This single value feeds TWO
+  # things: (1) the AWS LB Controller auto-discovers the ACM cert matching this host for
+  # the :443 listener, and (2) external-dns reads it to create the Route 53 A-alias. The
+  # trade-off vs 5a: the raw *.elb.amazonaws.com hostname now 404s (every rule requires
+  # this Host header) — browse via https://shop.microecom.click instead.
   #
   # Listener-rule precedence is by path specificity: the AWS Load Balancer
   # Controller expands a Prefix path "/foo" into ALB conditions "/foo" + "/foo/*"
@@ -29,7 +37,8 @@ spec:
   # /<service>/** traffic reaches the gateway — everything else boots the SPA.
   # Docs: https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/guide/ingress/spec/
   rules:
-    - http:
+    - host: shop.microecom.click
+      http:
         paths:
           - path: /authorization-server
             pathType: Prefix
