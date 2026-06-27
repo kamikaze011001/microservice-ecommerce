@@ -13,6 +13,19 @@ patches:
       apiVersion: networking.k8s.io/v1
       kind: Ingress
       metadata: { name: gateway, namespace: apps }
+  # Per-target-group ALB health check for the gateway: probe the MANAGEMENT port
+  # (19093) /actuator/health/readiness, not the traffic port (6868) which 404s on
+  # "/". The AWS Load Balancer Controller reads these from the backing Service.
+  - target: { kind: Service, name: gateway, namespace: apps }
+    patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: gateway
+        namespace: apps
+        annotations:
+          alb.ingress.kubernetes.io/healthcheck-port: "19093"
+          alb.ingress.kubernetes.io/healthcheck-path: /actuator/health/readiness
 images:
   - name: localhost:5001/gateway
     newName: 583178372344.dkr.ecr.ap-southeast-1.amazonaws.com/gateway

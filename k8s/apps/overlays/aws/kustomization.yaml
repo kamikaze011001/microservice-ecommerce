@@ -15,4 +15,5 @@ resources:
   - payment-service
   - bff-service
   - mock-paypal-service
-  - ingress-gateway.yaml    # the ALB Ingress replacement (unchanged)
+  - frontend                # storefront SPA (same-origin, Phase 5a)
+  - ingress-gateway.yaml    # the ALB Ingress: 8 service prefixes → gateway, / → frontend
