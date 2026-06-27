@@ -22,6 +22,12 @@ export AWS_PROFILE="${AWS_PROFILE:-microecom}"
 REGION="${AWS_REGION:-ap-southeast-1}"
 TAG="${TAG:-dev}"
 
+# AWS serves the SPA same-origin behind the gateway ALB, so the frontend image
+# must be built with an EMPTY API base → the SPA issues relative calls
+# (fetch('/bff-service/v1/…')). build.sh uses ${VITE_API_BASE_URL-default}
+# (no colon), so this empty value is preserved rather than falling back.
+export VITE_API_BASE_URL=""
+
 # Registry host comes from the persistent bootstrap stack (Task 1's output),
 # e.g. 583178372344.dkr.ecr.ap-southeast-1.amazonaws.com
 REGISTRY="$(terraform -chdir="$ROOT/aws/bootstrap" output -raw ecr_registry)"
