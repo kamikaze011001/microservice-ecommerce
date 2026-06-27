@@ -27,3 +27,8 @@ output "db_master_password" {
   value       = var.db_master_password
   sensitive   = true
 }
+
+output "shop_url" {
+  description = "Public HTTPS URL of the storefront (Phase 5b)"
+  value       = "https://shop.microecom.click"
+}
