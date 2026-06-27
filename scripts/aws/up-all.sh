@@ -166,5 +166,6 @@ banner "DONE · stack is up"
 ALB="$(kubectl -n apps get ingress gateway-alb \
         -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
 echo "  Gateway ALB : ${ALB:-<pending — re-check: kubectl -n apps get ingress gateway-alb>}"
+echo "  Storefront  : http://${ALB:-<pending>}/   ← open in a browser and shop the funnel"
 echo "  Verify      : login should return a JWT; catalog lists products; cart shows stock"
 echo "  Remember    : 'make aws-down' when done — the cluster bills ~\$0.25-0.30/hr."
