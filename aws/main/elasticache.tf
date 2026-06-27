@@ -47,6 +47,12 @@ resource "aws_security_group" "redis" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
+
+resource "random_password" "redis_auth" {
+  length           = 32
+  special          = true
+  override_special = "!#$^&*-_=+"
+}
 # ─────────────────────────────────────────────────────────────────────────────
 # PART B — [HUMAN ✍️]  the cache subnet group   resource "aws_elasticache_subnet_group" "main"
 #   - name        = "${var.project}-redis"
@@ -80,13 +86,14 @@ resource "aws_elasticache_subnet_group" "main" {
 # TODO(HUMAN): write resource "aws_elasticache_replication_group" "redis" here
 resource "aws_elasticache_replication_group" "redis" {
   replication_group_id       = "${var.project}-redis"
-  description                = "microecom cache (Phase 4b, single node)"
+  description                = "microecom cache (Phase 4b, single node, TLS+AUTH)"
   engine                     = "redis"
   engine_version             = "7.1"
   node_type                  = "cache.t4g.micro"
   num_cache_clusters         = 1
   automatic_failover_enabled = false
-  transit_encryption_enabled = false
+  transit_encryption_enabled = true
+  auth_token                 = random_password.redis_auth.result
   port                       = 6379
   parameter_group_name       = "default.redis7"
   subnet_group_name          = aws_elasticache_subnet_group.main.name
@@ -113,4 +120,13 @@ resource "aws_elasticache_replication_group" "redis" {
 # ─────────────────────────────────────────────────────────────────────────────
 output "redis_primary_endpoint" {
   value = aws_elasticache_replication_group.redis.primary_endpoint_address
+}
+
+# PHASE 4d — TLS in transit + RedisAUTH token. random_password.redis_auth (above)
+# feeds auth_token on the replication group; the output below hands the token to
+# seed-secrets.sh. ElastiCache couples the two: auth_token requires
+# transit_encryption_enabled = true (no "password without TLS").
+output "redis_auth_token" {
+  value     = random_password.redis_auth.result
+  sensitive = true
 }
