@@ -16,7 +16,7 @@ ECR="583178372344.dkr.ecr.ap-southeast-1.amazonaws.com"
 LIST="scripts/aws/services-secrets.list"
 
 # Hand-written overlays we must never overwrite (leading/trailing spaces for word match).
-HANDWRITTEN=" gateway authorization-server "
+HANDWRITTEN=" gateway authorization-server frontend "
 # Services that also consume the shared S3 config context (avatars / product images).
 S3_CONSUMERS=" product-service inventory-service "
 
