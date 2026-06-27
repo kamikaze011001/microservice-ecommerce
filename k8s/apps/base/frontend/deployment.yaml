@@ -14,9 +14,10 @@ spec:
     spec:
       containers:
         - name: frontend
-          # Caddy serving the Vite build output. Image built from
-          # frontend/Dockerfile with VITE_API_BASE_URL=http://api.microecom.local
-          # baked in at build time (Vite inlines env vars at compile).
+          # Caddy serving the Vite build output. The API base URL is baked in at
+          # build time (Vite inlines env vars). Local/kind bakes
+          # http://api.microecom.local; the AWS overlay builds it empty so the SPA
+          # issues relative, same-origin calls behind the gateway ALB.
           image: localhost:5001/frontend:dev
           # Always re-pull: :dev is a MUTABLE tag rebuilt in place. IfNotPresent
           # serves the stale cached bundle on kind nodes so frontend code changes
