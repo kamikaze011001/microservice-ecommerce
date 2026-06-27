@@ -170,7 +170,7 @@ put orchestrator-service "$(jq -n \
 put payment-service "$(jq -n \
   --arg cid "$PAYPAL_CLIENT_ID" --arg sec "$PAYPAL_CLIENT_SECRET" '{
   "server.port":"8484",
-  "application.frontend.base-url":"http://microecom.local",
+  "application.frontend.base-url":"",
   "application.paypal.base-url":"https://api-m.sandbox.paypal.com",
   "application.paypal.success-path":"/payment-service/v1/paypal:success",
   "application.paypal.cancel-path":"/payment-service/v1/paypal:cancel",
@@ -187,7 +187,7 @@ put bff-service "$(jq -n '{
 
 put mock-paypal-service "$(jq -n '{
   "server.port":"8585",
-  "mock.public-base-url":"http://api.microecom.local/mock-paypal-service"
+  "mock.public-base-url":"/mock-paypal-service"
 }')"
 
 echo "✅ Secrets Manager seed complete."
