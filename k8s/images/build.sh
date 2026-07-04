@@ -78,11 +78,16 @@ fi
 build_frontend() {
   reuse_or_build "frontend" && return 0
   echo "==> building frontend"
-  # VITE_API_BASE_URL is inlined at build time. Browser calls hit the
-  # api.* Ingress; the SPA itself is served from microecom.local.
+  # VITE_API_BASE_URL is inlined at build time (Vite compiles env vars in).
+  #   - local/kind (var UNSET): defaults to http://api.microecom.local (nginx host).
+  #   - AWS (var set to ""): kept empty → the SPA issues RELATIVE calls
+  #     (fetch('/bff-service/v1/…')) and is served same-origin behind the ALB.
+  # The dash (no colon) is load-bearing: ${VAR-default} only falls back when the
+  # var is UNSET, so an intentional empty value from AWS survives. ${VAR:-default}
+  # would clobber the empty string back to the local host.
   docker build \
     -f frontend/Dockerfile \
-    --build-arg "VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://api.microecom.local}" \
+    --build-arg "VITE_API_BASE_URL=${VITE_API_BASE_URL-http://api.microecom.local}" \
     -t "${REGISTRY}/frontend:${TAG}" \
     frontend
   docker push "${REGISTRY}/frontend:${TAG}"

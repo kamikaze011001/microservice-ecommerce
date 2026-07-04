@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -52,6 +53,13 @@ public class S3Config {
     }
 
     private static AwsCredentialsProvider credentials(S3Properties props) {
+        // Blank access-key is the AWS sentinel: fall back to the SDK default
+        // credential chain, which on EKS resolves the IRSA web-identity token
+        // (the pod's ServiceAccount is annotated with an IAM role ARN). A
+        // non-blank key means local MinIO — keep the static provider untouched.
+        if (props.getAccessKey() == null || props.getAccessKey().isBlank()) {
+            return DefaultCredentialsProvider.create();
+        }
         return StaticCredentialsProvider.create(
             AwsBasicCredentials.create(props.getAccessKey(), props.getSecretKey()));
     }

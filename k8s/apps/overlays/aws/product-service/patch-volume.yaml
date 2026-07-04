@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-service
+  namespace: apps
+spec:
+  template:
+    spec:
+      containers:
+        - name: product-service
+          volumeMounts:
+            - { name: app-config, mountPath: /etc/app-config, readOnly: true }
+      volumes:
+        - name: app-config
+          secret:
+            secretName: product-service-config

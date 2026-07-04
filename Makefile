@@ -50,6 +50,15 @@ help:
 	@echo "  make k8s-storefront-stress   — production funnel, open-model stress ramp"
 	@echo "  make k8s-storefront-logs     — tail k6 storefront output"
 	@echo "  make k9s [ENV=local|eks]     — open k9s monitor on the chosen cluster"
+	@echo "  make k8s-use [ENV=local|eks] — switch kubectl context (k8s-ctx prints current)"
+	@echo ""
+	@echo "AWS (ephemeral EKS):"
+	@echo "  make aws-bootstrap    — one-time: TF state bucket + lock table + budget alarm"
+	@echo "  make aws-up           — apply aws/main (VPC+EKS+ALB) + wire kubectl"
+	@echo "  make aws-push [svc=…] — build arm64 images, push to ECR (default: gateway)"
+	@echo "  make aws-infra-up     — deploy infra subset (Kafka/Mongo/observability) on EBS"
+	@echo "  make aws-down         — delete ingress, wait, then terraform destroy"
+	@echo "  make aws-leak-check   — list still-billing resources after teardown"
 
 # ============================================================================
 # First-run / daily loop
@@ -480,3 +489,57 @@ k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build-reuse k8s-seed k8s-seed-images
 # Use k8s-apps-down for a softer reset (keeps infra/data).
 k8s-down: k8s-apps-down k8s-cluster-down
 	@echo "==> k8s cluster destroyed"
+
+# ============================================================================
+# AWS (ephemeral EKS) — see docs/superpowers/specs/2026-06-10-aws-deployment-design.md
+# ============================================================================
+.PHONY: aws-bootstrap aws-up aws-push aws-infra-up aws-down aws-leak-check aws-all
+
+# One-time, persistent stack: TF remote-state bucket + DynamoDB lock + budget
+# alarm. Idempotent. Requires aws/bootstrap/terraform.tfvars (budget_email).
+aws-bootstrap:
+	@scripts/aws/bootstrap.sh
+
+# Bring up the ephemeral environment (aws/main: VPC + EKS + ALB controller) and
+# point kubectl at the cluster. ~15-20 min on a cold apply.
+aws-up:
+	@scripts/aws/up.sh
+
+# Tear down safely: delete the Ingress so the controller removes the ALB, wait,
+# then terraform destroy. Always run before ending a session.
+aws-down:
+	@scripts/aws/down.sh
+
+# Build arm64 images and push to ECR. Default target is gateway (+ cores base);
+# `svc=all` pushes the whole catalog, `svc=<name>` a single service.
+aws-push:
+	@scripts/aws/push-images.sh $(svc)
+
+# Deploy the Phase 2 self-hosted infra subset (Kafka/SR/Connect/Mongo/VM/Grafana)
+# onto the EKS cluster. PVCs bind to gp3 → real EBS volumes. Run after `make aws-up`.
+aws-infra-up:
+	@scripts/aws/infra-up.sh
+
+# Confirm nothing is still billing after a teardown (ALBs, NAT, EIPs, EBS, EKS).
+aws-leak-check:
+	@scripts/aws/leak-check.sh
+
+# Full from-scratch bring-up: cluster+RDS → images → infra → seed-mongo →
+# secrets → apps(+gate) → seed-rds → seed-inventory. The cloud twin of
+# `make k8s-bootstrap`. Every step bills AWS — run it yourself. Default reuses
+# ECR images (they survive aws-down); PUSH=all rebuilds after a code change.
+aws-all:
+	@scripts/aws/up-all.sh
+
+.PHONY: k8s-use k8s-ctx
+
+k8s-ctx:
+	@kubectl config current-context
+
+k8s-use:
+	@case "$(ENV)" in \
+	""|local) ctx=kind-microecom ;; \
+	eks)      ctx=microecom-eks ;; \
+	*) echo "Unknown ENV '$(ENV)' — use ENV=local or ENV=eks"; exit 1 ;; \
+	esac; \
+	kubectl config use-context "$$ctx" && echo "==> now on $$ctx"

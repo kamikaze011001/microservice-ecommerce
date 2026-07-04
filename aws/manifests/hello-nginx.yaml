@@ -1,0 +1,64 @@
+# Phase 1 smoke target: prove a pod in a PRIVATE subnet is reachable from the
+# public internet through an AWS ALB provisioned by the Load Balancer Controller.
+# Applied with kubectl (not Terraform) on purpose — keeps the controller-created
+# ALB out of TF state, which is what makes teardown (Task 6) clean.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-nginx
+  labels:
+    app: hello-nginx
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hello-nginx
+  template:
+    metadata:
+      labels:
+        app: hello-nginx
+    spec:
+      containers:
+        - name: nginx
+          image: public.ecr.aws/nginx/nginx:stable # multi-arch — runs on arm64 nodes
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-nginx
+spec:
+  selector:
+    app: hello-nginx
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP # ALB targets pods directly via target-type: ip
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hello-nginx
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hello-nginx
+                port:
+                  number: 80

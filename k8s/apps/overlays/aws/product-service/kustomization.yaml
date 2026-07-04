@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../base/product-service
+  - externalsecret.yaml
+components:
+  - ../components/spring-secrets
+patches:
+  - path: patch-volume.yaml
+  - path: patch-sa.yaml
+images:
+  - name: localhost:5001/product-service
+    newName: 583178372344.dkr.ecr.ap-southeast-1.amazonaws.com/product-service
+    newTag: dev

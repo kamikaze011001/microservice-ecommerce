@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Hand-written AWS overlay for the storefront SPA. Mirrors the gateway/ overlay:
+# pull the base workload, swap the image to ECR. Unlike a backend service there is
+# NO ExternalSecret / spring-secrets — the SPA is static (the API base is baked at
+# build time as an empty string → relative calls), so it needs no runtime secrets.
+#
+# We reference the base kustomization directory (not individual files) so that
+# kustomize's LoadRestrictionsRootOnly policy is satisfied. The base bundles the
+# local nginx ingress.yaml which we must not deploy on AWS — it is deleted via the
+# $patch:delete below. The ALB Ingress is ingress-gateway.yaml.
+resources:
+  - ../../../base/frontend
+
+# Per-target-group ALB health check for the SPA: the AWS Load Balancer Controller
+# reads alb.ingress.kubernetes.io/healthcheck-* annotations from the backing
+# Service and applies them to that Service's target group only. Caddy answers 200
+# on "/" the moment it starts, so probe "/" on the traffic port. This overrides the
+# gateway's 19093/actuator check (which would fail against a static file server).
+patches:
+  - target: { kind: Ingress, name: frontend, namespace: apps }
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata: { name: frontend, namespace: apps }
+  - target: { kind: Service, name: frontend, namespace: apps }
+    patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: frontend
+        namespace: apps
+        annotations:
+          alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+          alb.ingress.kubernetes.io/healthcheck-path: /
+
+images:
+  - name: localhost:5001/frontend
+    newName: 583178372344.dkr.ecr.ap-southeast-1.amazonaws.com/frontend
+    newTag: dev
