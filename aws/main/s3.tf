@@ -80,7 +80,7 @@ resource "aws_s3_bucket_cors_configuration" "media" {
   bucket = aws_s3_bucket.media.id
   cors_rule {
     allowed_methods = ["PUT", "GET"]
-    allowed_origins = ["http://microecom.local", "https://microecom.local", "http://*.elb.amazonaws.com", "https://*.elb.amazonaws.com"]
+    allowed_origins = ["http://microecom.local", "https://microecom.local", "https://shop.microecom.click"]
     allowed_headers = ["*"]
     max_age_seconds = 3000
   }
