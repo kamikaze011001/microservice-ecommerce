@@ -25,7 +25,9 @@
 #     data "aws_route53_zone" "primary" {
 #       name = "microecom.click"
 #     }
-#
+data "aws_route53_zone" "primary" {
+  name = "microecom.click"
+}
 # PART B — request the certificate. DNS validation (not email): ACM hands us a CNAME to
 #   publish; once it sees the CNAME, the cert flips to ISSUED.
 #
@@ -36,7 +38,13 @@
 #         create_before_destroy = true   # never leave the ALB without a cert mid-replace
 #       }
 #     }
-#
+resource "aws_acm_certificate" "shop" {
+  domain_name       = "shop.microecom.click"
+  validation_method = "DNS"
+  lifecycle {
+    create_before_destroy = true
+  }
+}
 # PART C — publish the validation record(s). THE ONE TRICKY BIT:
 #   `domain_validation_options` is a SET, so iterate it with for_each (NOT count), keyed
 #   by domain_name. allow_overwrite = true because a re-apply can re-emit the same record
@@ -58,7 +66,22 @@
 #       ttl             = 60
 #       allow_overwrite = true
 #     }
-#
+resource "aws_route53_record" "shop_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.shop.domain_validation_options :
+    dvo.domain_name => {
+      name   = dvo.resource_record_name
+      type   = dvo.resource_record_type
+      record = dvo.resource_record_value
+    }
+  }
+  zone_id         = data.aws_route53_zone.primary.zone_id
+  name            = each.value.name
+  type            = each.value.type
+  records         = [each.value.record]
+  ttl             = 60
+  allow_overwrite = true
+}
 # PART D — the validation gate. This resource has no cloud side-effect of its own; it
 #   blocks dependents until ACM confirms the records → cert ISSUED.
 #
@@ -66,7 +89,10 @@
 #       certificate_arn         = aws_acm_certificate.shop.arn
 #       validation_record_fqdns = [for r in aws_route53_record.shop_cert_validation : r.fqdn]
 #     }
-#
+resource "aws_acm_certificate_validation" "shop" {
+  certificate_arn         = aws_acm_certificate.shop.arn
+  validation_record_fqdns = [for r in aws_route53_record.shop_cert_validation : r.fqdn]
+}
 # ─────────────────────────────────────────────────────────────────────────────
 # 🎓 Interview prep — be ready to explain:
 #   - Why the zone is a `data` source (stable NS delegation across destroy/apply) and why
