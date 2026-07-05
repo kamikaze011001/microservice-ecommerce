@@ -1,11 +1,18 @@
 import { setup, type Preview } from '@storybook/vue3-vite';
 import { createPinia } from 'pinia';
+import { createRouter, createMemoryHistory } from 'vue-router';
 import '@/styles/tokens.css';
 import '@/styles/fonts.css';
 import '@/styles/main.css';
 
 setup((app) => {
   app.use(createPinia());
+  app.use(
+    createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/', component: { template: '<div/>' } }],
+    }),
+  );
 });
 
 const preview: Preview = {
