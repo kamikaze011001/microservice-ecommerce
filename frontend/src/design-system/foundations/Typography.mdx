@@ -1,0 +1,138 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Foundations/Typography" />
+
+# Typography — distinctive, free, self-hosted
+
+Three families, each with one job. Don't mix them across roles.
+
+| Role    | Family                               | Where                                              |
+| ------- | ------------------------------------ | --------------------------------------------------- |
+| Display | **Bricolage Grotesque** weight 900   | Hero titles, page numerals, big stamps             |
+| Body    | **Cabinet Grotesk** Regular / Medium | Default body, buttons, cards                       |
+| Mono    | **Departure Mono**                   | SKUs, order IDs, prices, timestamps, kicker labels |
+
+## Live specimens
+
+<div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+  <div>
+    <div
+      style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--type-mono)',
+        color: 'var(--muted-ink)',
+        marginBottom: 'var(--space-1)',
+      }}
+    >
+      --font-display · Bricolage Grotesque 900
+    </div>
+    <div
+      style={{
+        fontFamily: 'var(--font-display)',
+        fontWeight: 900,
+        fontSize: 'var(--type-display)',
+        color: 'var(--ink)',
+      }}
+    >
+      Issue Nº01
+    </div>
+  </div>
+
+  <div>
+    <div
+      style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--type-mono)',
+        color: 'var(--muted-ink)',
+        marginBottom: 'var(--space-1)',
+      }}
+    >
+      --font-body · Cabinet Grotesk
+    </div>
+    <div
+      style={{
+        fontFamily: 'var(--font-body)',
+        fontSize: 'var(--type-body)',
+        lineHeight: 'var(--leading-body)',
+        color: 'var(--ink)',
+      }}
+    >
+      Default body copy, buttons, and cards use Cabinet Grotesk. It carries paragraphs and
+      UI labels without competing with the display face.
+    </div>
+  </div>
+
+  <div>
+    <div
+      style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--type-mono)',
+        color: 'var(--muted-ink)',
+        marginBottom: 'var(--space-1)',
+      }}
+    >
+      --font-mono · Departure Mono
+    </div>
+    <div
+      style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--type-mono)',
+        color: 'var(--ink)',
+      }}
+    >
+      SKU-00142 · ORDER #A19F3 · $48.00 · 2026-07-05T10:00:00Z
+    </div>
+  </div>
+</div>
+
+## Type scale
+
+<div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+  {[
+    { token: '--type-display', family: 'var(--font-display)', weight: 900 },
+    { token: '--type-h1', family: 'var(--font-display)', weight: 900 },
+    { token: '--type-h2', family: 'var(--font-display)', weight: 900 },
+    { token: '--type-body', family: 'var(--font-body)', weight: 400 },
+    { token: '--type-small', family: 'var(--font-body)', weight: 400 },
+    { token: '--type-mono', family: 'var(--font-mono)', weight: 400 },
+  ].map((row) => (
+    <div
+      key={row.token}
+      style={{
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: 'var(--space-4)',
+        borderBottom: 'var(--border-thin)',
+        paddingBottom: 'var(--space-2)',
+      }}
+    >
+      <div
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 'var(--type-small)',
+          color: 'var(--muted-ink)',
+          width: '10rem',
+          flexShrink: 0,
+        }}
+      >
+        {row.token}
+      </div>
+      <div
+        style={{
+          fontFamily: row.family,
+          fontWeight: row.weight,
+          fontSize: `var(${row.token})`,
+          color: 'var(--ink)',
+        }}
+      >
+        Ag Riso 01
+      </div>
+    </div>
+  ))}
+</div>
+
+Fluid via `clamp()` — don't hard-code `font-size: 32px;`, pick the closest scale token.
+
+## Banned
+
+Inter, Archivo Black, system-ui as primary, Roboto.

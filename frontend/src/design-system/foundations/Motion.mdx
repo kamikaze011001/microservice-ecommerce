@@ -1,0 +1,30 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks';
+import * as ButtonStories from '../../components/primitives/BButton.stories';
+
+<Meta title="Foundations/Motion" />
+
+# Motion — mechanical, not smooth
+
+```css
+--press-translate: 4px;
+--transition-snap: 60ms steps(2);
+```
+
+`steps(2)` is the signature. Buttons translate `4px 4px` down-right on `:active`, and the
+shadow shrinks to `--shadow-sm`. The two-step transition feels like a printing press
+impact, not Material's eased ripple — a smooth `ease-out` curve would read as a rubbery
+UI toolkit, not a stamped object hitting paper.
+
+## Press it
+
+<Canvas of={ButtonStories.Spot} />
+
+Click and hold the button above — watch it translate and its shadow shrink in two
+discrete steps rather than a smooth glide.
+
+## Reduced motion
+
+The brutalist press is fun but not essential. Respect
+`prefers-reduced-motion: reduce` — see the a11y checklist
+(`docs/09-a11y-checklist.md`, mirrored as **Guides/A11y** in this Storybook once
+published).

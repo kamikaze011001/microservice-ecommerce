@@ -1,0 +1,71 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Foundations/Color" />
+
+# Color — risograph two-tone + one spot
+
+Six tokens, deliberately few. **Restraint matters** — two-tone everywhere else is what
+makes the orange punch. Don't introduce a fourth or fifth colour without a token + ADR.
+
+<div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+  {[
+    { token: '--paper', hex: '#F4EFE6', intent: 'Warm off-white. Page background.' },
+    {
+      token: '--paper-shade',
+      hex: '#E8DFD0',
+      intent: 'Card / surface contrast against paper.',
+    },
+    { token: '--ink', hex: '#1C1C1C', intent: 'Warm charcoal. Text + borders.' },
+    {
+      token: '--muted-ink',
+      hex: '#6B6256',
+      intent: 'Secondary text, hints, colophon.',
+    },
+    {
+      token: '--spot',
+      hex: '#FF4F1C',
+      intent:
+        'Fluorescent riso orange. Every CTA, focus ring, alert. Singular memorable thing.',
+    },
+    {
+      token: '--stamp-red',
+      hex: '#C4302B',
+      intent: 'Stamps + inspection marks only — <BStamp>, validation borders. Never a CTA.',
+    },
+  ].map((row) => (
+    <div
+      key={row.token}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'var(--space-4)',
+        border: 'var(--border-thin)',
+        padding: 'var(--space-3)',
+        background: 'var(--paper)',
+      }}
+    >
+      <div
+        style={{
+          width: '64px',
+          height: '64px',
+          flexShrink: 0,
+          background: `var(${row.token})`,
+          border: 'var(--border-thick)',
+        }}
+      />
+      <div>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--type-mono)' }}>
+          {row.token} · {row.hex}
+        </div>
+        <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--type-body)' }}>
+          {row.intent}
+        </div>
+      </div>
+    </div>
+  ))}
+</div>
+
+## The one rule that matters
+
+`--spot` = every CTA/focus/alert; `--stamp-red` = stamps & inspection marks only, never a
+CTA.
