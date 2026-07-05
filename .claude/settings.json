@@ -1,9 +1,4 @@
 {
-  "enabledPlugins": {
-    "superpowers@claude-plugins-official": true,
-    "learning-output-style@claude-plugins-official": true,
-    "claude-md-management@claude-plugins-official": true
-  },
   "env": {
     "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
     "OTEL_METRICS_EXPORTER": "otlp",
@@ -12,5 +7,19 @@
     "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
     "OTEL_RESOURCE_ATTRIBUTES": "project.name=microservice-ecommerce",
     "OTEL_METRIC_EXPORT_INTERVAL": "20000"
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "learning-output-style@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "shipwithai-starter@shipwithai": true
+  },
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/load-memory.sh\"" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/remind-save.sh\"" } ] }
+    ]
   }
 }
