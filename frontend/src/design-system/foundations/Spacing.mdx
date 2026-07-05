@@ -1,0 +1,59 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Foundations/Spacing" />
+
+# Spacing — the rhythm
+
+`--space-1` (4 px) → `--space-16` (64 px). Page margin defaults to `--space-6` / `--space-8`.
+Don't introduce arbitrary `padding: 13px;` — pick the nearest step.
+
+Only these steps exist — there is no `--space-5`, `-7`, `-9`, `-10`, `-11`, `-13`, `-14`, or
+`-15`.
+
+<div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+  {[
+    { token: '--space-1', px: '4px' },
+    { token: '--space-2', px: '8px' },
+    { token: '--space-3', px: '12px' },
+    { token: '--space-4', px: '16px' },
+    { token: '--space-6', px: '24px' },
+    { token: '--space-8', px: '32px' },
+    { token: '--space-12', px: '48px' },
+    { token: '--space-16', px: '64px' },
+  ].map((row) => (
+    <div
+      key={row.token}
+      style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}
+    >
+      <div
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 'var(--type-mono)',
+          color: 'var(--ink)',
+          width: '9rem',
+          flexShrink: 0,
+        }}
+      >
+        {row.token}
+      </div>
+      <div
+        style={{
+          width: `var(${row.token})`,
+          height: 'var(--space-4)',
+          background: 'var(--spot)',
+          border: 'var(--border-thin)',
+          flexShrink: 0,
+        }}
+      />
+      <div
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 'var(--type-small)',
+          color: 'var(--muted-ink)',
+        }}
+      >
+        {row.px}
+      </div>
+    </div>
+  ))}
+</div>

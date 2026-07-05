@@ -1,0 +1,84 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Foundations/Borders & Shadows" />
+
+# Borders & Shadows — thick + hard offset
+
+No blur, no opacity. Hard offset only. The shadow IS the depth language.
+
+## Borders
+
+<div style={{ display: 'flex', gap: 'var(--space-6)' }}>
+  <div style={{ textAlign: 'center' }}>
+    <div
+      style={{
+        width: '120px',
+        height: '80px',
+        background: 'var(--paper)',
+        border: 'var(--border-thin)',
+      }}
+    />
+    <div
+      style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--type-small)',
+        marginTop: 'var(--space-2)',
+      }}
+    >
+      --border-thin · 2px solid var(--ink) — inputs, divider rules
+    </div>
+  </div>
+  <div style={{ textAlign: 'center' }}>
+    <div
+      style={{
+        width: '120px',
+        height: '80px',
+        background: 'var(--paper)',
+        border: 'var(--border-thick)',
+      }}
+    />
+    <div
+      style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--type-small)',
+        marginTop: 'var(--space-2)',
+      }}
+    >
+      --border-thick · 3px solid var(--ink) — cards, buttons, masthead
+    </div>
+  </div>
+</div>
+
+## Shadow ladder
+
+<div style={{ display: 'flex', gap: 'var(--space-12)', paddingTop: 'var(--space-4)' }}>
+  {[
+    { token: '--shadow-sm', value: '3px 3px 0 var(--ink)', use: 'Hover state, small chips' },
+    {
+      token: '--shadow-md',
+      value: '6px 6px 0 var(--ink)',
+      use: 'Default button + card shadow',
+    },
+    { token: '--shadow-lg', value: '10px 10px 0 var(--ink)', use: 'Hero CTA, primary surfaces' },
+  ].map((row) => (
+    <div key={row.token} style={{ textAlign: 'center' }}>
+      <div
+        style={{
+          width: '100px',
+          height: '70px',
+          background: 'var(--paper-shade)',
+          border: 'var(--border-thick)',
+          boxShadow: `var(${row.token})`,
+          marginBottom: 'var(--space-4)',
+        }}
+      />
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--type-small)' }}>
+        {row.token}
+        <br />
+        {row.value}
+        <br />
+        <span style={{ color: 'var(--muted-ink)' }}>{row.use}</span>
+      </div>
+    </div>
+  ))}
+</div>

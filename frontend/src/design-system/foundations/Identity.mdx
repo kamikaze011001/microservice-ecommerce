@@ -1,0 +1,35 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Foundations/Identity" />
+
+# Issue Nº01
+
+The risograph-zine identity. Two-tone paper + ink, one fluorescent spot, hard-offset
+shadows, mechanical `steps(2)` motion. Restraint is the point — the orange only punches
+because everything else is two-tone.
+
+## Hard rules
+
+- Never hard-code a hex or font outside `src/styles/tokens.css`. Use `var(--…)` or the
+  matching Tailwind utility (`text-spot`, `bg-paper-shade`).
+- A new colour or motion value needs a token first, and an ADR if it's structurally new.
+- The shadow IS the depth language — hard offset only, never blur or opacity.
+
+See **Color**, **Typography**, **Spacing**, **Borders & Shadows**, and **Motion** for the
+specifics, plus the "Signature details" below for where tokens become identity.
+
+## Signature details (where tokens become identity)
+
+These are codified in the design spec. Use them — they're what makes Issue Nº01 not
+generic neo-brutalism.
+
+1. **Stamps, not badges** — `<BStamp>` for status (PROCESSING / PAID / CANCELED). Double-ring
+   border, condensed mono, `--stamp-red`, slight rotation.
+2. **Misregistration on hover** — product card titles get `text-shadow: 2px 2px 0 var(--spot)`
+   on hover. Looks misprinted.
+3. **Marginalia numerals** — `<BMarginNumeral>` renders huge outlined section numerals
+   ("01", "02").
+4. **Cropmark dividers** — `<BCropmarks>` instead of `<hr>`. Four small black corner marks.
+5. **Sticker rotation** — product cards sit at ±0.5° random rotation. Pinned-to-wall, not grid.
+6. **Paper grain** — body has SVG noise overlay at ~4% opacity (`body::after` in `main.css`).
+7. **The CTA press** — `:active` translate + shadow shrink + `steps(2)` snap.

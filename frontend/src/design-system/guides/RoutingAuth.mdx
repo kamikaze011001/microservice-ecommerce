@@ -1,9 +1,13 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Guides/RoutingAuth" />
+
 # Routing & auth
 
 ## Route table
 
 | Path               | Page                | Auth                                             |
-| ------------------ | ------------------- | ------------------------------------------------ |
+| ------------------- | -------------------- | -------------------------------------------------- |
 | `/`                | `HomePage`          | public                                           |
 | `/products/:id`    | `ProductDetailPage` | public                                           |
 | `/login`           | `LoginPage`         | guest-only (logged-in → `/`)                     |
@@ -69,7 +73,7 @@ Why both? The guard handles "stale tab where token expired hours ago". The inter
 
 ## No refresh-token rotation in v1
 
-The current design treats 401 as terminal: clear store, redirect to login. This is acceptable if the backend issues hour-plus access tokens. If tokens are short-lived (<15 min), users will be kicked mid-session — escalate to v1.5 for refresh-token flow.
+The current design treats 401 as terminal: clear store, redirect to login. This is acceptable if the backend issues hour-plus access tokens. If tokens are short-lived (`<15 min`), users will be kicked mid-session — escalate to v1.5 for refresh-token flow.
 
 ## Multi-tab logout sync
 

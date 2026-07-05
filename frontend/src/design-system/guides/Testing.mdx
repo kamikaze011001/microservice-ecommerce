@@ -1,3 +1,7 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Guides/Testing" />
+
 # Testing conventions
 
 No coverage % gate. **Test what matters**: every Zod schema (happy + sad), every page (happy render), every optimistic mutation (rollback path), every error class (mapping).
@@ -5,7 +9,7 @@ No coverage % gate. **Test what matters**: every Zod schema (happy + sad), every
 ## Layers
 
 | Layer     | Tool                                | Lives in                           | What it tests                                                                                      |
-| --------- | ----------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------- |
+| ---------- | ------------------------------------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------- |
 | Unit      | Vitest                              | `tests/unit/`                      | Pure functions: Zod schemas, format helpers, `apiError` classifier, store reducers                 |
 | Component | @testing-library/vue + Vitest       | `tests/unit/` (colocated by topic) | Primitives + domain components — render, props, events, a11y semantics                             |
 | Page      | @testing-library/vue + MSW + Vitest | `tests/unit/pages/`                | Page renders + key flows (login error path, optimistic cancel rollback, debounced search)          |
@@ -115,7 +119,7 @@ describe('LoginPage', () => {
 ## What's deferred
 
 - Storybook + visual regression
-- axe-core a11y suite (manual checklist in `09-a11y-checklist.md` for now)
+- axe-core a11y suite (manual checklist — see **Guides/A11y** — for now)
 - Coverage % gates
 - Lighthouse budgets in CI
 

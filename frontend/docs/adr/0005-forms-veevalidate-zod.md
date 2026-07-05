@@ -25,5 +25,5 @@ We need form validation (login, register, address at checkout). We also need to 
 ## Consequences
 
 - One source of truth for shape. Backend changes the password rule → one file changes → both forms and API parsers update.
-- Server-side validation errors map to inline form errors via VeeValidate's `setErrors({ field })`. (Convention in [`docs/05-form-conventions.md`](../05-form-conventions.md).)
+- Server-side validation errors map to inline form errors via VeeValidate's `setErrors({ field })`. (Convention in Storybook **Guides/Forms** — `src/design-system/guides/Forms.mdx`.)
 - Zod adds ~9 kB gzip — acceptable for the runtime safety it buys.

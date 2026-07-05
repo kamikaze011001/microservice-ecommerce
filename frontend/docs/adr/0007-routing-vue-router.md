@@ -9,7 +9,7 @@ SPA routing for ~9 paths, with auth-required and guest-only flavours, deep-link 
 
 ## Decision
 
-**Vue Router 4** — the canonical Vue routing solution. Auth enforced via route `meta.requiresAuth` / `meta.guestOnly` flags + a global `beforeEach` guard. `?next=` query param round-trips users back through login. (Full conventions in [`docs/06-routing-auth.md`](../06-routing-auth.md).)
+**Vue Router 4** — the canonical Vue routing solution. Auth enforced via route `meta.requiresAuth` / `meta.guestOnly` flags + a global `beforeEach` guard. `?next=` query param round-trips users back through login. (Full conventions in Storybook **Guides/Routing Auth** — `src/design-system/guides/RoutingAuth.mdx`.)
 
 ## Alternatives considered
 
@@ -23,5 +23,5 @@ SPA routing for ~9 paths, with auth-required and guest-only flavours, deep-link 
 
 - Single explicit `routes` array makes auth audit simple — grep for `requiresAuth: true`.
 - Route guards centralise the auth check; pages don't reimplement it (banned by convention).
-- 401 handling is dual-layered (guard + interceptor) — see `docs/06-routing-auth.md`.
+- 401 handling is dual-layered (guard + interceptor) — see Storybook **Guides/Routing Auth** (`src/design-system/guides/RoutingAuth.mdx`).
 - `?next` is a path (not absolute URL); we strip absolute URLs to defend against open-redirect.

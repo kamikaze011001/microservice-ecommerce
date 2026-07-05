@@ -1,3 +1,7 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Guides/Forms" />
+
 # Form conventions
 
 VeeValidate + Zod. Schemas live in `src/lib/zod-schemas.ts` and are reused for **two** purposes:
@@ -109,7 +113,7 @@ const onSubmit = handleSubmit(async (values) => {
 Server-side validation (`400`, `409`, `422`) maps to **inline form errors**, not toasts. The interceptor classifies these as `validation`. Forms catch the error and call `setErrors({ field: message })`.
 
 | Backend code                            | Form field                   | Message                         |
-| --------------------------------------- | ---------------------------- | ------------------------------- |
+| ---------------------------------------- | ----------------------------- | -------------------------------- |
 | `INVALID_CREDENTIALS`                   | `password`                   | "Wrong email or password"       |
 | `EMAIL_TAKEN`                           | `email`                      | "Email already in use"          |
 | `ORDER_ALREADY_CANCELED`                | (n/a — toast on Orders page) | "Already canceled — refreshed." |
@@ -121,6 +125,6 @@ Add new mappings here when a form ships.
 
 - **Schema lives in `src/lib/zod-schemas.ts`.** Never inline a `z.object` inside a form component.
 - **Server validation → inline error.** No toasts for validation failures. Toasts are for `network` / `server` only.
-- **Submit button shows loading copy.** "STAMPING…" while pending, voice from [`08-copy-and-voice.md`](./08-copy-and-voice.md).
+- **Submit button shows loading copy.** "STAMPING…" while pending, voice from **Guides/CopyVoice**.
 - **Forms have `novalidate` on the `<form>` tag.** Browser native validation fights with our errors.
 - **Empty success state still navigates.** `mutation.onSuccess` does router.push, not the form.

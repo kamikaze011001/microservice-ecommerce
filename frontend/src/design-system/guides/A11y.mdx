@@ -1,3 +1,7 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Guides/A11y" />
+
 # Accessibility checklist
 
 Issue Nº01 is loud, but accessibility is non-negotiable. The brutalist look already helps (high contrast, big type, hard focus rings). What follows is the full per-screen checklist. Run through it before merging any screen.
@@ -5,12 +9,12 @@ Issue Nº01 is loud, but accessibility is non-negotiable. The brutalist look alr
 ## Targets
 
 | Concern                                          | Target                                                                      |
-| ------------------------------------------------ | --------------------------------------------------------------------------- |
+| --------------------------------------------------- | ------------------------------------------------------------------------------ |
 | Color contrast (text on background)              | WCAG AA (≥ 4.5:1 normal, ≥ 3:1 large ≥ 18.66 px)                            |
 | Color contrast (UI components, focus indicators) | WCAG AA (≥ 3:1)                                                             |
 | Keyboard navigation                              | Every interactive element reachable + operable via keyboard                 |
 | Focus visible                                    | Always. `:focus-visible` outline, never `outline: none` without replacement |
-| Reduced motion                                   | Respect `prefers-reduced-motion: reduce`                                    |
+| Reduced motion                                    | Respect `prefers-reduced-motion: reduce`                                    |
 | Screen reader                                    | Landmarks + labels + live regions                                           |
 
 ## Per-screen checklist
@@ -72,7 +76,7 @@ For each screen, verify:
 Pre-checked against `--ink` `#1C1C1C` (almost black).
 
 | Background                | Text            | Ratio  | Verdict                                   |
-| ------------------------- | --------------- | ------ | ----------------------------------------- |
+| --------------------------- | ----------------- | -------- | -------------------------------------------- |
 | `--paper` `#F4EFE6`       | `--ink`         | 12.5:1 | AAA                                       |
 | `--paper-shade` `#E8DFD0` | `--ink`         | 11.0:1 | AAA                                       |
 | `--spot` `#FF4F1C`        | `--ink`         | 5.6:1  | AA                                        |

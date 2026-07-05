@@ -1,3 +1,7 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Guides/Api" />
+
 # API conventions
 
 The API boundary is `src/api/queries/`. Components, pages, and composables consume hooks from here, never the raw client.
@@ -30,7 +34,7 @@ Components never import `client` directly.
 Hierarchical keys allow surgical invalidation.
 
 | Key                         | Meaning                                       |
-| --------------------------- | --------------------------------------------- |
+| --------------------------- | ---------------------------------------------- |
 | `["currentUser"]`           | Logged-in user                                |
 | `["products"]`              | Product list (with filters as second segment) |
 | `["products", { page, q }]` | List with params                              |
@@ -46,7 +50,7 @@ Hierarchical keys allow surgical invalidation.
 ## Invalidation rules
 
 | Mutation                   | Invalidates                         |
-| -------------------------- | ----------------------------------- |
+| --------------------------- | ------------------------------------ |
 | Login / Register           | `["currentUser"]`                   |
 | Add / Update / Remove cart | `["cart"]`                          |
 | Create order               | `["cart"]`, `["orders"]`            |
@@ -60,7 +64,7 @@ Document each new mutation here when added.
 The interceptor classifies every non-2xx response into one of six classes. UX defaults are codified.
 
 | Class           | Status          | Default UX                                                                                                                       |
-| --------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| --------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `auth-required` | 401             | Clear auth store; redirect to `/login?next=<currentPath>`                                                                        |
 | `forbidden`     | 403             | Toast "Not allowed"; stay on page                                                                                                |
 | `not-found`     | 404             | Route-level → 404 page; component-level → empty state                                                                            |

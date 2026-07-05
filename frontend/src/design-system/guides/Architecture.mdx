@@ -1,3 +1,7 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Guides/Architecture" />
+
 # Architecture
 
 ## Stack at a glance
@@ -14,7 +18,8 @@
 | Headless a11y | Reka UI (Dialog, Select, Popover)                                |
 | Tests         | Vitest + @testing-library/vue + MSW + Playwright                 |
 
-Decision rationale lives in [`adr/`](./adr/).
+Decision rationale lives in `docs/adr/` (repo path — see **Decision records** at the
+end of this guide).
 
 ## Folder structure
 
@@ -82,3 +87,9 @@ Server data lives in TanStack Query's cache. Pinia holds **only** auth (token + 
 - A primitive per file. A page per file. A query module per resource.
 - Smaller files are faster to reason about, faster to review, and produce cleaner diffs.
 - Files that change together live together (e.g. `useCartQuery` and `useAddToCartMutation` share `api/queries/cart.ts`), but a module shouldn't grow past ~150 lines without a reason.
+
+## Decision records
+
+Architecture decisions behind the picks in the stack table above are recorded as ADRs
+in `docs/adr/` (repo path) — that's the decision-record home; ADRs stay in the repo
+rather than moving into Storybook.

@@ -23,6 +23,6 @@ We have client-side state that isn't server data: auth token + decoded identity,
 
 ## Consequences
 
-- Strong boundary: anything that came from the API → query. Anything else → Pinia. This boundary is enforced in [`docs/01-architecture.md`](../01-architecture.md).
+- Strong boundary: anything that came from the API → query. Anything else → Pinia. This boundary is enforced in Storybook **Guides/Architecture** — `src/design-system/guides/Architecture.mdx`.
 - `localStorage` persistence is hand-wired (small, fits the auth use case). No `pinia-plugin-persistedstate` dependency.
 - Multi-tab sync: Pinia subscribes to `storage` event for `aibles.auth` key.

@@ -1,3 +1,7 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Guides/CopyVoice" />
+
 # Copy & voice — Issue Nº01
 
 The storefront reads like a printed risograph zine catalog. Copy is the second-loudest expression of that identity (after type). Words count.
@@ -18,16 +22,16 @@ The voice is **printer-shop deadpan**. Like the kind of text you'd see on a pack
 ### Empty states
 
 | Where                 | Copy                                                |
-| --------------------- | --------------------------------------------------- |
+| ---------------------- | ----------------------------------------------------- |
 | Empty product catalog | "Issue Nº01 coming soon."                           |
 | Empty cart            | "Your cart is empty. Browse the lots."              |
 | Empty orders          | "No orders yet. Start at issue one."                |
-| Empty search results  | "No matches for «{query}». Try another lot number." |
+| Empty search results  | "No matches for «`{query}`». Try another lot number." |
 
 ### Loading states
 
 | Where                           | Copy                   |
-| ------------------------------- | ---------------------- |
+| --------------------------------- | ------------------------ |
 | Skeleton card label (a11y only) | "Loading lot."         |
 | Submit-pending button           | "STAMPING…"            |
 | Payment-verifying stamp         | "VERIFYING…"           |
@@ -37,10 +41,10 @@ No spinners. Skeleton cards or stamp animations only.
 
 ### Error states
 
-Match the API error taxonomy in [`04-api-conventions.md`](./04-api-conventions.md).
+Match the API error taxonomy in **Guides/Api**.
 
 | Class                         | Default copy               |
-| ----------------------------- | -------------------------- |
+| ------------------------------- | ----------------------------- |
 | `auth-required`               | (silent — redirect)        |
 | `forbidden`                   | "Not allowed."             |
 | `not-found` (route)           | "404 — lot not found."     |
@@ -54,7 +58,7 @@ Match the API error taxonomy in [`04-api-conventions.md`](./04-api-conventions.m
 Order status renders as `<BStamp>`. Copy is uppercase, mono.
 
 | Status     | Stamp        |
-| ---------- | ------------ |
+| ----------- | -------------- |
 | PROCESSING | "PROCESSING" |
 | PAID       | "PAID"       |
 | SHIPPED    | "SHIPPED"    |
@@ -65,7 +69,7 @@ Order status renders as `<BStamp>`. Copy is uppercase, mono.
 Inventory:
 
 | Inventory | Stamp       |
-| --------- | ----------- |
+| ----------- | ------------- |
 | > 10      | "IN STOCK"  |
 | 1–10      | "LOW STOCK" |
 | 0         | "SOLD OUT"  |
@@ -75,7 +79,7 @@ Inventory:
 Always uppercase, present-tense imperative.
 
 | Action                  | Copy                        |
-| ----------------------- | --------------------------- |
+| ------------------------- | ----------------------------- |
 | Add to cart (logged in) | "ADD TO CART"               |
 | Add to cart (guest)     | "LOGIN TO BUY"              |
 | Place order             | "PLACE ORDER" → "STAMPING…" |
@@ -91,7 +95,7 @@ Always uppercase, present-tense imperative.
 Toasts are short. One sentence, no period required.
 
 | Trigger                                  | Copy                            |
-| ---------------------------------------- | ------------------------------- |
+| ------------------------------------------- | ---------------------------------- |
 | Add-to-cart success                      | "Added to cart"                 |
 | Cancel-order conflict 409                | "Already canceled — refreshed." |
 | Server 5xx                               | "Server error — try again"      |
