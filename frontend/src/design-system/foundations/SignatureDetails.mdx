@@ -1,0 +1,76 @@
+import { Meta, Canvas } from '@storybook/addon-docs/blocks';
+import * as StampStories from '../../components/primitives/BStamp.stories';
+import * as MarginNumeralStories from '../../components/primitives/BMarginNumeral.stories';
+import * as CropmarksStories from '../../components/primitives/BCropmarks.stories';
+import * as SignatureStories from './SignatureDetails.stories';
+
+<Meta title="Foundations/Signature Details" />
+
+# Signature Details — Issue Nº01
+
+These seven details are codified in the design spec (`docs/02-design-tokens.md` §"Signature
+details"). Use them — they're what makes Issue Nº01 not generic neo-brutalism.
+
+## 1. Stamps, not badges
+
+`<BStamp>` is used for status (PROCESSING / PAID / CANCELED): a double-ring border,
+condensed mono type, `--stamp-red`, and a slight rotation — not a rounded pill badge.
+
+<Canvas of={StampStories.Paid} />
+
+## 2. Misregistration on hover
+
+Product card titles get `text-shadow: 2px 2px 0 var(--spot)` on hover. It looks like the
+red and orange print passes slipped out of alignment for a moment.
+
+<Canvas of={SignatureStories.HoverMisregister} />
+
+Hover the card above — watch the heading pick up the offset shadow.
+
+## 3. Marginalia numerals
+
+`<BMarginNumeral>` renders huge outlined section numerals ("01", "02") in the page margin.
+
+<Canvas of={MarginNumeralStories.Left} />
+
+## 4. Cropmark dividers
+
+`<BCropmarks>` replaces `<hr>` with four small black corner marks — a print-shop
+registration mark, not a line. Note `BCropmarks` has no slot; it's a fixed divider that
+sits between blocks, not a wrapper around content.
+
+<Canvas of={CropmarksStories.Default} />
+
+## 5. Sticker rotation
+
+Product cards sit at ±0.5° random rotation — pinned-to-a-wall, not machine-aligned to a grid.
+
+<Canvas of={SignatureStories.StickerRotation} />
+
+## 6. Paper grain
+
+The page background carries a subtle SVG noise overlay at ~4% opacity, applied via
+`body::after` in `main.css`:
+
+```css
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: url('data:image/svg+xml;utf8,...fractalNoise...');
+  mix-blend-mode: multiply;
+}
+```
+
+There's no isolated embed for this one — it's a full-page effect. It's visible on every
+story canvas in this Storybook as a faint texture over the paper background, softening the
+otherwise flat two-tone fills.
+
+## 7. The CTA press
+
+Buttons translate `4px 4px` down-right on `:active` and their shadow shrinks from
+`--shadow-md` to `--shadow-sm`, using the `60ms steps(2)` transition — a printing-press
+impact rather than a smooth Material ripple. See **Foundations/Motion** for the live,
+interactive demo of this signature.
