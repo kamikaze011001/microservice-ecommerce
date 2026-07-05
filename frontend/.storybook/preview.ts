@@ -1,7 +1,12 @@
-import type { Preview } from '@storybook/vue3-vite';
+import { setup, type Preview } from '@storybook/vue3-vite';
+import { createPinia } from 'pinia';
 import '@/styles/tokens.css';
 import '@/styles/fonts.css';
 import '@/styles/main.css';
+
+setup((app) => {
+  app.use(createPinia());
+});
 
 const preview: Preview = {
   parameters: {
