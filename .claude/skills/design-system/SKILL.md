@@ -10,7 +10,7 @@ read the source directly.
 
 ## Where things are (all under `frontend/`)
 - **Tokens (values):** `src/styles/tokens.css` — colours, type, spacing, shadows, motion.
-- **Component specs:** `src/components/**/*.stories.ts` — every variant + its props/args.
+- **Component specs:** `src/components/**/*.stories.ts` and `src/design-system/**/*.stories.ts` — every variant + its props/args.
 - **Component source:** the `.vue` next to each story — the real `defineProps`.
 - **Foundations (rationale, Do/Don't):** `src/design-system/foundations/*.mdx`.
 - **Build playbook (routing/api/forms/testing/copy/a11y):** `src/design-system/guides/*.mdx`.
