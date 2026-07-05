@@ -44,7 +44,7 @@ pnpm api:gen      # regen src/api/schema.d.ts from gateway swagger
 ## Design system — single source of truth
 
 The Issue Nº01 design system lives in **Storybook** (`cd frontend && pnpm storybook`).
-Agents: use the project `/design-system` skill — it reads the SSOT from source
+Agents: use the project `/design-kit` skill — it reads the SSOT from source
 (no server needed).
 
 - **Tokens:** `src/styles/tokens.css`

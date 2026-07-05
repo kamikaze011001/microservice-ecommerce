@@ -1,5 +1,5 @@
 ---
-name: design-system
+name: design-kit
 description: Use when building or reviewing any frontend UI in this repo — the single source of truth for the Issue Nº01 design system (tokens, components, build conventions). Query it from source before writing markup, choosing a color/font, adding a component, or building a form/route/API call.
 ---
 
