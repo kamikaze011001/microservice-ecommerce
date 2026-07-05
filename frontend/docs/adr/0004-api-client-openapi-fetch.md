@@ -41,4 +41,4 @@ backend gateway /v3/api-docs ──→  openapi-typescript ──→  src/api/sc
                                 src/api/queries/* (the boundary)
 ```
 
-Defined in detail in [`docs/04-api-conventions.md`](../04-api-conventions.md).
+Defined in detail in Storybook **Guides/Api** — `src/design-system/guides/Api.mdx`.

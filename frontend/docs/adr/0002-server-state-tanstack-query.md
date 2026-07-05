@@ -25,4 +25,4 @@ The app reads/writes against ~10 backend endpoints. We need: caching, background
 - Optimistic mutations (cancel order, qty stepper) are first-class.
 - Devtools in dev are fantastic.
 - Bundle adds ~12 kB gzip — acceptable for the value.
-- Clear boundary: server data flows through queries, never through Pinia. This is enforced in [`docs/04-api-conventions.md`](../04-api-conventions.md).
+- Clear boundary: server data flows through queries, never through Pinia. This is enforced in Storybook **Guides/Api** — `src/design-system/guides/Api.mdx`.

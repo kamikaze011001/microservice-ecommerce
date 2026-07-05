@@ -41,6 +41,21 @@ pnpm api:gen      # regen src/api/schema.d.ts from gateway swagger
 - Wire format is **snake_case** (Java side uses `SnakeCaseStrategy`); the generated TS types reflect that — don't manually camelCase.
 - Auth: gateway sets cookies / returns JWT; client sends credentials. CORS is permissive on `:5173`.
 
+## Design system — single source of truth
+
+The Issue Nº01 design system lives in **Storybook** (`cd frontend && pnpm storybook`).
+Agents: use the project `/design-system` skill — it reads the SSOT from source
+(no server needed).
+
+- **Tokens:** `src/styles/tokens.css`
+- **Components:** `src/components/**/*.stories.ts` (+ the `.vue` beside each)
+- **Foundations (rationale, Do/Don't):** `src/design-system/foundations/*.mdx`
+- **Build playbook (routing/api/forms/testing/copy/a11y):** `src/design-system/guides/*.mdx`
+- **Decisions:** `docs/adr/`
+
+Never hard-code a hex/font; reuse the `B*` primitives; `--spot` for CTAs,
+`--stamp-red` for stamps only.
+
 ## After Swagger changes
 
 Run `pnpm api:gen` to refresh `src/api/schema.d.ts`, then fix the resulting type errors — this is the canary for breaking API changes.
