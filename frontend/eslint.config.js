@@ -3,10 +3,19 @@ import vue from 'eslint-plugin-vue';
 import tseslint from 'typescript-eslint';
 import prettier from 'eslint-config-prettier/flat';
 import globals from 'globals';
+import storybook from 'eslint-plugin-storybook';
 
 export default [
   {
-    ignores: ['dist', 'node_modules', 'coverage', '*.config.js', '*.config.ts', 'public'],
+    ignores: [
+      'dist',
+      'node_modules',
+      'coverage',
+      '*.config.js',
+      '*.config.ts',
+      'public',
+      'storybook-static',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -30,4 +39,5 @@ export default [
     },
   },
   prettier,
+  ...storybook.configs['flat/recommended'],
 ];
