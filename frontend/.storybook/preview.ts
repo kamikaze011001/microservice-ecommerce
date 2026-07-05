@@ -1,6 +1,7 @@
 import { setup, type Preview } from '@storybook/vue3-vite';
 import { createPinia } from 'pinia';
 import { createRouter, createMemoryHistory } from 'vue-router';
+import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
 import '@/styles/tokens.css';
 import '@/styles/fonts.css';
 import '@/styles/main.css';
@@ -13,6 +14,7 @@ setup((app) => {
       routes: [{ path: '/', component: { template: '<div/>' } }],
     }),
   );
+  app.use(VueQueryPlugin, { queryClient: new QueryClient() });
 });
 
 const preview: Preview = {
