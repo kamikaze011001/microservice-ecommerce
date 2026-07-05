@@ -10,7 +10,11 @@ const meta: Meta<typeof BCropmarks> = {
   render: (args) => ({
     components: { BCropmarks },
     setup: () => ({ args }),
-    template: `<div style="padding:2rem"><BCropmarks v-bind="args"><div style="padding:var(--space-6)">Content framed by crop marks</div></BCropmarks></div>`,
+    template: `<div style="padding:2rem">
+      <p>A paragraph of body copy above the divider.</p>
+      <BCropmarks v-bind="args" />
+      <p>A second block below it — the crop marks sit in the margin between sections.</p>
+    </div>`,
   }),
 };
 export default meta;
