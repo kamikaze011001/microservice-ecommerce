@@ -97,4 +97,55 @@ frontend/
 
 Editorial / risograph aesthetic. Single `--spot` accent (orange), uppercase mono kickers, outlined display numerals. Status vocabulary: PENDING / IN PRESS / PAID / VOIDED / MISFIRE.
 
-Tokens live in `src/styles/tokens.css`. Don't hard-code colors, fonts, or spacing — use the CSS custom properties (`var(--ink)`, `var(--space-4)`, etc.).
+**Storybook is the single source of truth.** Tokens, components, and the build
+playbook all live there — don't duplicate them elsewhere.
+
+### Run it
+
+```bash
+pnpm storybook        # dev server → http://localhost:6006
+pnpm build-storybook  # static build → storybook-static/ (what CI verifies)
+```
+
+### What's inside (sidebar)
+
+| Section         | Answers                                                                                      | Source                                   |
+| --------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| **Foundations** | The _why_ — identity, color, type, spacing, borders/shadows, motion, signatures              | `src/design-system/foundations/*.mdx`    |
+| **Primitives**  | The 11 `B*` building blocks — every variant + live Controls                                  | `src/components/primitives/*.stories.ts` |
+| **Patterns**    | Composed domain/layout widgets (AppNav, AddressForm, …)                                      | stories beside those components          |
+| **Guides**      | Build playbook — Architecture, Components, Api, Forms, RoutingAuth, Testing, CopyVoice, A11y | `src/design-system/guides/*.mdx`         |
+
+Primitives are interactive (use the **Controls** panel to flip props); Foundations/Guides are read-only doc pages.
+
+### Query it without a server — the `/design-kit` skill
+
+The project-scoped `/design-kit` Claude skill reads this SSOT straight from
+source, so an agent can answer design questions with no running Storybook:
+"what variants does `BStamp` have?", "what's the spot color?", "how do I build a
+form?". `.claude/skills/design-kit/scripts/list-stories.sh` dumps every story
+title, MDX title, and token name. Invoke `/design-kit` before writing any UI.
+
+### The rules it enforces
+
+- Never hard-code a hex/font/spacing — use tokens (`var(--ink)`, `var(--space-4)`, …) from `src/styles/tokens.css`.
+- Reuse the `B*` primitives; don't hand-roll a button/input/stamp.
+- Stamps for status (never badges); hard-offset shadow only (no blur/opacity).
+- `--spot` for every CTA/focus/alert; `--stamp-red` for stamps only, never a CTA.
+- Primitives must **not** call APIs, stores, or the router (see `Guides/Components`).
+
+### Adding a story
+
+Create `BFoo.stories.ts` beside the component. Two conventions that will bite you otherwise:
+
+- Import types from **`@storybook/vue3-vite`** (not `@storybook/vue3`).
+- Use **`const meta: Meta<typeof X> = {…}`**, not `satisfies` — `satisfies` trips TS4023 under the repo's `composite: true`.
+
+New `.mdx` docs go in `foundations/` or `guides/` and auto-appear — but **MDX
+renders through React, not Vue**, so you can't drop a raw `<BFoo>` into a page.
+Embed a story instead: `<Canvas of={FooStories.Default} />`, and import
+doc-blocks from `@storybook/addon-docs/blocks`.
+
+> **Note:** `.storybook/main.ts` carries a `viteFinal` shim working around an
+> upstream Storybook 10 MDX bug ([#33537](https://github.com/storybookjs/storybook/issues/33537)).
+> Remove it once that's fixed upstream and `@storybook/*` is bumped.
