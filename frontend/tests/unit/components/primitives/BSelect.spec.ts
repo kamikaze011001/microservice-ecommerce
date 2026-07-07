@@ -30,6 +30,15 @@ describe('BSelect', () => {
   // target.addEventListener() on the keyboard event's target, which is null when the
   // event is dispatched into a portal in happy-dom (portal DOM is detached from the
   // test container's document). This is deferred to Task 19 live-browser DoD verification.
+  it('applies ariaLabel to the trigger as its accessible name', () => {
+    render(BSelect, {
+      props: { modelValue: '', options, placeholder: 'Pick one', ariaLabel: 'Shipping method' },
+    });
+    // reka-ui combobox button has no native <label for> association, so the
+    // ariaLabel prop is what gives it an accessible name (axe button-name fix).
+    expect(screen.getByRole('combobox', { name: 'Shipping method' })).toBeInTheDocument();
+  });
+
   it('renders all options in the open listbox', async () => {
     render(BSelect, {
       props: { modelValue: '', options, placeholder: 'Pick one' },

@@ -1,0 +1,12 @@
+{
+  "components/domain/AddressForm.vue": 7,
+  "components/domain/CartLineItem.vue": 3,
+  "components/layout/AppNav.vue": 2,
+  "pages/CartPage.vue": 1,
+  "pages/CheckoutPage.vue": 2,
+  "pages/HomePage.vue": 1,
+  "pages/PaymentResultPage.vue": 2,
+  "pages/ProductDetailPage.vue": 1,
+  "pages/account/OrdersPage.vue": 1,
+  "pages/account/ProfilePage.vue": 1
+}

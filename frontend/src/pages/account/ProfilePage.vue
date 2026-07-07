@@ -225,6 +225,7 @@ async function onFileChange(e: Event) {
               <label class="profile__field-label" for="gender-select">GENDER</label>
               <BSelect
                 id="gender-select"
+                aria-label="Gender"
                 :model-value="profileGender ?? ''"
                 v-bind="profileGenderAttrs"
                 :options="genderOptions"

@@ -43,6 +43,10 @@ defineEmits<{ dismiss: [] }>();
   border-color: var(--ink);
   background: color-mix(in srgb, var(--spot) 15%, var(--paper));
 }
+/* Full-ink body on the tinted success surface — muted-ink misses AA (4.41:1) there. */
+.tone-success .b-toast__body {
+  color: var(--ink);
+}
 .tone-error {
   border-color: var(--stamp-red);
 }

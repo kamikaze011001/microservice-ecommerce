@@ -45,3 +45,30 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Consistency gate
+        run: pnpm check:consistency
+
+  storybook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Build Storybook
+        run: pnpm build-storybook
+      - name: Run Storybook test-runner
+        run: pnpm test-storybook:ci

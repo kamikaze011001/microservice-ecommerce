@@ -26,7 +26,9 @@ const props = withDefaults(defineProps<Props>(), {
       data-testid="b-button-spinner"
       aria-hidden="true"
     />
-    <span v-else class="b-button__label"><slot /></span>
+    <span :class="['b-button__label', { 'b-button__label--sr-only': props.loading }]"
+      ><slot
+    /></span>
   </button>
 </template>
 
@@ -69,6 +71,18 @@ const props = withDefaults(defineProps<Props>(), {
 .b-button--danger {
   background: var(--stamp-red);
   color: var(--paper);
+}
+/* Keep the label as an accessible name while loading, but visually show only the spinner. */
+.b-button__label--sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .b-button__spinner {
   width: 1em;
