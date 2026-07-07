@@ -12,7 +12,12 @@ const meta: Meta<typeof BSelect> = {
   title: 'Primitives/BSelect',
   component: BSelect,
   tags: ['autodocs'],
-  args: { modelValue: '', options: OPTIONS, placeholder: 'Choose a method' },
+  args: {
+    modelValue: '',
+    options: OPTIONS,
+    placeholder: 'Choose a method',
+    ariaLabel: 'Shipping method',
+  },
   render: (args) => ({
     components: { BSelect },
     setup() {

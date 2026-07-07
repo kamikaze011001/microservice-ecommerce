@@ -23,11 +23,15 @@ interface Props {
   placeholder?: string;
   error?: string;
   disabled?: boolean;
+  /** Accessible name for the trigger. Required for a11y — the reka-ui combobox
+   *  button does not associate with a native <label for>. */
+  ariaLabel?: string;
 }
 const props = withDefaults(defineProps<Props>(), {
   placeholder: undefined,
   error: undefined,
   disabled: false,
+  ariaLabel: undefined,
 });
 defineEmits<{ 'update:modelValue': [value: string] }>();
 </script>
@@ -38,7 +42,10 @@ defineEmits<{ 'update:modelValue': [value: string] }>();
     :disabled="props.disabled"
     @update:model-value="$emit('update:modelValue', String($event ?? ''))"
   >
-    <SelectTrigger :class="['b-select__trigger', { 'has-error': !!props.error }]">
+    <SelectTrigger
+      :class="['b-select__trigger', { 'has-error': !!props.error }]"
+      :aria-label="props.ariaLabel"
+    >
       <SelectValue :placeholder="props.placeholder ?? ''" />
       <SelectIcon class="b-select__chev">▾</SelectIcon>
     </SelectTrigger>

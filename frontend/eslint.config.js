@@ -38,6 +38,13 @@ export default [
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },
+  {
+    // Consistency-check scripts are Node ESM CLIs (process, fs, etc.).
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
   prettier,
   ...storybook.configs['flat/recommended'],
 ];

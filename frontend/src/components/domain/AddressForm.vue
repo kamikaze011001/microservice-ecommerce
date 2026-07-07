@@ -115,7 +115,7 @@ const onSubmit = handleSubmit((values) => {
 }
 .address__submit {
   background: var(--color-spot);
-  color: var(--color-paper);
+  color: var(--color-ink);
   border: 2px solid var(--color-ink);
   padding: var(--space-3) var(--space-5);
   font-family: var(--font-display);

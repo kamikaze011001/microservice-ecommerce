@@ -146,8 +146,19 @@ const countries = [
       <BMarginNumeral numeral="09" />
       <h2>BSelect</h2>
       <div class="grid grid--stack">
-        <BSelect v-model="selectValue" :options="countries" placeholder="Choose country" />
-        <BSelect :model-value="''" :options="countries" placeholder="With error" error="Pick one" />
+        <BSelect
+          v-model="selectValue"
+          :options="countries"
+          placeholder="Choose country"
+          aria-label="Country"
+        />
+        <BSelect
+          :model-value="''"
+          :options="countries"
+          placeholder="With error"
+          error="Pick one"
+          aria-label="Country with error"
+        />
       </div>
     </section>
     <BCropmarks />

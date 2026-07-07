@@ -113,7 +113,7 @@ function inc() {
 }
 .line__warn {
   font-family: var(--font-mono);
-  color: var(--color-spot);
+  color: var(--color-spot-ink);
   margin: 0;
   font-size: 0.85em;
 }

@@ -59,7 +59,7 @@ const props = withDefaults(defineProps<Props>(), {
   color: var(--ink);
 }
 .tone-spot {
-  color: var(--spot);
+  color: var(--spot-ink);
 }
 .b-stamp__inner {
   display: block;
