@@ -9,9 +9,12 @@ const RAW = /<(?:button|input|select)[\s>/]/g;
 export function countRawElements(rootDir, primitivesDir) {
   const counts = {};
   for (const file of walk(rootDir, ['.vue'])) {
-    if (file.includes(primitivesDir)) continue;
+    const rel = relative(rootDir, file);
+    // Path-segment match, not substring: skip files *under* primitivesDir only,
+    // so a sibling like `components/primitives-legacy/` is NOT silently excluded.
+    if (rel === primitivesDir || rel.startsWith(primitivesDir + '/')) continue;
     const matches = readFileSync(file, 'utf8').match(RAW);
-    if (matches) counts[relative(rootDir, file)] = matches.length;
+    if (matches) counts[rel] = matches.length;
   }
   return counts;
 }

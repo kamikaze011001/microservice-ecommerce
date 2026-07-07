@@ -12,7 +12,7 @@ describe('BButton', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
-  it('disabled blocks click; loading hides slot and shows spinner', async () => {
+  it('disabled blocks click; loading shows spinner but keeps an accessible name', async () => {
     const onClick = vi.fn();
     const { rerender } = render(BButton, {
       props: { disabled: true },
@@ -25,5 +25,8 @@ describe('BButton', () => {
     await rerender({ disabled: false, loading: true });
     expect(screen.getByRole('button')).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByTestId('b-button-spinner')).toBeInTheDocument();
+    // The spinner is aria-hidden; the label stays in the DOM (sr-only) so the
+    // button retains its accessible name while loading (axe button-name fix).
+    expect(screen.getByRole('button', { name: /nope/i })).toBeInTheDocument();
   });
 });
