@@ -52,6 +52,9 @@ Agents: use the project `/design-kit` skill — it reads the SSOT from source
 - **Foundations (rationale, Do/Don't):** `src/design-system/foundations/*.mdx`
 - **Build playbook (routing/api/forms/testing/copy/a11y):** `src/design-system/guides/*.mdx`
 - **Decisions:** `docs/adr/`
+- **Consistency loop:** `/consistency-loop` proposes app↔Storybook consistency fixes as a
+  reviewed PR (four-role agent pipeline; hard gate = `pnpm check:consistency`). See
+  `docs/adr/0008-consistency-loop-agent-pipeline.md`.
 
 Never hard-code a hex/font; reuse the `B*` primitives; `--spot` for CTAs,
 `--stamp-red` for stamps only.

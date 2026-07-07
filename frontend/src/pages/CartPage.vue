@@ -62,7 +62,7 @@ const hasOverStock = computed(() =>
     <section v-else-if="isEmpty" class="cart__empty">
       <span class="cart__empty-numeral">00</span>
       <h2 class="cart__empty-headline">YOUR CART IS EMPTY</h2>
-      <RouterLink to="/" class="cart__empty-cta">BACK TO HOME</RouterLink>
+      <RouterLink to="/" class="cart__empty-cta">BROWSE THE LOTS</RouterLink>
     </section>
 
     <section v-else class="cart__body">
