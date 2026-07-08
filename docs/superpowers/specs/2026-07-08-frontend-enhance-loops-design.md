@@ -13,9 +13,12 @@ existing cloud/cron `/consistency-loop` automation:
 - **`/loop /migrate-sweep`** — drains `frontend/scripts/consistency-baseline.json`
   (9 grandfathered files, 14 raw `<button>/<input>/<select>` elements) to
   all-zero by migrating each file to the `B*` primitives.
-- **`/loop /coverage-step`** — writes a Vitest test for each of the 5 untested
-  composables/stores (`stores/auth.ts`, `stores/toast.ts`, `composables/useToast.ts`,
-  `composables/usePageMeta.ts`, `composables/useDebouncedRef.ts`).
+- **`/loop /coverage-step`** — writes a Vitest spec for each untested composable/store.
+  This repo centralizes tests as `tests/unit/**/*.spec.ts` (mirroring `src/`), not as
+  sibling files. Against that convention the genuinely untested units are **2**:
+  `composables/useToast.ts` and `composables/usePageMeta.ts` (`auth`, `toast`, and
+  `useDebouncedRef` already have specs). The loop re-scans each run, so newly added
+  composables/stores are picked up automatically on the next invocation.
 
 ### Why `/loop` (not another cron trigger)
 
@@ -57,8 +60,8 @@ misbehave — **finishing**, **stuck**, and **runaway**.
   thrashing on a bad file.
 
 ### Gate 3 — Hard cap (circuit breaker)
-- Trigger: commits on the branch reach the cap — **Loop A: 10**, **Loop B: 7**
-  (both above the 9 and 5 real units, so it only trips on a malfunction).
+- Trigger: commits on the branch reach the cap — **Loop A: 10**, **Loop B: 4**
+  (both above the 9 and 2 real units, so it only trips on a malfunction).
 - Action: open the PR with whatever landed, then stop. Bounds token/blast-radius
   if the loop is confused.
 
@@ -98,23 +101,26 @@ body = files migrated + gate-green confirmation.
 
 ## Loop B — test-coverage sweep (tests-first)
 
-**Target:** 5 untested units, fixed priority:
-`stores/auth.ts` → `stores/toast.ts` → `useToast` → `usePageMeta` → `useDebouncedRef`.
+**Target:** untested composables/stores, fixed priority: `useToast` → `usePageMeta`
+(today's only two; the detector appends any future untested unit alphabetically).
 
 Per iteration:
 1. Ensure on branch `test/coverage-composables-stores` (create off `main` if missing).
-2. `UNTESTED` = `.ts` under `src/{composables,stores}` with no sibling `*.test.ts`.
-   If empty → **Gate 1** (open PR, stop).
+2. `UNTESTED` = `.ts` under `src/{composables,stores}` (excluding `*.spec.ts`) with **no
+   matching `tests/unit/**/<basename>.spec.ts`**. If empty → **Gate 1** (open PR, stop).
 3. Pick the first `UNTESTED` unit by priority → `UNIT`.
-4. Write `UNIT.test.ts` beside it, following existing Vitest patterns. Test
-   **behavior, not implementation** — cover the real branches:
-   - `auth`: login / logout / token refresh / persistence.
-   - `toast`: add / dismiss / auto-expire.
-   - `useDebouncedRef`: timing with `vi.useFakeTimers()`.
+4. Write `tests/unit/<mirror>/<basename>.spec.ts` (e.g. `composables/useToast.ts` →
+   `tests/unit/composables/useToast.spec.ts`), following existing Vitest patterns
+   (globals `describe/it/expect`, `happy-dom`, Pinia via `setActivePinia(createPinia())`,
+   `vi.useFakeTimers()`). Test **behavior, not implementation** — cover the real branches:
+   - `useToast`: each tone (`info`/`success`/`error`) pushes to the toast store with the
+     right tone/title/body; `dismiss(id)` delegates to the store; `duration` opt passes through.
+   - `usePageMeta`: sets `document.title` + `<meta name="description">`; reacts to a `Ref`
+     title change via `watchEffect`; restores the initial title/description on unmount.
 5. Verify: `pnpm test` (new file passes, nothing else breaks) **and** `pnpm typecheck`.
    - Green → `git commit -m "test(frontend): cover <UNIT>"`.
    - Un-fixable red → revert; count toward **Gate 2**.
-6. Apply **Gate 3** cap (7).
+6. Apply **Gate 3** cap (4).
 7. Report: "covered `<UNIT>`; N units remain." Schedule next wake-up.
 
 **PR (Gate 1):** base `main`, title `test(frontend): cover composables + stores`,
@@ -139,6 +145,16 @@ Invocations:
 Each SKILL.md encodes: the four-gate stop contract verbatim, the per-iteration
 steps above, and the "one unit per wake-up, then stop or schedule next" rule.
 
+**Deterministic target selection.** Gate 1 (the stop condition) and "pick the next
+unit" must be data-driven, not LLM guesswork. Each loop calls a tiny, unit-tested
+detector script (mirroring the existing `scripts/check-*.mjs` + `tests/unit/scripts/`
+pattern) that prints the next target's path or `DONE`:
+
+- `frontend/scripts/next-migration-target.mjs` — lowest-count `> 0` baseline entry, else `DONE`.
+- `frontend/scripts/next-coverage-target.mjs` — highest-priority untested unit, else `DONE`.
+
+The skill runs the script, acts on one target, and treats `DONE` as Gate 1.
+
 ## Non-goals (YAGNI)
 
 - No auto-merge, ever — output is always a human-merged PR.
@@ -150,6 +166,7 @@ steps above, and the "one unit per wake-up, then stop or schedule next" rule.
 
 - `/loop /migrate-sweep` ends with `consistency-baseline.json` all-zero and one
   green PR; `pnpm check:consistency` stays green throughout.
-- `/loop /coverage-step` ends with all 5 units having a passing test file and one PR.
+- `/loop /coverage-step` ends with every untested composable/store (today: the 2 units)
+  having a passing `tests/unit/**/*.spec.ts` and one PR.
 - Both loops demonstrably self-terminate (Gate 1) and can be interrupted/resumed
   from git state (Gate 4).
