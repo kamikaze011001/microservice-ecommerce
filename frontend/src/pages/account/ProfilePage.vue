@@ -12,7 +12,14 @@ import {
 import { useLogoutAllMutation } from '@/api/queries/auth';
 import { profileSchema, changePasswordSchema } from '@/lib/zod-schemas';
 import { useToast } from '@/composables/useToast';
-import { BButton, BCard, BInput, BSelect, type BSelectOption } from '@/components/primitives';
+import {
+  BButton,
+  BCard,
+  BInput,
+  BSelect,
+  BFileButton,
+  type BSelectOption,
+} from '@/components/primitives';
 import BImageFallback from '@/components/BImageFallback.vue';
 
 const toast = useToast();
@@ -119,13 +126,10 @@ const onPasswordSubmit = handlePasswordSubmit(async (values) => {
 });
 
 // ── Section 01 — MASTHEAD (avatar upload) ────────────────────────────────────
-const fileInputRef = ref<HTMLInputElement | null>(null);
 const avatarUploading = ref(false);
 const avatarError = ref<string | null>(null);
 
-async function onFileChange(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (!file) return;
+async function onAvatarSelect(file: File) {
   avatarError.value = null;
   avatarUploading.value = true;
   try {
@@ -147,7 +151,6 @@ async function onFileChange(e: Event) {
     toast.error('UPLOAD MISFIRE');
   } finally {
     avatarUploading.value = false;
-    if (fileInputRef.value) fileInputRef.value.value = '';
   }
 }
 </script>
@@ -183,19 +186,15 @@ async function onFileChange(e: Event) {
             <p class="profile__display-name">{{ profile.data.value?.name ?? '—' }}</p>
             <p class="profile__email">{{ profile.data.value?.email ?? '—' }}</p>
 
-            <!-- hidden file input -->
-            <input
-              ref="fileInputRef"
-              type="file"
+            <BFileButton
               accept="image/png,image/jpeg,image/webp"
-              class="profile__file-input"
-              tabindex="-1"
-              aria-label="Upload avatar"
-              @change="onFileChange"
-            />
-            <BButton variant="spot" :loading="avatarUploading" @click="fileInputRef?.click()">
+              variant="spot"
+              :loading="avatarUploading"
+              input-aria-label="Upload avatar"
+              @select="onAvatarSelect"
+            >
               CHANGE PHOTO
-            </BButton>
+            </BFileButton>
             <p v-if="avatarError" class="profile__inline-error">{{ avatarError }}</p>
           </div>
         </div>
@@ -442,14 +441,6 @@ async function onFileChange(e: Event) {
   font-size: var(--type-mono);
   color: var(--muted-ink);
   margin: 0;
-}
-
-.profile__file-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
 }
 
 /* ── Fields ─────────────────────────────────────────────────────────────────── */

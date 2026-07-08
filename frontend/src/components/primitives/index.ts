@@ -6,6 +6,7 @@ export { default as BTag } from './BTag.vue';
 export { default as BCropmarks } from './BCropmarks.vue';
 export { default as BMarginNumeral } from './BMarginNumeral.vue';
 export { default as BPageButton } from './BPageButton.vue';
+export { default as BFileButton } from './BFileButton.vue';
 export { default as BDialog } from './BDialog.vue';
 export { default as BSelect } from './BSelect.vue';
 export { default as BToast } from './BToast.vue';
