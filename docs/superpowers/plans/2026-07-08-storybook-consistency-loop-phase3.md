@@ -50,8 +50,8 @@ on:
   # schedule:
   #   - cron: "0 7 * * *"   # 07:00 UTC nightly; requires the ANTHROPIC_API_KEY secret
 
-# Never auto-merge: this workflow only ever OPENS a PR. The guarantee is
-# structural — it never calls `gh pr merge` — backed by branch protection on main.
+# Never auto-merge: this workflow only ever OPENS a PR (it never runs a merge
+# command), backed by branch protection on main.
 permissions:
   contents: write
   pull-requests: write

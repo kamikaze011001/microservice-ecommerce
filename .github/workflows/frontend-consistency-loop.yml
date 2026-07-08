@@ -1,0 +1,44 @@
+name: frontend-consistency-loop
+
+# Unattended ignition for the /consistency-loop skill (Phase 3).
+# The manual "Run workflow" button is LIVE. The nightly cron is intentionally
+# COMMENTED OUT — see frontend/docs/consistency-loop-automation.md for how to
+# take it hot (add the ANTHROPIC_API_KEY secret, then uncomment the schedule).
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Scope passed to /consistency-loop"
+        required: false
+        default: "scan frontend/src for drift"
+  # schedule:
+  #   - cron: "0 7 * * *"   # 07:00 UTC nightly; requires the ANTHROPIC_API_KEY secret
+
+# Never auto-merge: this workflow only ever OPENS a PR (it never runs a merge
+# command), backed by branch protection on main.
+permissions:
+  contents: write
+  pull-requests: write
+
+# One loop at a time; do not cancel a run mid-pipeline (it may be mid-PR).
+concurrency:
+  group: consistency-loop
+  cancel-in-progress: false
+
+jobs:
+  consistency-loop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run /consistency-loop headlessly
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Unset in the gated build — a run without it fails fast with a clear
+          # "no auth" error. Setting this secret is step 1 of going hot.
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: "/consistency-loop ${{ inputs.scope || 'scan frontend/src for drift' }}"
+          claude_args: '--allowedTools "Edit,Bash,Task,Read,Glob,Grep"'
