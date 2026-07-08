@@ -66,3 +66,9 @@ Never hard-code a hex/font; reuse the `B*` primitives; `--spot` for CTAs,
 ## After Swagger changes
 
 Run `pnpm api:gen` to refresh `src/api/schema.d.ts`, then fix the resulting type errors — this is the canary for breaking API changes.
+
+## Enhance loops
+
+Two self-paced `/loop` runners live in `.claude/skills/{migrate-sweep,coverage-step}/`. See
+`frontend/docs/enhance-loops.md` for `/loop /migrate-sweep` (primitive migration) and
+`/loop /coverage-step` (composable/store test coverage).
