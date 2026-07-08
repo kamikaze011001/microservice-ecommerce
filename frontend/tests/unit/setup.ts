@@ -1,5 +1,9 @@
 import '@testing-library/vue';
 import '@testing-library/jest-dom/vitest';
+import * as axeMatchers from 'vitest-axe/matchers';
+import { expect } from 'vitest';
+
+expect.extend(axeMatchers);
 
 // Reka UI (and Radix) use Pointer Events API internally.
 // happy-dom doesn't implement hasPointerCapture / setPointerCapture / releasePointerCapture,
