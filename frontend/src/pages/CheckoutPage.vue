@@ -8,6 +8,7 @@ import { apiFetchUnsafe } from '@/api/client';
 import { ApiError } from '@/api/error';
 import AddressForm from '@/components/domain/AddressForm.vue';
 import CartSummary from '@/components/domain/CartSummary.vue';
+import { BButton } from '@/components/primitives';
 import type { AddressInput } from '@/lib/zod-schemas';
 
 const PENDING_KEY = 'aibles.checkout.pendingOrderId';
@@ -126,8 +127,8 @@ watchEffect(() => {
     <div v-if="banner" class="checkout__banner" role="alert">
       ORDER #{{ banner }} IS PENDING PAYMENT
       <div class="checkout__banner-actions">
-        <button type="button" @click="resumePayment">RESUME PAYMENT</button>
-        <button type="button" @click="cancelPending">CANCEL ORDER</button>
+        <BButton variant="spot" @click="resumePayment">RESUME PAYMENT</BButton>
+        <BButton variant="ghost" @click="cancelPending">CANCEL ORDER</BButton>
       </div>
     </div>
 
@@ -177,14 +178,6 @@ watchEffect(() => {
   display: flex;
   gap: var(--space-3);
   margin-top: var(--space-2);
-}
-.checkout__banner-actions button {
-  background: var(--color-spot);
-  color: var(--color-paper);
-  border: none;
-  padding: var(--space-2) var(--space-3);
-  font-family: var(--font-display);
-  cursor: pointer;
 }
 .checkout__error {
   background: var(--color-spot);

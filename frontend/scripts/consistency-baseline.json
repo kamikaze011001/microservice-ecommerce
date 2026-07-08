@@ -3,7 +3,7 @@
   "components/domain/CartLineItem.vue": 3,
   "components/layout/AppNav.vue": 0,
   "pages/CartPage.vue": 0,
-  "pages/CheckoutPage.vue": 2,
+  "pages/CheckoutPage.vue": 0,
   "pages/HomePage.vue": 0,
   "pages/PaymentResultPage.vue": 2,
   "pages/ProductDetailPage.vue": 0,
