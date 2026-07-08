@@ -54,10 +54,10 @@ const hasOverStock = computed(() =>
     </header>
 
     <p v-if="cart.isLoading.value" class="cart__state">LOADING…</p>
-    <p v-else-if="cart.isError.value" class="cart__state">
-      COULDN'T LOAD CART —
-      <button class="cart__retry" @click="cart.refetch?.()">RETRY</button>
-    </p>
+    <div v-else-if="cart.isError.value" class="cart__error" role="alert">
+      <p class="cart__state">COULDN'T LOAD CART</p>
+      <BButton variant="ghost" @click="cart.refetch?.()">RETRY</BButton>
+    </div>
 
     <section v-else-if="isEmpty" class="cart__empty">
       <span class="cart__empty-numeral">00</span>
@@ -120,12 +120,11 @@ const hasOverStock = computed(() =>
 .cart__state {
   font-family: var(--font-mono);
 }
-.cart__retry {
-  background: none;
-  border: none;
-  color: var(--color-spot);
-  text-decoration: underline;
-  cursor: pointer;
+.cart__error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
 }
 .cart__empty {
   text-align: center;

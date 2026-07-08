@@ -2,7 +2,7 @@
   "components/domain/AddressForm.vue": 0,
   "components/domain/CartLineItem.vue": 3,
   "components/layout/AppNav.vue": 0,
-  "pages/CartPage.vue": 1,
+  "pages/CartPage.vue": 0,
   "pages/CheckoutPage.vue": 2,
   "pages/HomePage.vue": 0,
   "pages/PaymentResultPage.vue": 2,
