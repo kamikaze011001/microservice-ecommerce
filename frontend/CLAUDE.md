@@ -55,6 +55,10 @@ Agents: use the project `/design-kit` skill — it reads the SSOT from source
 - **Consistency loop:** `/consistency-loop` proposes app↔Storybook consistency fixes as a
   reviewed PR (four-role agent pipeline; hard gate = `pnpm check:consistency`). See
   `docs/adr/0008-consistency-loop-agent-pipeline.md`.
+- **Consistency loop automation:** `.github/workflows/frontend-consistency-loop.yml` runs
+  `/consistency-loop` unattended — manual `workflow_dispatch` now, nightly cron gated. Runbook +
+  how to take it hot: `frontend/docs/consistency-loop-automation.md`. See
+  `docs/adr/0009-consistency-loop-unattended-trigger.md`.
 
 Never hard-code a hex/font; reuse the `B*` primitives; `--spot` for CTAs,
 `--stamp-red` for stamps only.
