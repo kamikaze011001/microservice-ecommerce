@@ -47,7 +47,7 @@ misbehave — **finishing**, **stuck**, and **runaway**.
 
 ### Gate 1 — Success stop (normal exit)
 - **Loop A:** every entry in `consistency-baseline.json` is `0`.
-- **Loop B:** no `.ts` under `src/{composables,stores}` lacks a sibling `*.test.ts`.
+- **Loop B:** every `.ts` under `src/{composables,stores}` (excluding `*.spec.ts`) has a matching `tests/unit/**/<basename>.spec.ts`.
 - Action: open **one PR** (base `main`), then **omit the next wake-up** → loop ends.
 - Self-terminating: with no work left, the first step returns "0 remaining," so it
   cannot overshoot.
@@ -139,7 +139,7 @@ Invocations:
 
 ```
 /loop /migrate-sweep      # drains consistency-baseline.json to all-zero, opens one PR
-/loop /coverage-step      # covers the 5 untested composables/stores, opens one PR
+/loop /coverage-step      # covers each untested composable/store (today: 2), opens one PR
 ```
 
 Each SKILL.md encodes: the four-gate stop contract verbatim, the per-iteration
