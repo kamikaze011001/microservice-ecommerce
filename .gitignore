@@ -17,3 +17,9 @@ aws/**/*.tfstate
 aws/**/*.tfstate.*
 aws/**/*.tfvars
 !aws/**/*.tfvars.example
+
+# macOS finder junk
+.DS_Store
+
+# Superpowers SDD scratch (progress ledger, task briefs) — never commit
+.superpowers/
