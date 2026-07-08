@@ -4,7 +4,7 @@
   "components/layout/AppNav.vue": 2,
   "pages/CartPage.vue": 1,
   "pages/CheckoutPage.vue": 2,
-  "pages/HomePage.vue": 1,
+  "pages/HomePage.vue": 0,
   "pages/PaymentResultPage.vue": 2,
   "pages/ProductDetailPage.vue": 1,
   "pages/account/OrdersPage.vue": 1,

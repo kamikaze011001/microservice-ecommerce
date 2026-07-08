@@ -5,7 +5,7 @@ import { useProductListQuery } from '@/api/queries/products';
 import { useDebouncedRef } from '@/composables/useDebouncedRef';
 import { ApiError, classify } from '@/api/error';
 import ProductCard from '@/components/ProductCard.vue';
-import { BInput, BStamp, BButton } from '@/components/primitives';
+import { BInput, BStamp, BButton, BPageButton } from '@/components/primitives';
 import { usePageMeta } from '@/composables/usePageMeta';
 
 usePageMeta({ title: 'Issue Nº01 — Storefront', description: 'Browse the latest collection.' });
@@ -159,15 +159,14 @@ const pageButtons = computed<Array<number | 'gap'>>(() => {
       <nav v-if="totalPages > 1" class="home__pager" aria-label="Pagination">
         <template v-for="(p, idx) in pageButtons" :key="`${p}-${idx}`">
           <span v-if="p === 'gap'" class="home__pager-gap">…</span>
-          <button
+          <BPageButton
             v-else
-            class="home__pager-btn"
+            :active="p === currentPage"
             :aria-current="p === currentPage ? 'page' : undefined"
-            :data-active="p === currentPage ? 'true' : 'false'"
             @click="goToPage(p)"
           >
             {{ p }}
-          </button>
+          </BPageButton>
         </template>
       </nav>
     </section>
@@ -290,19 +289,6 @@ const pageButtons = computed<Array<number | 'gap'>>(() => {
   gap: var(--space-2);
   margin-top: var(--space-6);
   font-family: var(--font-mono);
-}
-.home__pager-btn {
-  border: var(--border-thin);
-  background: transparent;
-  padding: var(--space-2) var(--space-3);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: var(--type-mono);
-}
-.home__pager-btn[data-active='true'] {
-  background: var(--spot);
-  color: var(--ink);
-  border-color: var(--ink);
 }
 .home__pager-gap {
   align-self: center;
