@@ -19,6 +19,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write # escape-hatch path adds the `needs-human` label (gh pr edit --add-label)
 
 # One loop at a time; do not cancel a run mid-pipeline (it may be mid-PR).
 concurrency:
@@ -32,7 +33,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # full history so the skill can diff/branch off main
+
+      # The skill's hard gate runs `pnpm check:consistency`; pnpm is not on a
+      # stock ubuntu-latest runner. Mirror frontend.yml's proven setup so the
+      # first real run tests R1, not a "pnpm: command not found".
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
       - name: Run /consistency-loop headlessly
         uses: anthropics/claude-code-action@v1
@@ -40,5 +54,8 @@ jobs:
           # Unset in the gated build — a run without it fails fast with a clear
           # "no auth" error. Setting this secret is step 1 of going hot.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Explicit so the skill's `git push` / `gh pr create` auth is
+          # unambiguous — an auth failure then can't be mistaken for R1.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: "/consistency-loop ${{ inputs.scope || 'scan frontend/src for drift' }}"
           claude_args: '--allowedTools "Edit,Bash,Task,Read,Glob,Grep"'

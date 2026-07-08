@@ -59,3 +59,11 @@ first `workflow_dispatch` run is the smoke test:**
 - If it does not → the unattended path needs a degraded inline-reviewer mode (a documented
   limitation; human PR review is the compensating control). That fallback is intentionally **not**
   pre-built — it is only worth building if this smoke test fails.
+
+**Triage note — don't confuse R1 with plumbing.** The same first run also exercises two
+environment assumptions that are _not_ R1: the runner has `pnpm`/Node on PATH (provided by the
+workflow's `pnpm/action-setup` + `setup-node` steps, needed by the `pnpm check:consistency` gate),
+and `git push` / `gh pr create` auth (the workflow passes `github_token: ${{ secrets.GITHUB_TOKEN }}`
+explicitly, and grants `issues: write` so the cap-reached escape hatch can add the `needs-human`
+label). A failure in any of these is a plumbing bug to fix in the workflow — it is **not** the R1
+subagent limitation.
