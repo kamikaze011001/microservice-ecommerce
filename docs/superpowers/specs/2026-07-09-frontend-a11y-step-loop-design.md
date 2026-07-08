@@ -116,9 +116,12 @@ skips it on the next scan and converges to `DONE` instead of hanging.
    - `DONE` → **Gate 1**.
    - Otherwise output is `FILE` (a page path under `src/`, e.g. `pages/CheckoutPage.vue`),
      paired with its spec `tests/unit/pages/<Base>.spec.ts`.
-4. In the **spec**, add an a11y block that mounts the page's **primary loaded state**
-   (reuse the spec's existing `mount()` + query-hook mocks) and asserts
-   `expect(await axe(container)).toHaveNoViolations()`.
+4. Create a **separate** `tests/unit/<mirror>/<Base>.a11y.spec.ts` carrying
+   `// @vitest-environment jsdom` at the top (vitest-axe cannot run under the repo's
+   global happy-dom — see "New dependency + wiring"). Copy the sibling spec's provider
+   setup + query-hook mocks, mount the page's **primary loaded state**, and assert
+   `expect(await axe(container)).toHaveNoViolations()`. Keeping it a **separate file**
+   means the ~13 passing happy-dom specs are never touched (zero regression risk).
 5. Run it → **fix the real violations in `src/<FILE>`** (add `<label>`/`aria-label`,
    correct roles/ARIA, wrap content in a single `<main>`, fix heading order, dedupe ids)
    until axe is clean. **Page-only blast radius** (see contract). Do **not** change
@@ -143,10 +146,10 @@ under `tests/unit/scripts/`):
 
 - **Target set:** the route pages that have a mount spec in `tests/unit/pages/` (12
   today) **plus** `components/layout/AppNav.vue` (spec `tests/unit/components/AppNav.spec.ts`).
-- **Guarded?** a target is "done" when its spec contains a passing axe guard — detected
-  by a stable marker (grep for an `axe(` call / an agreed `// @a11y-guarded` sentinel the
-  loop writes alongside the assertion). Prefer the sentinel so the check is unambiguous
-  and cheap.
+- **Guarded?** a target is "done" when a sibling `<Base>.a11y.spec.ts` file exists next to
+  its mount spec — a plain **file-existence** check (no content grep, no sentinel),
+  exactly how `coverage-step` checks whether a unit has a spec. The separate-file shape
+  (forced by the jsdom requirement below) makes the guard trivially detectable.
 - **Order:** deterministic — highest-interaction pages first
   (`LoginPage`, `RegisterPage`, `CheckoutPage`, `CartPage`, `ProductDetailPage`,
   `account/ProfilePage`, …), then the rest alphabetically, then `AppNav`.
@@ -154,9 +157,27 @@ under `tests/unit/scripts/`):
 
 ## New dependency + wiring
 
-- Add `vitest-axe` (dev). Register its matcher once in `tests/unit/setup.ts`
-  (`expect.extend(matchers)` from `vitest-axe/matchers`), alongside the existing
-  `@testing-library/jest-dom/vitest` import and the happy-dom pointer-capture stubs.
+**vitest-axe cannot run under the repo's global `happy-dom` test environment.** happy-dom's
+`Node.prototype.isConnected` returns `false` for mounted nodes (happy-dom#978), which
+axe-core reads to decide an element is off-screen — so every rule is skipped and results
+come back empty (a silent false pass). vitest-axe's own README documents this and requires
+`jsdom`. Therefore:
+
+- Add three devDependencies: `vitest-axe@pre` (the `1.0.0-pre.5` line, peer `vitest >=1`,
+  installs cleanly on the repo's Vitest 2.x), `axe-core@^4.10`, and `jsdom` (the per-file
+  environment override target).
+- Register the matchers once in `tests/unit/setup.ts`
+  (`import * as matchers from 'vitest-axe/matchers'; expect.extend(matchers)`), alongside
+  the existing `@testing-library/jest-dom/vitest` import and the happy-dom pointer stubs.
+  Registering the matcher globally is harmless for happy-dom specs — it's only *invoked*
+  inside the jsdom-overridden a11y specs.
+- Add `tests/unit/vitest-axe.d.ts` — a module augmentation extending Vitest's `Assertion`
+  with `AxeMatchers` so `toHaveNoViolations()` typechecks (`tsconfig.app.json` already
+  includes `tests/**/*.ts`).
+- **Every a11y spec is a separate file** `tests/unit/<mirror>/<Base>.a11y.spec.ts` whose
+  **first line** is `// @vitest-environment jsdom`. This docblock overrides the global
+  happy-dom per-file, so the ~13 existing happy-dom specs are never touched and cannot
+  regress.
 - No change to `.storybook/*`, `check-consistency.sh`, `frontend.yml`, or the other loops.
 
 ## Packaging
