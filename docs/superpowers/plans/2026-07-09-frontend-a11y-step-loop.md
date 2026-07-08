@@ -184,7 +184,10 @@ Expected: FAIL — `Cannot find module '../../../scripts/next-a11y-target.mjs'`.
 
 Create `frontend/scripts/next-a11y-target.mjs`:
 ```js
-import { existsSync } from 'node:fs';
+// NOTE: unlike next-coverage-target.mjs, this detector does not use existsSync
+// (it walks fixed dirs directly), so do not import it — an unused import fails
+// `pnpm lint` in CI, and the pre-commit hook's lint-staged glob (*.{ts,vue})
+// does not cover .mjs, so it will slip past the hook.
 import { basename, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { walk } from './lib/walk.mjs';
