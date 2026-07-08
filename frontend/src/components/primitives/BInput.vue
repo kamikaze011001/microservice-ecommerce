@@ -2,7 +2,9 @@
 import { computed, useId } from 'vue';
 
 interface Props {
-  modelValue: string;
+  // Optional so form libraries (e.g. vee-validate) can bind a `string | undefined`
+  // field ref via v-model; renders as empty when unset.
+  modelValue?: string;
   type?: string;
   label?: string;
   error?: string;
@@ -11,6 +13,7 @@ interface Props {
   disabled?: boolean;
 }
 const props = withDefaults(defineProps<Props>(), {
+  modelValue: '',
   type: 'text',
   label: undefined,
   error: undefined,
