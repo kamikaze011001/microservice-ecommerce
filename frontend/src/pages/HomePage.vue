@@ -120,8 +120,9 @@ const pageButtons = computed<Array<number | 'gap'>>(() => {
       <p class="home__kicker">Issue Nº01 — Everything in stock</p>
     </header>
 
-    <section v-if="heroItems.length" class="home__hero" aria-label="Spotlight">
+    <section v-if="heroItems.length" class="home__hero" aria-labelledby="home-spotlight-heading">
       <h1 class="home__title">EVERYTHING<br />IN STOCK.</h1>
+      <h2 id="home-spotlight-heading" class="home__section-label">Spotlight</h2>
       <ul class="home__hero-list">
         <li v-for="item in heroItems" :key="item.id" class="home__hero-item">
           <ProductCard :product="item" />
@@ -133,7 +134,8 @@ const pageButtons = computed<Array<number | 'gap'>>(() => {
       <BInput v-model="inputValue" label="Search" placeholder="SEARCH THE ISSUE" />
     </section>
 
-    <section class="home__grid-wrap" aria-label="Catalog">
+    <section class="home__grid-wrap" aria-labelledby="home-catalog-heading">
+      <h2 id="home-catalog-heading" class="home__section-label">Catalog</h2>
       <BStamp v-if="isFetching" tone="ink" size="sm" class="home__fetching" :rotate="6">
         FETCHING
       </BStamp>
@@ -203,6 +205,19 @@ const pageButtons = computed<Array<number | 'gap'>>(() => {
   letter-spacing: 0.08em;
   color: var(--muted-ink);
   margin: 0;
+}
+/* Screen-reader-only section headings: keep the h1→h2→h3 order intact for
+   assistive tech without altering the visual design. */
+.home__section-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .home__title {
   font-family: var(--font-display);
