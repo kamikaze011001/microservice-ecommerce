@@ -69,6 +69,7 @@ Run `pnpm api:gen` to refresh `src/api/schema.d.ts`, then fix the resulting type
 
 ## Enhance loops
 
-Two self-paced `/loop` runners live in `.claude/skills/{migrate-sweep,coverage-step}/`. See
-`frontend/docs/enhance-loops.md` for `/loop /migrate-sweep` (primitive migration) and
-`/loop /coverage-step` (composable/store test coverage).
+Three self-paced `/loop` runners live in `.claude/skills/{migrate-sweep,coverage-step,a11y-step}/`.
+See `frontend/docs/enhance-loops.md` for `/loop /migrate-sweep` (primitive migration),
+`/loop /coverage-step` (composable/store test coverage), and `/loop /a11y-step` (per-page axe
+guards + keyboard/landmark rubric; guards are separate jsdom `vitest-axe` specs).
