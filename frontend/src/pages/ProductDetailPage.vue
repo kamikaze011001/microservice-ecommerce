@@ -75,7 +75,7 @@ function handleAddToCart() {
     <div v-if="!product && !otherError" class="pdp__placeholder">STAMPING…</div>
     <div v-else-if="otherError" class="pdp__error" role="alert">
       <p>{{ otherError }}</p>
-      <button class="pdp__retry" @click="query.refetch?.()">RETRY</button>
+      <BButton variant="ghost" @click="query.refetch?.()">RETRY</BButton>
     </div>
     <article v-else-if="product" class="pdp__article">
       <div class="pdp__media">
@@ -191,13 +191,6 @@ function handleAddToCart() {
   gap: var(--space-4);
   font-family: var(--font-mono);
   text-transform: uppercase;
-}
-.pdp__retry {
-  border: var(--border-thin);
-  background: transparent;
-  padding: var(--space-2) var(--space-3);
-  cursor: pointer;
-  font-family: inherit;
 }
 .pdp__cta {
   display: flex;

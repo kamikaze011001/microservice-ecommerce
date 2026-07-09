@@ -1,12 +1,12 @@
 {
   "components/domain/AddressForm.vue": 0,
-  "components/domain/CartLineItem.vue": 3,
+  "components/domain/CartLineItem.vue": 0,
   "components/layout/AppNav.vue": 0,
-  "pages/CartPage.vue": 1,
-  "pages/CheckoutPage.vue": 2,
+  "pages/CartPage.vue": 0,
+  "pages/CheckoutPage.vue": 0,
   "pages/HomePage.vue": 0,
-  "pages/PaymentResultPage.vue": 2,
-  "pages/ProductDetailPage.vue": 1,
-  "pages/account/OrdersPage.vue": 1,
+  "pages/PaymentResultPage.vue": 0,
+  "pages/ProductDetailPage.vue": 0,
+  "pages/account/OrdersPage.vue": 0,
   "pages/account/ProfilePage.vue": 0
 }

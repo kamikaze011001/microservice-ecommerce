@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { useOrdersListQuery } from '@/api/queries/orders';
 import OrderReceiptRow from '@/components/domain/OrderReceiptRow.vue';
-import { BButton, BStamp } from '@/components/primitives';
+import { BButton, BStamp, BPageButton } from '@/components/primitives';
 import { usePageMeta } from '@/composables/usePageMeta';
 
 usePageMeta({ title: 'Orders — Issue Nº01', description: 'Your order history.' });
@@ -71,15 +71,14 @@ function goToPage(p: number) {
     <nav v-if="totalPages > 1" class="ledger__pager" aria-label="Pagination">
       <template v-for="(p, idx) in pageButtons" :key="`${p}-${idx}`">
         <span v-if="p === 'gap'" class="ledger__pager-gap">…</span>
-        <button
+        <BPageButton
           v-else
-          class="ledger__pager-btn"
+          :active="p === page"
           :aria-current="p === page ? 'page' : undefined"
-          :data-active="p === page ? 'true' : 'false'"
           @click="goToPage(p)"
         >
           {{ p }}
-        </button>
+        </BPageButton>
       </template>
     </nav>
   </main>
@@ -187,19 +186,6 @@ function goToPage(p: number) {
   gap: var(--space-2);
   margin-top: var(--space-6);
   font-family: var(--font-mono);
-}
-.ledger__pager-btn {
-  border: var(--border-thin);
-  background: transparent;
-  padding: var(--space-2) var(--space-3);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: var(--type-mono);
-}
-.ledger__pager-btn[data-active='true'] {
-  background: var(--spot);
-  color: var(--ink);
-  border-color: var(--ink);
 }
 .ledger__pager-gap {
   align-self: center;

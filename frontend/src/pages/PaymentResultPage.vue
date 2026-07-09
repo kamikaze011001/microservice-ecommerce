@@ -4,6 +4,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router';
 import { useOrderQuery, useCancelOrderMutation } from '@/api/queries/orders';
 import { useCreatePaymentMutation } from '@/api/queries/payments';
 import OrderStatusStamp from '@/components/domain/OrderStatusStamp.vue';
+import { BButton } from '@/components/primitives';
 
 const PENDING_KEY = 'aibles.checkout.pendingOrderId';
 const MAX_POLLS = 10;
@@ -113,10 +114,8 @@ async function cancelPending() {
         <RouterLink :to="`/account/orders/${orderId}`" class="result__cta">VIEW ORDER</RouterLink>
       </template>
       <template v-else>
-        <button type="button" class="result__cta" @click="retryPayment">RETRY PAYMENT</button>
-        <button type="button" class="result__cta result__cta--ghost" @click="cancelPending">
-          CANCEL ORDER
-        </button>
+        <BButton variant="spot" @click="retryPayment">RETRY PAYMENT</BButton>
+        <BButton variant="ghost" @click="cancelPending">CANCEL ORDER</BButton>
       </template>
     </div>
   </main>
@@ -154,11 +153,6 @@ async function cancelPending() {
   cursor: pointer;
   text-decoration: none;
 }
-.result__cta--ghost {
-  background: var(--color-paper);
-  color: var(--color-ink);
-}
-
 @media (max-width: 37.49rem) {
   .result {
     padding: var(--space-6) var(--space-4);
