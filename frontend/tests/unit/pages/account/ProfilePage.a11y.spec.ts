@@ -34,14 +34,12 @@ vi.mock('@/api/queries/auth', () => ({
 }));
 
 // ProfilePage is a layout-embedded fragment: AccountLayout owns the page's single
-// <main> landmark and (should own) the page-level <h1>. This per-page guard covers
-// the fragment's OWN responsibilities — labelled controls, ARIA, and per-section
-// region landmarks — so the two document-level best-practice rules that belong to
-// the layout are scoped out here. (Follow-up: AccountLayout's masthead is a <p>,
-// not an <h1> — a real gap to fix in a layout-level a11y pass.)
+// <main> landmark, so mounted in isolation the fragment has no <main> — that one
+// document-level rule (landmark-one-main) is scoped out here. The page now owns its
+// own <h1> (THE MASTHEAD), matching its siblings THE LEDGER / RECEIPT, so
+// page-has-heading-one is NOT scoped out — the guard asserts the real heading below.
 const LAYOUT_OWNED_RULES = {
   'landmark-one-main': { enabled: false },
-  'page-has-heading-one': { enabled: false },
 } as const;
 
 beforeEach(async () => {
@@ -60,6 +58,12 @@ describe('ProfilePage — accessibility', () => {
   it('has no axe violations across its three forms + sessions section', async () => {
     const { container } = mount();
     expect(await axe(container, { rules: LAYOUT_OWNED_RULES })).toHaveNoViolations();
+  });
+
+  it('is a fragment (no own <main>) but provides the level-1 heading', () => {
+    const { container } = mount();
+    expect(container.querySelectorAll('main')).toHaveLength(0);
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toMatch(/masthead/i);
   });
 
   it('wraps every section in a named region landmark (incl. Sessions)', () => {

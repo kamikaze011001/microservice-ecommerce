@@ -157,6 +157,8 @@ async function onAvatarSelect(file: File) {
 
 <template>
   <div class="profile">
+    <h1 class="profile__title">THE MASTHEAD</h1>
+
     <!-- ── 01 — MASTHEAD ──────────────────────────────────────────────────── -->
     <section class="profile__section" aria-label="Avatar">
       <header class="profile__section-head">
@@ -360,6 +362,18 @@ async function onAvatarSelect(file: File) {
   max-width: 720px;
   margin: 0 auto;
   padding: var(--space-6) 0;
+}
+
+/* Page title — matches the sibling account pages' <h1> (THE LEDGER / RECEIPT). */
+.profile__title {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: var(--type-h1);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  text-shadow: 4px 4px 0 var(--spot);
+  margin: 0;
 }
 
 /* ── Section header ─────────────────────────────────────────────────────────── */
