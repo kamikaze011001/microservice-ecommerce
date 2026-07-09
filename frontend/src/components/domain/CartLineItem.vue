@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import type { CartItem } from '@/api/queries/cart';
 import { formatCurrency } from '@/lib/format';
 import BImageFallback from '@/components/BImageFallback.vue';
+import { BIconButton } from '@/components/primitives';
 
 const props = defineProps<{
   item: CartItem;
@@ -53,35 +54,32 @@ function inc() {
       <p v-if="overStock" class="line__warn">LOW STOCK — {{ item.available_stock }} AVAILABLE</p>
     </div>
     <div class="line__qty">
-      <button
-        type="button"
+      <BIconButton
         class="line__step"
         :disabled="displayedQty <= 1"
         aria-label="Decrease quantity"
         @click="dec"
       >
         −
-      </button>
+      </BIconButton>
       <span class="line__qty-value" data-testid="qty-value">{{ displayedQty }}</span>
-      <button
-        type="button"
+      <BIconButton
         class="line__step"
         :disabled="displayedQty >= item.available_stock"
         aria-label="Increase quantity"
         @click="inc"
       >
         +
-      </button>
+      </BIconButton>
     </div>
     <div class="line__subtotal">{{ formatCurrency(lineSubtotal) }}</div>
-    <button
-      type="button"
+    <BIconButton
       class="line__remove"
       aria-label="Remove from cart"
       @click="emit('remove', item.shopping_cart_item_id)"
     >
       ×
-    </button>
+    </BIconButton>
   </article>
 </template>
 

@@ -1,6 +1,6 @@
 {
   "components/domain/AddressForm.vue": 0,
-  "components/domain/CartLineItem.vue": 3,
+  "components/domain/CartLineItem.vue": 0,
   "components/layout/AppNav.vue": 0,
   "pages/CartPage.vue": 0,
   "pages/CheckoutPage.vue": 0,
