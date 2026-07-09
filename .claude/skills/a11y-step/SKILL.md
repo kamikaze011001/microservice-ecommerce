@@ -17,10 +17,14 @@ blocked-file counter (Gate 2), tracked across this run's wake-ups and reset safe
 Harden EXACTLY ONE target per invocation, commit it, then stop or let /loop schedule the next wake-up.
 
 ## Why a separate jsdom spec file
-`vitest-axe` cannot run under the repo's global `happy-dom` (its `Node.prototype.isConnected`
-bug makes axe skip every rule → silent false pass). So each guard is a **separate** file
-`tests/unit/<mirror>/<Base>.a11y.spec.ts` whose **first line** is `// @vitest-environment jsdom`.
-This never touches the existing happy-dom specs. Reference example: `tests/unit/pages/LoginPage.a11y.spec.ts`.
+Each guard is a **separate** file `tests/unit/<mirror>/<Base>.a11y.spec.ts` whose **first line**
+is `// @vitest-environment jsdom`. The docblock pins axe to jsdom — axe-core's reference DOM — so
+its results are deterministic regardless of the repo's global `happy-dom` env. (Older happy-dom
+had a `Node.prototype.isConnected` bug that made axe skip rules → silent false pass; it is **fixed
+in the pinned happy-dom v15**, where axe runs fine — verified empirically, so the jsdom pin is
+defense-in-depth against a downgrade/regression, not a hard requirement.) The separate file also
+keeps a11y guards distinct from behavior specs, lets the detector find them by name, and never
+touches the ~13 existing happy-dom specs. Reference example: `tests/unit/pages/LoginPage.a11y.spec.ts`.
 
 ## Four-gate stop contract (check in order, every invocation)
 1. **Success stop** — the detector prints `DONE`. If the branch has commits, open the PR

@@ -16,7 +16,9 @@ describe('vitest-axe toolchain (jsdom)', () => {
     el.innerHTML = '<input type="text" />';
     document.body.appendChild(el);
     const results = await axe(el);
-    // Proves axe's structural rules actually run under jsdom (they do NOT under happy-dom).
+    // Proves axe's structural rules actually execute in this (jsdom) environment: a bare input
+    // with no accessible name must be flagged. NB: this asserts axe runs here — it does not,
+    // on its own, prove the docblock is present (axe also runs under the pinned happy-dom v15).
     expect(results.violations.length).toBeGreaterThan(0);
   });
 });

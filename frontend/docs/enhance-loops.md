@@ -29,8 +29,10 @@ detector reports `DONE`.
 
 - Next target: `cd frontend && node scripts/next-a11y-target.mjs`
 - Skill: `.claude/skills/a11y-step/SKILL.md`
-- Guards are separate `tests/unit/**/<Base>.a11y.spec.ts` files (jsdom docblock) — vitest-axe
-  cannot run under the global happy-dom.
+- Guards are separate `tests/unit/**/<Base>.a11y.spec.ts` files whose first line pins
+  `// @vitest-environment jsdom` (axe-core's reference DOM) so axe runs deterministically
+  regardless of the global happy-dom env — defense-in-depth, not a hard requirement (axe runs
+  fine under the pinned happy-dom v15).
 
 ## Four-gate stop contract (all three loops)
 

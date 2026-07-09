@@ -157,11 +157,16 @@ under `tests/unit/scripts/`):
 
 ## New dependency + wiring
 
-**vitest-axe cannot run under the repo's global `happy-dom` test environment.** happy-dom's
-`Node.prototype.isConnected` returns `false` for mounted nodes (happy-dom#978), which
-axe-core reads to decide an element is off-screen — so every rule is skipped and results
-come back empty (a silent false pass). vitest-axe's own README documents this and requires
-`jsdom`. Therefore:
+**Each a11y spec pins `// @vitest-environment jsdom` — axe-core's reference DOM — so axe
+behaves deterministically regardless of the repo's global `happy-dom` env.** The historical
+motivation: happy-dom's `Node.prototype.isConnected` returned `false` for mounted nodes
+(happy-dom#978), which axe-core reads to decide an element is off-screen — so rules were
+skipped and results came back empty (a silent false pass). **Correction (2026-07-09):** that
+bug is fixed in the pinned happy-dom v15.7.4 — empirically, axe runs 12 rules and detects a
+bare-input violation under happy-dom just as under jsdom. So the jsdom pin is **defense-in-depth**
+(insurance against a happy-dom downgrade/regression, and axe-core's documented reference env),
+**not a hard requirement**. The smoke tripwire below asserts axe executes in the chosen env; it
+does not, on its own, catch a forgotten docblock. Wiring:
 
 - Add three devDependencies: `vitest-axe@pre` (the `1.0.0-pre.5` line, peer `vitest >=1`,
   installs cleanly on the repo's Vitest 2.x), `axe-core@^4.10`, and `jsdom` (the per-file
@@ -176,8 +181,9 @@ come back empty (a silent false pass). vitest-axe's own README documents this an
   includes `tests/**/*.ts`).
 - **Every a11y spec is a separate file** `tests/unit/<mirror>/<Base>.a11y.spec.ts` whose
   **first line** is `// @vitest-environment jsdom`. This docblock overrides the global
-  happy-dom per-file, so the ~13 existing happy-dom specs are never touched and cannot
-  regress.
+  happy-dom per-file (deterministic axe env; see the correction above), keeps a11y guards
+  distinct from behavior specs so the detector can find them, and means the ~13 existing
+  happy-dom specs are never touched and cannot regress.
 - No change to `.storybook/*`, `check-consistency.sh`, `frontend.yml`, or the other loops.
 
 ## Packaging

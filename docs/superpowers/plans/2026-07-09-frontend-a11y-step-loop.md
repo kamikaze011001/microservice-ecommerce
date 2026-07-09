@@ -10,6 +10,17 @@
 
 ## Global Constraints
 
+> **Correction (2026-07-09, post-implementation).** This plan repeatedly states that axe
+> "cannot run under happy-dom" / "silently returns zero violations" (e.g. the constraint below,
+> Task 1's smoke comment, the SKILL body). That premise is **false for the pinned happy-dom
+> v15.7.4**: verified empirically, axe runs 12 rules and detects a bare-input violation under
+> happy-dom just as under jsdom (the `isConnected` bug that motivated it is long fixed). The
+> jsdom pin per a11y spec is retained as **defense-in-depth** (deterministic axe env + insurance
+> against a happy-dom downgrade), **not** because happy-dom is broken. Read every "cannot run
+> under happy-dom" line below in that light; the shipped SKILL and design spec carry the
+> corrected wording. The smoke tripwire proves axe executes in the chosen env — it does **not**,
+> on its own, catch a forgotten docblock.
+
 - **Detector output contract:** prints a page path relative to `src/` (e.g. `pages/LoginPage.vue`) or the literal `DONE`. Copied verbatim from `next-coverage-target.mjs`'s `console.log(next ?? 'DONE')`.
 - **Guard = file existence.** A target is "done" when a sibling `<Base>.a11y.spec.ts` exists. No content grep, no sentinel comment.
 - **Every a11y spec's first line is `// @vitest-environment jsdom`.** Non-negotiable — omitting it runs axe under happy-dom, which silently returns zero violations (false pass).
