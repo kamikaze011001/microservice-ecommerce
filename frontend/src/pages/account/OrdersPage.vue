@@ -40,7 +40,7 @@ function goToPage(p: number) {
 </script>
 
 <template>
-  <main class="ledger">
+  <div class="ledger">
     <header class="ledger__masthead">
       <span class="ledger__numeral" aria-hidden="true">Nº02</span>
       <p class="ledger__kicker">Vol. {{ page }} — Receipts on file</p>
@@ -81,7 +81,7 @@ function goToPage(p: number) {
         </BPageButton>
       </template>
     </nav>
-  </main>
+  </div>
 </template>
 
 <style scoped>
