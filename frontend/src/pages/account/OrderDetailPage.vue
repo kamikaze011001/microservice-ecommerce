@@ -89,7 +89,7 @@ async function reorder() {
 </script>
 
 <template>
-  <main class="receipt">
+  <div class="receipt">
     <!-- Loading -->
     <p v-if="query.isLoading.value" class="receipt__loading">INKING…</p>
 
@@ -174,7 +174,7 @@ async function reorder() {
         </BButton>
       </template>
     </BDialog>
-  </main>
+  </div>
 
   <ToastViewport />
 </template>
