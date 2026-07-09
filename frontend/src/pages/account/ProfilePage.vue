@@ -324,7 +324,7 @@ async function onAvatarSelect(file: File) {
       </BCard>
     </section>
 
-    <section class="profile__section">
+    <section class="profile__section" aria-label="Sessions">
       <header class="profile__section-header">
         <span class="profile__numeral" aria-hidden="true">04</span>
         <p class="profile__kicker">SESSIONS</p>
