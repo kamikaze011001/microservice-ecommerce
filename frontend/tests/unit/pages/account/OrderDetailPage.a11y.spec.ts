@@ -79,13 +79,13 @@ function mount() {
 }
 
 // OrderDetailPage is a layout-embedded fragment: AccountLayout owns the page's single
-// <main> landmark. Mounted in isolation the top-level header/<h1> and total/meta/action
-// blocks aren't wrapped by that main, so the document-level rules the layout owns are
-// scoped out here. (This iteration ALSO fixed a real bug: OrderDetailPage previously
-// rendered its own <main>, nesting a second main inside AccountLayout's — now a <div>.)
+// <main> landmark. Mounted in isolation the top-level header and total/meta/action
+// blocks aren't wrapped by that main, so the layout-owned landmark rules are scoped out
+// here. The page owns its own <h1> (RECEIPT), so page-has-heading-one is NOT scoped out
+// — the guard asserts it below. (This iteration ALSO fixed a real bug: OrderDetailPage
+// previously rendered its own <main>, nesting a second main inside AccountLayout's — now a <div>.)
 const LAYOUT_OWNED_RULES = {
   'landmark-one-main': { enabled: false },
-  'page-has-heading-one': { enabled: false },
   region: { enabled: false },
 } as const;
 
