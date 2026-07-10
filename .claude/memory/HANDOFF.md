@@ -4,44 +4,46 @@
 > first — write it so anyone grasps "where we are, what's next" in 10 seconds.
 
 ## Current goal
-**Uncommitted `CLAUDE.md` restructure sitting in the working tree, awaiting review.** A `/doctor`
-run trimmed root `CLAUDE.md` and migrated module-specific sections into nested files. Nothing is
-staged or committed. Next session: review `git diff`, then commit (or ask the user to).
+**Nothing is mid-flight.** `main` @ `dc6403d`, clean tree, no open PRs. The last two workstreams
+(frontend a11y sweep, `CLAUDE.md` restructure) both shipped.
 
-The a11y workstream is **complete and merged** — nothing mid-flight there.
+The one real item left is a **manual keyboard/focus-ring walkthrough** — it cannot be automated
+(see Next Steps #1). Offer it; don't auto-start it.
 
 ## Done (settled, do not redo)
-- **`/doctor` cleanup (2026-07-10), working tree only:**
-  - `CLAUDE.md` 18,704 → 14,452 chars. Deleted derivable sections (Project Overview, Core
-    Architecture, Core Modules, Key Technologies, `mvn` commands, Key Events list).
-  - Migrated out: Image storage → `core/core-s3/CLAUDE.md` (already there); Gateway CORS →
-    `gateway/CLAUDE.md` (already there); Mock PayPal → **new** `mock-paypal-service/CLAUDE.md`.
-  - `payment-service/CLAUDE.md`: +1 pointer line to the mock (that's where `application.paypal.base-url`
-    is flipped; it had no mention before).
-  - Rationale + the keep/move test are captured in `decisions/0002-*` and
-    `conventions/nested-claude-md-loads-only-in-scope`. **Read those before "deduplicating" more.**
-  - Personal-machine changes (2 unused plugins disabled; 46 broken gstack skill symlinks found)
-    are NOT repo state — they live in the global auto-memory. See [[two-memory-systems-coexist]].
-- **a11y-step sweep DONE → PR #37 + #38 + #39 MERGED** (`main` @ d74a679). All app pages + `AppNav`
-  carry jsdom `vitest-axe` guards + keyboard/landmark/heading rubric. Detector returns `DONE`.
-  263 tests green. `fix/profilepage-heading` is a stale merged branch — delete local + remote
-  (squash-merge means `git branch -d` reports "not merged"; use `-D`).
-- Earlier this session-chain: enhance-loop skill builds #34/#35/#36 all merged.
+- **`CLAUDE.md` restructure → PR #40 MERGED** (`dc6403d`). Root `CLAUDE.md` 18,704 → 14,452 chars.
+  Deleted derivable sections (Project Overview, Core Architecture, Core Modules, Key Technologies,
+  `mvn` commands, Key Events list). Migrated out: Image storage → `core/core-s3/CLAUDE.md`;
+  Gateway CORS → `gateway/CLAUDE.md`; Mock PayPal → **new** `mock-paypal-service/CLAUDE.md`
+  (+ pointer line in `payment-service/CLAUDE.md`, where `application.paypal.base-url` is flipped).
+  Rationale + the keep/move test live in `decisions/0002-*` and
+  `conventions/nested-claude-md-loads-only-in-scope`. **Read those before "deduplicating" more —
+  the five root sections that look like duplicates are load-bearing.**
+- **a11y-step sweep DONE → PRs #37 + #38 + #39 MERGED.** All app pages + `AppNav` carry jsdom
+  `vitest-axe` guards + keyboard/landmark/heading rubric. Detector returns `DONE`. 263 tests green.
+- Earlier in this session-chain: enhance-loop skill builds #34/#35/#36 all merged.
+- Branch hygiene done: `docs/claude-md-trim` and `fix/profilepage-heading` deleted local + remote.
+  (This repo squash-merges, so `git branch -d` false-negatives on merged branches — use `-D`.)
+- `/doctor` run, personal machine only (**NOT repo state**, lives in the global auto-memory —
+  see [[two-memory-systems-coexist]]): 2 unused plugins disabled; 46 broken gstack skill symlinks
+  found and deleted; global `~/.claude/CLAUDE.md` trimmed 5,057 → 3,389 chars.
 
 ## In progress / Next steps
-1. **Review + commit the `CLAUDE.md` restructure.** `git diff` covers `CLAUDE.md` and
-   `payment-service/CLAUDE.md`; `mock-paypal-service/CLAUDE.md` is untracked. Suggested commit:
-   `docs(claude-md): trim derivable content, migrate module sections to nested files`.
-2. **Manual keyboard/focus-ring walkthrough (LAST a11y item):** jsdom has no layout, so visible
-   focus order + focus rings were never asserted. Needs a real-browser keyboard pass against
-   `pnpm dev`, or by hand. Offer, don't auto-start.
-3. **Optional loose end:** ProfilePage section-01 kicker also reads "MASTHEAD" (`<p>`, different
-   tier from the display `<h1>`) — harmless echo; rename only if it reads oddly in-browser.
+1. **Manual keyboard/focus-ring walkthrough (LAST a11y item).** jsdom has no layout, so visible
+   focus *order* and focus *rings* were never asserted — axe in jsdom structurally cannot catch
+   them. Needs a real-browser keyboard pass against `pnpm dev`, or by hand. Offer, don't auto-start.
+2. **Optional loose end:** ProfilePage section-01 kicker also reads "MASTHEAD" (`<p>`, a different
+   tier from the display `<h1>`) — a harmless echo. Rename only if it reads oddly in-browser.
+3. **~30 stale local branches** from long-merged PRs (`frontend/phase-1..4`, `feat/b*-primitive`,
+   …). Pruning them needs a content-based check, not `git branch --merged` (squash-merge again).
+   Low value; do it only if asked.
 
 ## Settled decisions + rationale
 - **Root `CLAUDE.md` = non-derivable + cross-cutting only.** Module specifics go in nested
-  `<module>/CLAUDE.md`. But nested files load ONLY in scope, so a rule binding *other* modules stays
-  in root even when a nested file repeats it. See `decisions/0002-*`.
+  `<module>/CLAUDE.md`. But nested files load ONLY when work happens under their directory, so a
+  rule binding *other* modules stays in root even when a nested file repeats it. Deliberately kept
+  duplicated: Bean wiring, Repository layout, Response & paging shapes, User identity, Gateway
+  routing. See `decisions/0002-*`.
 - **a11y-step layout-fragment pattern:** account pages are `AccountLayout` children; the layout owns
   the sole `<main>`. Child guards use a `LAYOUT_OWNED_RULES` carve-out (`landmark-one-main`,
   `page-has-heading-one`, `region`). A child rendering its own `<main>` is a real nested-landmark bug
@@ -66,4 +68,6 @@ The a11y workstream is **complete and merged** — nothing mid-flight there.
 
 ## Paused (not abandoned)
 - Consistency-loop R1 headless smoke test — still NOT run (needs `ANTHROPIC_API_KEY` secret).
-- Manual keyboard/focus-ring pass — see Next Step #2 (real-browser only; jsdom can't assert it).
+- Manual keyboard/focus-ring pass — see Next Step #1 (real-browser only; jsdom can't assert it).
+- Five never-used claude.ai connectors (Gmail, Calendar, Drive, Notion, monday.com) — can only be
+  disabled on claude.ai, not from any local settings file. User's call.
