@@ -2,44 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
-This is a microservice-based e-commerce platform built with Spring Boot and Java 17. The system uses event-driven architecture with Kafka, master-slave MySQL setup, Redis caching, HashiCorp Vault for secrets management, and gRPC for internal service communication.
-
-## Core Architecture
-
-### Microservices Structure
-- **authorization-server**: JWT-based authentication/authorization with OAuth2, user management, role-based access control
-- **gateway**: Spring Cloud Gateway for API routing, load balancing, and centralized Swagger documentation
-- **eureka-server**: Service discovery and registry
-- **product-service**: Product catalog management
-- **inventory-service**: Stock management with gRPC endpoints for internal communication
-- **order-service**: Order processing, validation, and lifecycle management
-- **payment-service**: PayPal integration for payment processing
-- **orchestrator-service**: Saga pattern implementation for distributed transactions
-
-### Core Modules (in `/core`)
-- **common-dto**: Shared DTOs, events, exceptions, and common request/response models
-- **core-order-cache**: Order caching utilities
-- **core-routing-db**: Master-slave database routing configuration
-- **core-redis**: Redis configuration and utilities
-- **core-email**: Email service with Thymeleaf templates
-- **core-exception-api**: Global exception handling
-- **core-jwt-util**: JWT token utilities
-- **core-paypal**: PayPal integration utilities
-- **core-s3**: S3-compatible object storage (presigned uploads, MinIO local / AWS S3 prod)
-- **grpc-common**: Protocol buffer definitions and gRPC service contracts
-
-### Key Technologies
-- **Spring Boot 3.3.6** with Spring Cloud 2023.0.3
-- **Java 17** with Maven build system
-- **MySQL 8.0.40** in master-slave configuration with GTID replication
-- **Redis** for caching and session management
-- **Apache Kafka** for event-driven messaging
-- **HashiCorp Vault** for secrets management
-- **gRPC** for internal service communication
-- **Spring Security** with JWT tokens
-- **Docker Compose** for infrastructure services
-
 ## Common Development Commands
 
 ### One-Time Setup (First Run)
@@ -75,21 +37,6 @@ my-service  1234  -  3
 ```
 The drift guard in `scripts/services/start.sh` will refuse to start until
 every `*-service` / `gateway` / `eureka-server` directory is registered.
-
-### Building and Running Services
-```bash
-# Build all services (run from service directory)
-mvn clean compile
-
-# Run individual service
-mvn spring-boot:run
-
-# Build with tests
-mvn clean test
-
-# Package service
-mvn clean package
-```
 
 ### Infrastructure Management
 ```bash
@@ -133,11 +80,6 @@ Services use `@EnableRoutingDatasource` annotation with separate configurations:
 
 ## Event-Driven Architecture
 
-### Key Events (in common-dto)
-- `PaymentSuccessEvent`, `PaymentFailedEvent`, `PaymentCanceledEvent`
-- `ProductUpdateEvent`, `ProductQuantityUpdatedEvent`
-- `MongoSavedEvent` for MongoDB operations
-
 ### Event Flow (Order Processing)
 1. Order validation and creation in Order Service
 2. Inventory validation via gRPC call to Inventory Service
@@ -146,14 +88,8 @@ Services use `@EnableRoutingDatasource` annotation with separate configurations:
 5. Distributed transaction management via orchestrator
 
 ### Mock PayPal (stress test / local dev)
-`mock-paypal-service` (Java 25, port 8585) mocks PayPal's REST API so k6 and
-local frontend can run the full payment flow (success/cancel/fail) without real
-PayPal. Switch is config-only: set `application.paypal.base-url` to
-`http://<host>:8585/mock-paypal-service`. The approve/cancel/fail decision is
-chosen at the `/checkout` page (browser) or via `?decision=` (k6); `fail` returns
-HTTP 422 from capture to trigger `PaymentFailed`. Single replica by design
-(in-memory per-token state). Targets Java 25 — build/run with a JDK 25 toolchain.
-See `mock-paypal-service/README.md`.
+`mock-paypal-service` (port 8585) replaces real PayPal for k6 runs and local dev.
+Switch is config-only. See `mock-paypal-service/CLAUDE.md`.
 
 ## Security & Communication
 - **Auth**: JWT (RS256) issued by `authorization-server`; gateway validates and injects `X-User-Id`.
@@ -227,15 +163,6 @@ Rule: when consuming a `BaseResponse` whose payload you read as `Map<String, Obj
 key access must use snake_case. Even better — bind to a typed DTO with `@JsonNaming`
 so Jackson converts back to camelCase fields and the compiler catches typos.
 
-### Gateway CORS
-The gateway publishes a single `CorsConfigurationSource` covering all routes.
-Allowed origins, methods, headers, and credentials live under
-`application.gateway.cors.*` in `gateway/src/main/resources/application.yml`
-(overridable via Vault for prod). Defaults are `http://localhost:3000` and
-`http://localhost:5173` with `allow-credentials=true`.
-
-Per-service CORS would be redundant — all browser traffic enters via the gateway.
-
 ### User identity
 Gateway extracts `userId` from the JWT and forwards it as the `X-User-Id` header.
 Controllers read it via `@RequestHeader("X-User-Id") String userId`. Don't parse JWTs
@@ -266,24 +193,9 @@ Spring Boot `contextLoads` tests are guarded so they pass without Kafka/Vault/My
 available (see orchestrator-service for the pattern). Mirror this when adding new services.
 
 ### Image storage
-Product images and user avatars use S3-compatible storage via the `core-s3`
-shared module. Clients upload directly to S3 with a presigned URL — the JVM
-never touches the bytes. Two-step flow:
-1. `POST /v1/products/{id}/image/presign` (or `.../users/self/avatar/presign`)
-   returns `{ uploadUrl, objectKey, expiresAt }`. The signed URL embeds
-   Content-Type and a 5MB content-length-range as conditions.
-2. Client `PUT`s the bytes to `uploadUrl` with the matching `Content-Type`
-   header.
-3. Client calls `PUT /v1/products/{id}/image` (or `.../users/self/avatar`)
-   with `{ objectKey }`. Server HEAD-checks the object, validates the key
-   prefix, and stores the public URL.
-
-Object keys: `products/{productId}/{uuid}.{ext}` and
-`avatars/{userId}/{uuid}.{ext}`. Both prefixes have anonymous-read enabled,
-so the stored URL is just `{public-base-url}/{key}` — clients fetch
-directly. Vault path `secret/core-s3` holds the bucket, endpoint, and
-credentials; switching from MinIO to AWS S3 is a Vault-only change (flip
-`endpoint`, `path-style`, and creds).
+Product images and user avatars use presigned direct-to-S3 uploads via the
+`core-s3` shared module — the JVM never touches the bytes. See
+`core/core-s3/CLAUDE.md` for the two-step contract and object-key shapes.
 
 ### Observability
 Every JVM service exposes Spring Boot Actuator on a separate management port

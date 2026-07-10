@@ -25,3 +25,4 @@ Payment lifecycle. PayPal integration via `core-paypal`. Emits `PaymentSuccess/F
 - PayPal SDK lives in `core/core-paypal` — don't pull the raw SDK here.
 - Sandbox vs live mode toggled in Vault, not application.yml.
 - Webhook return URLs are configured per environment; in local dev they point at the gateway, which routes back to this service.
+- Local dev / stress runs can swap in `mock-paypal-service` by pointing `application.paypal.base-url` at it. See `mock-paypal-service/CLAUDE.md`.
