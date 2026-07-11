@@ -5,7 +5,7 @@ import org.aibles.ecommerce.common_dto.exception.BadRequestException;
 public class OrderInvalidException extends BadRequestException {
 
     public OrderInvalidException(String orderId) {
+        setCode("payment.order.invalid");
         addParams("orderId", orderId);
-        setMessage("(orderId: " + orderId + ") is not valid");
     }
 }

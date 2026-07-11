@@ -33,6 +33,10 @@ server:
     context-path: /payment-service
 
 application:
+  i18n:
+    resources:
+      - classpath:messages
+      - classpath:messages/payment
   frontend:
     base-url: ${FRONTEND_BASE_URL:http://localhost:5173}
   paypal:
