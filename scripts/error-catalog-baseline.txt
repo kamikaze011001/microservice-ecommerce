@@ -1,0 +1,19 @@
+# Grandfathered non-dotted / unresolved error codes, pending migration by the
+# error-catalog loop (Tasks 11-13). The ratchet gate (check-error-catalog.sh)
+# fails on any NEW offender and on any STALE line here that no longer offends.
+# As each service migrates, DELETE its codes from this list. This file only shrinks.
+Email or Username already existed
+Old password is incorrect
+Otp is expired
+User is not found
+You have a otp that still in use
+Your account is not activated
+Your otp is invalid
+Your password is incorrect
+Your reset password key is invalid
+Your token is invalid
+invalid_role_name_exception
+org.aibles.business.exception.OrderAlreadyCanceledException
+org.aibles.business.exception.OrderNotCancellableException
+org.aibles.business.exception.StorageUnavailableException
+org.aibles.order_service.exception.InvalidProductQuantity
