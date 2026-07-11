@@ -8,10 +8,12 @@ import org.aibles.ecommerce.bff_service.service.BffService;
 import org.aibles.ecommerce.bff_service.service.CartBffService;
 import org.aibles.ecommerce.bff_service.service.impl.BffServiceImpl;
 import org.aibles.ecommerce.bff_service.service.impl.CartBffServiceImpl;
+import org.aibles.ecommerce.core_exception_api.configuration.EnableCoreExceptionApi;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
+@EnableCoreExceptionApi
 public class BffServiceConfiguration {
 
     @Bean
