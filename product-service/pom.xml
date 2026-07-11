@@ -81,6 +81,11 @@
 			<artifactId>micrometer-registry-prometheus</artifactId>
 			<scope>runtime</scope>
 		</dependency>
+		<dependency>
+			<groupId>org.aibles.ecommerce</groupId>
+			<artifactId>core-exception-api</artifactId>
+			<version>0.0.1</version>
+		</dependency>
 	</dependencies>
 	<dependencyManagement>
 		<dependencies>

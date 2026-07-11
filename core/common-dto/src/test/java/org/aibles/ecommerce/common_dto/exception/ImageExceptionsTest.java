@@ -10,28 +10,28 @@ class ImageExceptionsTest {
   void typeNotAllowedIs400WithStableCode() {
     ImageTypeNotAllowedException ex = new ImageTypeNotAllowedException();
     assertThat(ex.getStatus()).isEqualTo(400);
-    assertThat(ex.getCode()).isEqualTo("org.aibles.business.exception.ImageTypeNotAllowedException");
+    assertThat(ex.getCode()).isEqualTo("common.image.type_not_allowed");
   }
 
   @Test
   void tooLargeIs400() {
     assertThat(new ImageTooLargeException().getStatus()).isEqualTo(400);
     assertThat(new ImageTooLargeException().getCode())
-        .isEqualTo("org.aibles.business.exception.ImageTooLargeException");
+        .isEqualTo("common.image.too_large");
   }
 
   @Test
   void keyForbiddenIs403() {
     assertThat(new ImageKeyForbiddenException().getStatus()).isEqualTo(403);
     assertThat(new ImageKeyForbiddenException().getCode())
-        .isEqualTo("org.aibles.business.exception.ImageKeyForbiddenException");
+        .isEqualTo("common.image.key_forbidden");
   }
 
   @Test
   void notUploadedIs400() {
     assertThat(new ImageNotUploadedException().getStatus()).isEqualTo(400);
     assertThat(new ImageNotUploadedException().getCode())
-        .isEqualTo("org.aibles.business.exception.ImageNotUploadedException");
+        .isEqualTo("common.image.not_uploaded");
   }
 
   @Test

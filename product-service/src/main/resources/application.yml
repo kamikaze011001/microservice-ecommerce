@@ -32,6 +32,10 @@ application:
     topics:
       inventory-service.product.update: inventory-service.product.update
       product-service.product.update-quantity: product-service.product.update-quantity
+  i18n:
+    resources:
+      - classpath:messages
+      - classpath:messages/product
 server:
   servlet:
     context-path: /product-service

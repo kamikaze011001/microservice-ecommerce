@@ -4,6 +4,6 @@ public class ImageKeyForbiddenException extends BaseException {
 
   public ImageKeyForbiddenException() {
     setStatus(403);
-    setCode("org.aibles.business.exception.ImageKeyForbiddenException");
+    setCode("common.image.key_forbidden");
   }
 }

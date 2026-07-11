@@ -4,6 +4,6 @@ public class ImageNotUploadedException extends BaseException {
 
   public ImageNotUploadedException() {
     setStatus(400);
-    setCode("org.aibles.business.exception.ImageNotUploadedException");
+    setCode("common.image.not_uploaded");
   }
 }
