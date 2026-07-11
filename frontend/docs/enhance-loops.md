@@ -1,6 +1,6 @@
 # Frontend enhance loops
 
-Three local, self-paced `/loop` runners. Each does ONE unit of work per wake-up, commits it,
+Five local, self-paced `/loop` runners. Each does ONE unit of work per wake-up, commits it,
 and ends at ONE PR a human merges. State lives in git — interrupt anytime and re-run to resume.
 
 ## `/loop /migrate-sweep`
@@ -34,7 +34,32 @@ detector reports `DONE`.
   regardless of the global happy-dom env — defense-in-depth, not a hard requirement (axe runs
   fine under the pinned happy-dom v15).
 
-## Four-gate stop contract (all three loops)
+## `/loop /error-catalog-step`
+
+Picks the next backend service lacking a `messages/<svc>.properties` bundle, gives its
+throw-sites stable dotted `<domain>.<entity>.<reason>` codes with `%param%` messages, wires
+`core-exception-api` if missing, and verifies with `mvn verify` plus the ratcheted gate. Opens
+a PR on `chore/error-catalog-sweep` when the detector reports `DONE`.
+
+- Next target: `node scripts/next-error-target.mjs`
+- Skill: `.claude/skills/error-catalog-step/SKILL.md`
+- Gate: `./scripts/check-error-catalog.sh` (also wired as a blocking CI check —
+  `.github/workflows/error-catalog.yml`).
+
+## `/loop /error-display-step`
+
+Runs after the backend catalog PR merges. Picks the next page that discards a caught error
+(bare `catch {}`) and rewrites it to surface the real backend message + field errors via
+`useApiError()` (`notify()` for toasts, `fieldErrors()` for vee-validate forms). Opens a PR on
+`chore/error-display-sweep` when the detector reports `DONE`.
+
+- Next target: `cd frontend && node scripts/next-error-display-target.mjs`
+- Skill: `.claude/skills/error-display-step/SKILL.md`
+- Gate: `grep -rnE 'catch\s*\{' src/pages` must find nothing — wired in `frontend.yml`'s
+  `verify` job as `continue-on-error: true` until this loop finishes migrating every page,
+  then flip it to blocking.
+
+## Four-gate stop contract (all five loops)
 
 1. **Success** — detector prints `DONE` → open the PR, stop.
 2. **Blocked** — 2 consecutive un-fixable failures → draft PR + `needs-human`, stop.

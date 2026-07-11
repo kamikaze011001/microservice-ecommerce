@@ -11,4 +11,6 @@ Centralized exception handling. Provides `@ControllerAdvice` + helpers so every 
 Don't write your own `@ExceptionHandler` in a service for things this module already handles (validation, auth, generic 500). Add new error types here, not in the service. Error codes are stable contracts — bumping them is a breaking change for the SPA.
 
 ## Wire format
-Errors are `BaseResponse` with `success=false`, `code`, `message`. Snake_case throughout (`SnakeCaseStrategy` from `common-dto`).
+Errors are `BaseResponse{status, code, data}` where `data` is an `ErrorData{code, message, errors?}`
+(`errors` is the optional per-field validation map). There is no `success` field. Snake_case
+throughout (`SnakeCaseStrategy` from `common-dto`).

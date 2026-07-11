@@ -1,0 +1,25 @@
+name: error-catalog
+
+on:
+  pull_request:
+    paths:
+      - '**/*.java'
+      - 'scripts/check-error-catalog.sh'
+      - 'scripts/error-catalog-baseline.txt'
+      - '.github/workflows/error-catalog.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**/*.java'
+      - 'scripts/check-error-catalog.sh'
+      - 'scripts/error-catalog-baseline.txt'
+      - '.github/workflows/error-catalog.yml'
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Error-catalog gate (dotted+resolvable codes, ratcheted baseline)
+        run: ./scripts/check-error-catalog.sh
