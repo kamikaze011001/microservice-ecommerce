@@ -5,6 +5,8 @@ import { setActivePinia, createPinia } from 'pinia';
 import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
 import { router } from '@/router';
 import CheckoutPage from '@/pages/CheckoutPage.vue';
+import { ApiError } from '@/api/error';
+import { useToastStore } from '@/stores/toast';
 
 const useCartQuery = vi.fn();
 const createOrder = vi.fn();
@@ -113,5 +115,23 @@ describe('CheckoutPage', () => {
     );
     expect(screen.getByRole('button', { name: /RESUME PAYMENT/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /CANCEL ORDER/i })).toBeInTheDocument();
+  });
+
+  it('surfaces the backend error message when order creation fails', async () => {
+    createOrder.mockRejectedValueOnce(
+      new ApiError(409, 'order.insufficient_stock', 'Only 3 of "Tee" left in stock.'),
+    );
+    mount();
+    await fillValidForm();
+    await userEvent.click(screen.getByRole('button', { name: /CONTINUE TO PAYMENT/i }));
+
+    const toasts = useToastStore();
+    await waitFor(() =>
+      expect(
+        toasts.items.some((t) => t.tone === 'error' && t.body === 'Only 3 of "Tee" left in stock.'),
+      ).toBe(true),
+    );
+    // Payment must not start once order creation fails.
+    expect(createPayment).not.toHaveBeenCalled();
   });
 });
