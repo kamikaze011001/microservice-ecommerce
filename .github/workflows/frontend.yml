@@ -47,7 +47,6 @@ jobs:
         run: pnpm test
 
       - name: No error-discarding catch in pages
-        continue-on-error: true   # unmigrated pages still trip this; flip to blocking once error-display-step's PR lands
         run: |
           if grep -rnE 'catch\s*\{' src/pages; then
             echo "Bare catch {} discards the error — use useApiError(); see error-display-step."
