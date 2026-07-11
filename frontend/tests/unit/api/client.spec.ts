@@ -50,7 +50,11 @@ describe('apiFetch', () => {
 
   it('throws ApiError on non-2xx', async () => {
     fetchMock.mockResolvedValueOnce(
-      await jsonRes(400, { status: 400, code: 'BAD', message: 'nope', data: null }),
+      await jsonRes(400, {
+        status: 400,
+        code: 'Bad Request',
+        data: { code: 'BAD', message: 'nope' },
+      }),
     );
     const { apiFetchUnsafe } = await import('@/api/client');
     await expect(apiFetchUnsafe('/x', {})).rejects.toMatchObject({
