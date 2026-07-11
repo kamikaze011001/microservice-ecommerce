@@ -8,6 +8,8 @@ import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import OrderDetailPage from '@/pages/account/OrderDetailPage.vue';
 import type { OrderDetailView, PaymentView } from '@/api/queries/orders';
+import { ApiError } from '@/api/error';
+import { useToastStore } from '@/stores/toast';
 
 // --- mocks ---
 const useOrderDetailBffQuery = vi.fn();
@@ -188,6 +190,33 @@ describe('OrderDetailPage', () => {
     await flushPromises();
 
     expect(cancelMutate).toHaveBeenCalledWith(ORDER_ID);
+  });
+
+  it('Test 5b: failed VOID surfaces the backend error message in the toast', async () => {
+    const user = userEvent.setup();
+    cancelMutate.mockRejectedValueOnce(
+      new ApiError(409, 'order.already_shipped', 'Order already shipped — cannot void.'),
+    );
+    useOrderDetailBffQuery.mockReturnValue(
+      makeQuery(makeOrder({ status: 'PENDING' }), makePayment()),
+    );
+    mount();
+    await flushPromises();
+
+    await user.click(screen.getByRole('button', { name: /VOID THIS RECEIPT/i }));
+    await flushPromises();
+    await user.click(screen.getByRole('button', { name: /CONFIRM VOID/i }));
+    await flushPromises();
+
+    const toasts = useToastStore();
+    expect(
+      toasts.items.some(
+        (t) =>
+          t.tone === 'error' &&
+          t.title === 'VOID FAILED' &&
+          t.body === 'Order already shipped — cannot void.',
+      ),
+    ).toBe(true);
   });
 
   it('Test 6: STAMP AGAIN loops addToCart over all items and navigates to /cart; partial 409 surfaces skipped name', async () => {
