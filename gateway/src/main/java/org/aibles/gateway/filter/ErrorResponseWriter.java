@@ -32,6 +32,11 @@ public final class ErrorResponseWriter {
     public static final String MSG_FORBIDDEN =
             "You do not have permission to access this resource.";
     public static final String MSG_INTERNAL = "Something went wrong on our end. Please try again.";
+    // common.bad_request is a pre-existing cross-cutting code (see BadRequestException's
+    // default constructor); reuse its canonical bundle message rather than invent a second,
+    // conflicting one under the same key.
+    public static final String MSG_BAD_REQUEST = "The request was invalid.";
+    public static final String MSG_TIMEOUT = "The request timed out. Please try again.";
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 

@@ -57,11 +57,11 @@ public class AuthorizationFilter implements WebFilter {
                     
                     // Categorize the exception type
                     if (e instanceof IllegalStateException) {
-                        return handleError(exchange, HttpStatus.BAD_REQUEST, "common.internal_error", ErrorResponseWriter.MSG_INTERNAL);
+                        return handleError(exchange, HttpStatus.BAD_REQUEST, "common.bad_request", ErrorResponseWriter.MSG_BAD_REQUEST);
                     } else if (e instanceof IllegalArgumentException) {
-                        return handleError(exchange, HttpStatus.BAD_REQUEST, "common.internal_error", ErrorResponseWriter.MSG_INTERNAL);
+                        return handleError(exchange, HttpStatus.BAD_REQUEST, "common.bad_request", ErrorResponseWriter.MSG_BAD_REQUEST);
                     } else if (e.getMessage() != null && e.getMessage().contains("timeout")) {
-                        return handleError(exchange, HttpStatus.GATEWAY_TIMEOUT, "common.internal_error", ErrorResponseWriter.MSG_INTERNAL);
+                        return handleError(exchange, HttpStatus.GATEWAY_TIMEOUT, "common.timeout", ErrorResponseWriter.MSG_TIMEOUT);
                     } else {
                         return handleError(exchange, HttpStatus.INTERNAL_SERVER_ERROR, "common.internal_error", ErrorResponseWriter.MSG_INTERNAL);
                     }

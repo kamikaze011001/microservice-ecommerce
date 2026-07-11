@@ -37,4 +37,18 @@ class ErrorResponseWriterTest {
                         + "\"data\":{\"code\":\"auth.forbidden\","
                         + "\"message\":\"You do not have permission to access this resource.\"}}");
     }
+
+    @Test
+    void body_hasNestedContractShape_forBadRequest() {
+        Map<String, Object> body = ErrorResponseWriter.body(
+                HttpStatus.BAD_REQUEST, "common.bad_request", ErrorResponseWriter.MSG_BAD_REQUEST);
+
+        assertThat(body.get("status")).isEqualTo(400);
+        assertThat(body.get("code")).isEqualTo("Bad Request");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) body.get("data");
+        assertThat(data.get("code")).isEqualTo("common.bad_request");
+        assertThat(data.get("message")).isEqualTo("The request was invalid.");
+    }
 }
