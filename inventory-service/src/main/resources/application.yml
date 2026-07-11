@@ -29,6 +29,10 @@ server:
   servlet:
     context-path: /inventory-service
 application:
+  i18n:
+    resources:
+      - classpath:messages
+      - classpath:messages/inventory
   kafka:
     group-id:
       product.update: product-update-group

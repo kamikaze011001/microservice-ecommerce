@@ -146,7 +146,7 @@ public class InventoryServiceImpl implements InventoryService {
         log.info("(update)id: {}, quantity: {}, isAdd: {}", id, quantity, isAdd);
         if (!slaveInventoryProductRepository.existsById(id)) {
             log.warn("(update)id: {} is invalid", id);
-            throw new NotFoundException();
+            throw new NotFoundException("inventory.product.not_found", Map.of("id", id));
         }
 
         long actualQuantity = Boolean.TRUE.equals(isAdd) ? quantity : -quantity;
@@ -311,7 +311,7 @@ public class InventoryServiceImpl implements InventoryService {
 
         } catch (Exception e) {
             log.error("(processInventoryUpdate) Error processing inventory for orderId: {}", orderId, e);
-            throw new InternalErrorException();
+            throw new InternalErrorException("inventory.order.processing_failed", Map.of("order_id", orderId));
         } finally {
             releaseLockInReverse(productIds, locks);
         }
@@ -352,11 +352,11 @@ public class InventoryServiceImpl implements InventoryService {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.error("(acquireLockWithRetry) Interrupted while waiting for lock with key : {}", lockKey, e);
-                throw new InternalErrorException();
+                throw new InternalErrorException("inventory.lock.interrupted", Map.of("key", lockKey));
             }
         }
         log.error("(acquireLockWithRetry) Failed to acquire lock after multiple attempts with key : {}", lockKey);
-        throw new InternalErrorException();
+        throw new InternalErrorException("inventory.lock.acquire_failed", Map.of("key", lockKey));
     }
 
     /**
