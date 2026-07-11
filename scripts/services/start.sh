@@ -31,6 +31,41 @@ check_drift || {
     exit 1
 }
 
+# Resolve a JDK for a service that pins a newer Java than the one on PATH.
+# The ambient JDK can compile any `--release` <= its own major, so a service
+# pinned to Java 17 or 21 builds fine on ambient 21 and keeps the ambient JDK
+# (prints nothing). Only a pom asking for a *higher* release than the running
+# JDK — mock-paypal-service pins Java 25 — needs a step-up. In that case we
+# look up the lowest-major, highest-patch match in sdkman's candidate dir and
+# echo its path; nothing is hardcoded to this machine. Empty output => caller
+# launches under the ambient JDK unchanged.
+service_java_home() {
+    local dir=$1
+    local pom="$dir/pom.xml"
+    [ -f "$pom" ] || return 0
+    local want have
+    want=$(sed -n 's:.*<java\.version>\([0-9][0-9]*\)</java\.version>.*:\1:p' "$pom" | head -1)
+    [ -n "$want" ] || return 0
+    have=$(java -version 2>&1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p' | head -1)
+    [ -n "$have" ] && [ "$want" -le "$have" ] && return 0
+
+    local sdk_root="${SDKMAN_DIR:-$HOME/.sdkman}/candidates/java"
+    [ -d "$sdk_root" ] || return 0
+    local best="" best_major=0 cand major
+    for cand in "$sdk_root"/*/; do
+        cand=${cand%/}; cand=${cand##*/}
+        [ "$cand" = "current" ] && continue
+        major=${cand%%.*}; major=${major%%-*}
+        case "$major" in ''|*[!0-9]*) continue;; esac
+        [ "$major" -ge "$want" ] || continue
+        if [ -z "$best" ] || [ "$major" -lt "$best_major" ] \
+           || { [ "$major" -eq "$best_major" ] && [[ "$cand" > "$best" ]]; }; then
+            best=$cand; best_major=$major
+        fi
+    done
+    [ -n "$best" ] && echo "$sdk_root/$best"
+}
+
 start_one() {
     local name=$1
     local dir="$REPO_ROOT/$name"
@@ -41,8 +76,16 @@ start_one() {
         return 0
     fi
 
+    local jhome
+    jhome=$(service_java_home "$dir")
+
     log_info "Starting $name..."
-    (cd "$dir" && mvn spring-boot:run) > "$LOG_DIR/$name.log" 2>&1 &
+    if [ -n "$jhome" ]; then
+        log_info "$name pins a newer Java than PATH — launching under ${jhome##*/}"
+        (cd "$dir" && JAVA_HOME="$jhome" PATH="$jhome/bin:$PATH" mvn spring-boot:run) > "$LOG_DIR/$name.log" 2>&1 &
+    else
+        (cd "$dir" && mvn spring-boot:run) > "$LOG_DIR/$name.log" 2>&1 &
+    fi
     echo $! > "$PID_DIR/$name.pid"
     log_ok "$name started (PID $!)"
 }
