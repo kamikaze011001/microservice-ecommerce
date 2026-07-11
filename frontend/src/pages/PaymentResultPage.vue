@@ -5,6 +5,7 @@ import { useOrderQuery, useCancelOrderMutation } from '@/api/queries/orders';
 import { useCreatePaymentMutation } from '@/api/queries/payments';
 import OrderStatusStamp from '@/components/domain/OrderStatusStamp.vue';
 import { BButton } from '@/components/primitives';
+import { useApiError } from '@/composables/useApiError';
 
 const PENDING_KEY = 'aibles.checkout.pendingOrderId';
 const MAX_POLLS = 10;
@@ -20,6 +21,7 @@ const variant = computed<'success' | 'cancel'>(() =>
 const order = useOrderQuery(orderId, { polling: variant.value === 'success' });
 const cancelOrder = useCancelOrderMutation();
 const createPayment = useCreatePaymentMutation();
+const { notify } = useApiError();
 
 const POLL_TIMEOUT_MS = MAX_POLLS * 1000; // 10s
 const timedOut = ref(false);
@@ -30,8 +32,6 @@ if (variant.value === 'success') {
     timedOut.value = true;
   }, POLL_TIMEOUT_MS);
 }
-
-const errorBanner = ref<string | null>(null);
 
 // UI state for branch logic / watch
 const stampState = computed<'verifying' | 'paid' | 'still-processing' | 'canceled'>(() => {
@@ -61,20 +61,19 @@ onUnmounted(() => {
 });
 
 async function retryPayment() {
-  errorBanner.value = null;
   try {
     const { approvalUrl } = await createPayment.mutateAsync({ orderId: orderId.value });
     window.location.href = approvalUrl;
-  } catch {
-    errorBanner.value = 'PAYMENT NOT STARTED — RETRY';
+  } catch (e) {
+    notify(e, 'Payment could not be started. Please try again.');
   }
 }
 
 async function cancelPending() {
   try {
     await cancelOrder.mutateAsync(orderId.value);
-  } catch {
-    errorBanner.value = "COULDN'T CANCEL — TRY AGAIN";
+  } catch (e) {
+    notify(e, 'Order could not be cancelled. Please try again.');
     return;
   }
   localStorage.removeItem(PENDING_KEY);
@@ -110,8 +109,6 @@ async function cancelPending() {
       Your order is on hold. Pick up where you left off, or cancel.
     </p>
 
-    <p v-if="errorBanner" class="result__error" role="alert">{{ errorBanner }}</p>
-
     <div class="result__actions">
       <template v-if="variant === 'success'">
         <RouterLink :to="`/account/orders/${orderId}`" class="result__cta">VIEW ORDER</RouterLink>
@@ -133,12 +130,6 @@ async function cancelPending() {
 }
 .result__copy {
   font-family: var(--font-mono);
-  margin-top: var(--space-4);
-}
-.result__error {
-  background: var(--color-spot);
-  color: var(--color-paper);
-  padding: var(--space-3);
   margin-top: var(--space-4);
 }
 .result__actions {

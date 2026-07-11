@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useOrderDetailBffQuery, useCancelOrderMutation } from '@/api/queries/orders';
 import { useAddToCartMutation } from '@/api/queries/cart';
 import { useToast } from '@/composables/useToast';
+import { useApiError } from '@/composables/useApiError';
 import OrderItemRow from '@/components/domain/OrderItemRow.vue';
 import OrderStatusStamp from '@/components/domain/OrderStatusStamp.vue';
 import { BButton, BCropmarks, BDialog, ToastViewport } from '@/components/primitives';
@@ -11,6 +12,7 @@ import { BButton, BCropmarks, BDialog, ToastViewport } from '@/components/primit
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
+const { toApiError } = useApiError();
 
 const orderId = computed(() => route.params.id as string);
 const query = useOrderDetailBffQuery(orderId);
@@ -55,8 +57,10 @@ async function confirmCancel() {
     await cancelMutate(order.value.id);
     cancelDialogOpen.value = false;
     toast.success('ORDER VOIDED');
-  } catch {
-    toast.error('VOID FAILED', 'Could not cancel this order.');
+  } catch (e) {
+    // Keep the branded "VOID FAILED" title but surface the real backend
+    // reason (e.g. "Order already shipped") instead of a generic string.
+    toast.error('VOID FAILED', toApiError(e)?.message ?? 'Could not cancel this order.');
   }
 }
 

@@ -6,6 +6,8 @@ import { setActivePinia, createPinia } from 'pinia';
 import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
 import { router } from '@/router';
 import PaymentResultPage from '@/pages/PaymentResultPage.vue';
+import { ApiError } from '@/api/error';
+import { useToastStore } from '@/stores/toast';
 
 const orderData = ref<{ order: { id: string; status: string }; payment: null } | undefined>(
   undefined,
@@ -96,5 +98,28 @@ describe('PaymentResultPage — cancel', () => {
     await mount('/payment/cancel?orderId=o1');
     await userEvent.click(screen.getByRole('button', { name: /CANCEL ORDER/i }));
     await waitFor(() => expect(cancelMutate).toHaveBeenCalledWith('o1'));
+  });
+
+  it('surfaces the backend error message when retrying payment fails', async () => {
+    createPayment.mockRejectedValueOnce(
+      new ApiError(502, 'payment.gateway_unavailable', 'PayPal is temporarily unavailable.'),
+    );
+    useOrderQuery.mockReturnValue({
+      data: ref({ order: { id: 'o1', status: 'PROCESSING' }, payment: null }),
+      isLoading: { value: false },
+      isError: { value: false },
+      error: { value: null },
+    });
+    await mount('/payment/cancel?orderId=o1');
+    await userEvent.click(screen.getByRole('button', { name: /RETRY PAYMENT/i }));
+
+    const toasts = useToastStore();
+    await waitFor(() =>
+      expect(
+        toasts.items.some(
+          (t) => t.tone === 'error' && t.body === 'PayPal is temporarily unavailable.',
+        ),
+      ).toBe(true),
+    );
   });
 });

@@ -9,6 +9,7 @@ import { ApiError } from '@/api/error';
 import AddressForm from '@/components/domain/AddressForm.vue';
 import CartSummary from '@/components/domain/CartSummary.vue';
 import { BButton } from '@/components/primitives';
+import { useApiError } from '@/composables/useApiError';
 import type { AddressInput } from '@/lib/zod-schemas';
 
 const PENDING_KEY = 'aibles.checkout.pendingOrderId';
@@ -19,9 +20,9 @@ const cart = useCartQuery();
 const createOrder = useCreateOrderMutation();
 const createPayment = useCreatePaymentMutation();
 const cancelOrder = useCancelOrderMutation();
+const { notify } = useApiError();
 
 const banner = ref<string | null>(null);
-const errorBanner = ref<string | null>(null);
 const stamping = ref(false);
 const initialAddress = ref<AddressInput | undefined>(undefined);
 
@@ -30,8 +31,11 @@ onMounted(async () => {
   if (stored) {
     try {
       initialAddress.value = JSON.parse(stored) as AddressInput;
-    } catch {
-      /* ignore */
+    } catch (e) {
+      // Corrupt cached address JSON (not a backend error, so nothing to notify) —
+      // drop it so we stop trying to rehydrate a bad value on every mount.
+      void e;
+      localStorage.removeItem(ADDRESS_KEY);
     }
   }
 
@@ -57,7 +61,6 @@ onMounted(async () => {
 });
 
 async function onSubmit(payload: { structured: AddressInput; address: string; phone: string }) {
-  errorBanner.value = null;
   stamping.value = true;
   let orderId: string | null = null;
   try {
@@ -72,28 +75,27 @@ async function onSubmit(payload: { structured: AddressInput; address: string; ph
     orderId = result.order_id;
     localStorage.setItem(PENDING_KEY, orderId);
     localStorage.setItem(ADDRESS_KEY, JSON.stringify(payload.structured));
-  } catch {
+  } catch (e) {
     stamping.value = false;
-    errorBanner.value = 'ORDER NOT CREATED — TRY AGAIN';
+    notify(e, 'Order could not be created. Please try again.');
     return;
   }
   try {
     const { approvalUrl } = await createPayment.mutateAsync({ orderId });
     window.location.href = approvalUrl;
-  } catch {
+  } catch (e) {
     stamping.value = false;
-    errorBanner.value = 'PAYMENT NOT STARTED — RETRY';
+    notify(e, 'Payment could not be started. Please try again.');
   }
 }
 
 async function resumePayment() {
   if (!banner.value) return;
-  errorBanner.value = null;
   try {
     const { approvalUrl } = await createPayment.mutateAsync({ orderId: banner.value });
     window.location.href = approvalUrl;
-  } catch {
-    errorBanner.value = 'PAYMENT NOT STARTED — RETRY';
+  } catch (e) {
+    notify(e, 'Payment could not be started. Please try again.');
   }
 }
 
@@ -101,8 +103,8 @@ async function cancelPending() {
   if (!banner.value) return;
   try {
     await cancelOrder.mutateAsync(banner.value);
-  } catch {
-    errorBanner.value = "COULDN'T CANCEL — TRY AGAIN";
+  } catch (e) {
+    notify(e, 'Order could not be cancelled. Please try again.');
     return;
   }
   localStorage.removeItem(PENDING_KEY);
@@ -131,8 +133,6 @@ watchEffect(() => {
         <BButton variant="ghost" @click="cancelPending">CANCEL ORDER</BButton>
       </div>
     </div>
-
-    <p v-if="errorBanner" class="checkout__error" role="alert">{{ errorBanner }}</p>
 
     <div class="checkout__body">
       <AddressForm :initial="initialAddress" :pending="stamping" @submit="onSubmit" />
@@ -178,13 +178,6 @@ watchEffect(() => {
   display: flex;
   gap: var(--space-3);
   margin-top: var(--space-2);
-}
-.checkout__error {
-  background: var(--color-spot);
-  color: var(--color-paper);
-  padding: var(--space-3);
-  font-family: var(--font-mono);
-  margin: var(--space-4) 0;
 }
 .checkout__body {
   display: grid;

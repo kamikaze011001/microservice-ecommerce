@@ -12,6 +12,7 @@ import {
 import { useLogoutAllMutation } from '@/api/queries/auth';
 import { profileSchema, changePasswordSchema } from '@/lib/zod-schemas';
 import { useToast } from '@/composables/useToast';
+import { useApiError } from '@/composables/useApiError';
 import {
   BButton,
   BCard,
@@ -23,6 +24,7 @@ import {
 import BImageFallback from '@/components/BImageFallback.vue';
 
 const toast = useToast();
+const { toApiError } = useApiError();
 const profile = useProfileQuery();
 const updateM = useUpdateProfileMutation();
 const passwordM = useChangePasswordMutation();
@@ -79,8 +81,10 @@ const onProfileSubmit = handleProfileSubmit(async (values) => {
       address: values.address || null,
     });
     toast.success('PROFILE UPDATED');
-  } catch {
-    toast.error('UPDATE MISFIRE');
+  } catch (e) {
+    // Surface the real backend reason (e.g. "Address too long") in the body,
+    // keeping the branded title.
+    toast.error('UPDATE MISFIRE', toApiError(e)?.message);
   } finally {
     profileSubmitting.value = false;
   }
@@ -118,8 +122,10 @@ const onPasswordSubmit = handlePasswordSubmit(async (values) => {
     });
     toast.success('PASSWORD CHANGED');
     resetPasswordForm();
-  } catch {
-    toast.error('WRONG CURRENT PASSWORD');
+  } catch (e) {
+    // Was hardcoded "WRONG CURRENT PASSWORD" — but the change can fail for other
+    // reasons too (weak new password, reuse). Surface the real backend reason.
+    toast.error('PASSWORD MISFIRE', toApiError(e)?.message ?? 'Wrong current password.');
   } finally {
     passwordSubmitting.value = false;
   }
@@ -146,9 +152,12 @@ async function onAvatarSelect(file: File) {
     if (!putRes.ok) throw new Error('UPLOAD MISFIRE');
     await attachM.mutateAsync({ object_key: presign.object_key });
     toast.success('AVATAR REPLACED');
-  } catch {
-    avatarError.value = 'UPLOAD MISFIRE';
-    toast.error('UPLOAD MISFIRE');
+  } catch (e) {
+    // Catch spans both the presign/attach API calls (ApiError → real backend
+    // message) and the raw S3 PUT (plain Error → falls back to UPLOAD MISFIRE).
+    const apiMsg = toApiError(e)?.message;
+    avatarError.value = apiMsg ?? 'UPLOAD MISFIRE';
+    toast.error('UPLOAD MISFIRE', apiMsg);
   } finally {
     avatarUploading.value = false;
   }
