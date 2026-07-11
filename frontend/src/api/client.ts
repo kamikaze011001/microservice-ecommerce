@@ -38,11 +38,24 @@ function redirectToLogin() {
   router.replace({ path: '/login', query: { next } });
 }
 
+interface ErrorData {
+  code?: string;
+  message?: string;
+  errors?: Record<string, string>;
+}
 interface BaseResponse<T> {
   status: number;
   code: string;
-  message: string;
   data: T;
+}
+
+export function extractError(
+  status: number,
+  body: BaseResponse<unknown> | null,
+  statusText: string,
+): ApiError {
+  const d = (body?.data ?? null) as ErrorData | null;
+  return new ApiError(status, d?.code ?? '', d?.message ?? statusText, d?.errors);
 }
 
 const authMiddleware: Middleware = {
@@ -83,19 +96,16 @@ const errorMiddleware: Middleware = {
       }
     }
     if (!response.ok) {
-      let code = '';
-      let message = response.statusText;
+      let body: BaseResponse<unknown> | null = null;
       try {
-        const body = (await response.clone().json()) as BaseResponse<unknown>;
-        code = body.code ?? '';
-        message = body.message ?? message;
+        body = (await response.clone().json()) as BaseResponse<unknown>;
       } catch {
         /* non-JSON body */
       }
       if (response.status === 401) {
         redirectToLogin();
       }
-      throw new ApiError(response.status, code, message);
+      throw extractError(response.status, body, response.statusText);
     }
     return response;
   },
@@ -148,7 +158,7 @@ export async function apiFetchUnsafe<T = unknown>(path: string, init: RequestIni
     if (response.status === 401) {
       redirectToLogin();
     }
-    throw new ApiError(response.status, body?.code ?? '', body?.message ?? response.statusText);
+    throw extractError(response.status, body, response.statusText);
   }
   return (body?.data ?? (null as unknown)) as T;
 }

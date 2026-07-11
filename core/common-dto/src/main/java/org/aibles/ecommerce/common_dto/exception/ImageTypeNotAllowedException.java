@@ -4,6 +4,6 @@ public class ImageTypeNotAllowedException extends BaseException {
 
   public ImageTypeNotAllowedException() {
     setStatus(400);
-    setCode("org.aibles.business.exception.ImageTypeNotAllowedException");
+    setCode("common.image.type_not_allowed");
   }
 }

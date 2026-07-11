@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aibles.ecommerce.common_dto.exception.BaseException;
 import org.aibles.ecommerce.common_dto.response.BaseResponse;
+import org.aibles.ecommerce.common_dto.response.ErrorData;
 import org.aibles.ecommerce.core_exception_api.helper.I18nHelper;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,15 +30,15 @@ public class GlobalExceptionHandler {
   public ResponseEntity<BaseResponse> handleBaseException(BaseException ex, WebRequest webRequest) {
     log.info("(handleBaseException)ex: {}, locale: {}", ex.getCode(), webRequest.getLocale());
     String message = i18nHelper.translate(ex.getCode(), webRequest.getLocale(), ex.getParams());
-    Map<String, Object> messageMap = new HashMap<>();
-    messageMap.put("message", message);
     HttpStatus status = HttpStatus.valueOf(ex.getStatus());
-    BaseResponse baseResponse = BaseResponse.from(ex.getStatus(), status.getReasonPhrase(), messageMap);
+    BaseResponse baseResponse =
+        BaseResponse.from(ex.getStatus(), status.getReasonPhrase(), ErrorData.of(ex.getCode(), message));
     return new ResponseEntity<>(baseResponse, status);
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
-  public ResponseEntity<BaseResponse> handleValidationExceptions(MethodArgumentNotValidException exception) {
+  public ResponseEntity<BaseResponse> handleValidationExceptions(MethodArgumentNotValidException exception,
+                                                                  WebRequest webRequest) {
     log.info("(handleValidationExceptions)exception: {}", exception.getMessage());
     Map<String, String> errors = new HashMap<>();
     exception.getBindingResult().getAllErrors().forEach(error -> {
@@ -46,12 +47,15 @@ public class GlobalExceptionHandler {
       errors.put(fieldName, errorMessage);
     });
     log.info("(handleValidationExceptions) {}", errors);
-    BaseResponse errorResponse = BaseResponse.badRequest(errors);
+    String message = i18nHelper.translate("validation.failed", webRequest.getLocale(), null);
+    BaseResponse errorResponse =
+        BaseResponse.badRequest(ErrorData.of("validation.failed", message, errors));
     return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
   }
 
   @ExceptionHandler(ConstraintViolationException.class)
-  public ResponseEntity<BaseResponse> handleConstraintViolationException(ConstraintViolationException exception) {
+  public ResponseEntity<BaseResponse> handleConstraintViolationException(ConstraintViolationException exception,
+                                                                          WebRequest webRequest) {
     log.info("(handleConstraintViolationException)exception: {}", exception.getMessage());
     Map<String, String> errors = new HashMap<>();
     for (ConstraintViolation<?> constraintViolation : exception.getConstraintViolations()) {
@@ -59,7 +63,9 @@ public class GlobalExceptionHandler {
       String errorMessage = constraintViolation.getMessage();
       errors.put(fieldName, errorMessage);
     }
-    BaseResponse errorResponse = BaseResponse.badRequest(errors);
+    String message = i18nHelper.translate("validation.failed", webRequest.getLocale(), null);
+    BaseResponse errorResponse =
+        BaseResponse.badRequest(ErrorData.of("validation.failed", message, errors));
     return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
   }
 }

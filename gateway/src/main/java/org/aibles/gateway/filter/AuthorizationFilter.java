@@ -3,9 +3,7 @@ package org.aibles.gateway.filter;
 import lombok.extern.slf4j.Slf4j;
 import org.aibles.gateway.entity.ApiRole;
 import org.aibles.gateway.repository.ApiRoleRepository;
-import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
@@ -16,7 +14,6 @@ import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -60,13 +57,13 @@ public class AuthorizationFilter implements WebFilter {
                     
                     // Categorize the exception type
                     if (e instanceof IllegalStateException) {
-                        return handleError(exchange, HttpStatus.BAD_REQUEST, "Invalid request state: " + e.getMessage());
+                        return handleError(exchange, HttpStatus.BAD_REQUEST, "common.bad_request", ErrorResponseWriter.MSG_BAD_REQUEST);
                     } else if (e instanceof IllegalArgumentException) {
-                        return handleError(exchange, HttpStatus.BAD_REQUEST, "Invalid argument: " + e.getMessage());
+                        return handleError(exchange, HttpStatus.BAD_REQUEST, "common.bad_request", ErrorResponseWriter.MSG_BAD_REQUEST);
                     } else if (e.getMessage() != null && e.getMessage().contains("timeout")) {
-                        return handleError(exchange, HttpStatus.GATEWAY_TIMEOUT, "Request timed out while processing authorization");
+                        return handleError(exchange, HttpStatus.GATEWAY_TIMEOUT, "common.timeout", ErrorResponseWriter.MSG_TIMEOUT);
                     } else {
-                        return handleError(exchange, HttpStatus.INTERNAL_SERVER_ERROR, "Authorization processing error");
+                        return handleError(exchange, HttpStatus.INTERNAL_SERVER_ERROR, "common.internal_error", ErrorResponseWriter.MSG_INTERNAL);
                     }
                 });
     }
@@ -74,7 +71,7 @@ public class AuthorizationFilter implements WebFilter {
     private Mono<Void> handleAuthorization(List<ApiRole> apiRoles, ServerWebExchange exchange, WebFilterChain chain) {
         if (apiRoles.isEmpty()) {
             log.info("(handleAuthorization) API path is not registered in the system");
-            return handleError(exchange, HttpStatus.FORBIDDEN, "Resource not accessible: path not registered");
+            return handleError(exchange, HttpStatus.FORBIDDEN, "auth.forbidden", ErrorResponseWriter.MSG_FORBIDDEN);
         }
 
         Set<String> allowedRoles = apiRoles.stream()
@@ -95,14 +92,14 @@ public class AuthorizationFilter implements WebFilter {
                 .flatMap(auth -> validateUserRoles(auth, allowedRoles, exchange, chain))
                 .onErrorResume(e -> {
                     log.error("(handleAuthorization) Error during security context processing: {}", e.getMessage());
-                    return handleError(exchange, HttpStatus.UNAUTHORIZED, "Authentication required");
+                    return handleError(exchange, HttpStatus.UNAUTHORIZED, "auth.token_missing", ErrorResponseWriter.MSG_TOKEN_MISSING);
                 });
     }
 
     private Mono<Void> validateUserRoles(Authentication auth, Set<String> allowedRoles, ServerWebExchange exchange, WebFilterChain chain) {
         if (auth == null) {
             log.error("(validateUserRoles) Authentication object is null");
-            return handleError(exchange, HttpStatus.UNAUTHORIZED, "User not authenticated");
+            return handleError(exchange, HttpStatus.UNAUTHORIZED, "auth.token_missing", ErrorResponseWriter.MSG_TOKEN_MISSING);
         }
 
         if (allowedRoles.contains(ROLE_AUTHORIZED)) {
@@ -113,7 +110,7 @@ public class AuthorizationFilter implements WebFilter {
         Collection<? extends GrantedAuthority> authorities = auth.getAuthorities();
         if (authorities == null || authorities.isEmpty()) {
             log.error("(validateUserRoles) User has no authorities: {}", auth.getPrincipal());
-            return handleError(exchange, HttpStatus.FORBIDDEN, "User has no roles assigned");
+            return handleError(exchange, HttpStatus.FORBIDDEN, "auth.forbidden", ErrorResponseWriter.MSG_FORBIDDEN);
         }
 
         Set<String> userRoles = authorities.stream()
@@ -122,31 +119,16 @@ public class AuthorizationFilter implements WebFilter {
 
         boolean hasRequiredRoles = userRoles.stream().anyMatch(allowedRoles::contains);
         if (!hasRequiredRoles) {
-            log.error("(validateUserRoles) User '{}' lacks required roles. Has: {}, Required any of: {}", 
+            log.error("(validateUserRoles) User '{}' lacks required roles. Has: {}, Required any of: {}",
                      auth.getPrincipal(), userRoles, allowedRoles);
-            return handleError(exchange, HttpStatus.FORBIDDEN, "Insufficient permissions");
+            return handleError(exchange, HttpStatus.FORBIDDEN, "auth.forbidden", ErrorResponseWriter.MSG_FORBIDDEN);
         }
 
         log.info("(filter) User '{}' authorized for path: {}", auth.getPrincipal(), exchange.getRequest().getPath());
         return chain.filter(exchange);
     }
 
-    private Mono<Void> handleError(ServerWebExchange exchange, HttpStatus status, String message) {
-        exchange.getResponse().setStatusCode(status);
-        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-        
-        String errorJson = String.format(
-            "{\"status\":%d,\"error\":\"%s\",\"message\":\"%s\",\"path\":\"%s\"}",
-            status.value(),
-            status.getReasonPhrase(),
-            message,
-            exchange.getRequest().getPath().value()
-        );
-        
-        byte[] bytes = errorJson.getBytes(StandardCharsets.UTF_8);
-        DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(bytes);
-        
-        log.warn("(handleError) Returning error response: {}", errorJson);
-        return exchange.getResponse().writeWith(Mono.just(buffer));
+    private Mono<Void> handleError(ServerWebExchange exchange, HttpStatus status, String dottedCode, String humanMessage) {
+        return ErrorResponseWriter.write(exchange, status, dottedCode, humanMessage);
     }
 }

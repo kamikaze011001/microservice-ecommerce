@@ -1,5 +1,6 @@
 package org.aibles.ecommerce.product_service.configuration;
 
+import org.aibles.ecommerce.core_exception_api.configuration.EnableCoreExceptionApi;
 import org.aibles.ecommerce.core_s3.EnableCoreS3;
 import org.aibles.ecommerce.core_s3.S3Properties;
 import org.aibles.ecommerce.core_s3.S3StorageService;
@@ -19,6 +20,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @EnableMongoAuditing
 @EnableAsync
 @EnableCoreS3
+@EnableCoreExceptionApi
 public class ProductServiceConfiguration {
 
     @Bean

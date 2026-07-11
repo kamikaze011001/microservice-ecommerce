@@ -1,7 +1,5 @@
 package org.aibles.gateway.filter;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.jwk.JWKSet;
 import jakarta.annotation.PostConstruct;
@@ -13,9 +11,7 @@ import org.aibles.ecommerce.common_dto.exception.InternalErrorException;
 import org.aibles.ecommerce.common_dto.exception.UnauthorizedException;
 import org.apache.http.HttpHeaders;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -32,13 +28,10 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import reactor.util.retry.Retry;
 
-import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.time.Duration;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
@@ -51,12 +44,10 @@ import java.util.concurrent.atomic.AtomicReference;
 public class JwtAuthenticationFilter implements WebFilter {
 
     // Constants
-    private static final String ERROR_CODE_FIELD_KEY = "error_code";
     private static final String BEARER_PREFIX = "Bearer ";
 
     // Injected properties
     private final WebClient lbWebClient;
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${application.jwk-set-uri}")
     private String jwksUri;
@@ -273,40 +264,37 @@ public class JwtAuthenticationFilter implements WebFilter {
 
     private Mono<Void> handleFilterError(ServerWebExchange exchange, Throwable error) {
         HttpStatus status;
-        String message;
-        Map<String, Object> additionalInfo;
+        String dottedCode;
+        String humanMessage;
 
         if (error instanceof UnauthorizedException) {
             status = HttpStatus.UNAUTHORIZED;
-            message = "Invalid or expired token";
-            additionalInfo = Map.of(ERROR_CODE_FIELD_KEY, "invalid_token");
+            dottedCode = "auth.token_invalid";
+            humanMessage = ErrorResponseWriter.MSG_TOKEN_INVALID;
         } else if (error instanceof ParseException) {
             status = HttpStatus.BAD_REQUEST;
-            message = "Malformed token";
-            additionalInfo = Map.of(ERROR_CODE_FIELD_KEY, "malformed_token");
+            dottedCode = "auth.token_invalid";
+            humanMessage = ErrorResponseWriter.MSG_TOKEN_INVALID;
         } else if (error instanceof JOSEException) {
             status = HttpStatus.UNAUTHORIZED;
-            message = "Token validation failed";
-            additionalInfo = Map.of(ERROR_CODE_FIELD_KEY, "validation_failed");
-        } else if (error instanceof WebClientResponseException webClientResponseException) {
+            dottedCode = "auth.token_invalid";
+            humanMessage = ErrorResponseWriter.MSG_TOKEN_INVALID;
+        } else if (error instanceof WebClientResponseException) {
             status = HttpStatus.SERVICE_UNAVAILABLE;
-            message = "Authentication service unavailable";
-            additionalInfo = Map.of(
-                    ERROR_CODE_FIELD_KEY, "auth_service_error",
-                    "status", webClientResponseException.getStatusCode().value()
-            );
+            dottedCode = "common.internal_error";
+            humanMessage = ErrorResponseWriter.MSG_INTERNAL;
         } else if (error instanceof InternalErrorException) {
             status = HttpStatus.INTERNAL_SERVER_ERROR;
-            message = "Internal authentication error";
-            additionalInfo = Map.of(ERROR_CODE_FIELD_KEY, "internal_error");
+            dottedCode = "common.internal_error";
+            humanMessage = ErrorResponseWriter.MSG_INTERNAL;
         } else {
             status = HttpStatus.INTERNAL_SERVER_ERROR;
-            message = "Unexpected authentication error";
-            additionalInfo = Map.of(ERROR_CODE_FIELD_KEY, "unexpected_error");
+            dottedCode = "common.internal_error";
+            humanMessage = ErrorResponseWriter.MSG_INTERNAL;
         }
 
         log.error("(handleFilterError) Authentication error: {} - {}", error.getClass().getSimpleName(), error.getMessage());
-        return createErrorResponse(exchange, status, message, additionalInfo);
+        return ErrorResponseWriter.write(exchange, status, dottedCode, humanMessage);
     }
 
     /**
@@ -408,45 +396,6 @@ public class JwtAuthenticationFilter implements WebFilter {
         return roles.stream()
                 .map(role -> new SimpleGrantedAuthority(role.toUpperCase()))
                 .toList();
-    }
-
-    /**
-     * SECURITY & QUALITY FIX: Replaced manual JSON building with Jackson ObjectMapper
-     * - Prevents XSS vulnerabilities from unescaped special characters
-     * - Handles proper JSON escaping automatically
-     * - More maintainable and less error-prone
-     */
-    private Mono<Void> createErrorResponse(ServerWebExchange exchange, HttpStatus status, String message, Map<String, Object> additionalInfo) {
-        exchange.getResponse().setStatusCode(status);
-        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-
-        try {
-            Map<String, Object> errorBody = new LinkedHashMap<>();
-            errorBody.put("status", status.value());
-            errorBody.put("error", status.getReasonPhrase());
-            errorBody.put("message", message);
-            errorBody.put("path", exchange.getRequest().getPath().value());
-
-            // Add any additional info
-            if (additionalInfo != null && !additionalInfo.isEmpty()) {
-                errorBody.putAll(additionalInfo);
-            }
-
-            String errorJson = objectMapper.writeValueAsString(errorBody);
-            byte[] bytes = errorJson.getBytes(StandardCharsets.UTF_8);
-            DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(bytes);
-
-            log.warn("(createErrorResponse) Returning error response: {}", errorJson);
-            return exchange.getResponse().writeWith(Mono.just(buffer));
-
-        } catch (JsonProcessingException e) {
-            log.error("(createErrorResponse) Failed to serialize error response", e);
-            // Fallback to simple error message
-            String fallbackJson = "{\"status\":" + status.value() + ",\"error\":\"Internal error\"}";
-            byte[] bytes = fallbackJson.getBytes(StandardCharsets.UTF_8);
-            DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(bytes);
-            return exchange.getResponse().writeWith(Mono.just(buffer));
-        }
     }
 
     @PreDestroy

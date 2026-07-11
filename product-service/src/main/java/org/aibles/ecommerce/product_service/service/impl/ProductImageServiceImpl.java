@@ -22,6 +22,7 @@ import org.aibles.ecommerce.product_service.repository.ProductRepository;
 import org.aibles.ecommerce.product_service.service.ProductImageService;
 import org.springframework.context.ApplicationEventPublisher;
 
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -36,7 +37,9 @@ public class ProductImageServiceImpl implements ProductImageService {
     @Override
     public PresignedUploadResponse presign(String productId, PresignImageRequest request) {
         log.info("(presign)productId: {}, contentType: {}", productId, request.getContentType());
-        Product product = productRepository.findById(productId).orElseThrow(NotFoundException::new);
+        Product product =
+            productRepository.findById(productId)
+                .orElseThrow(() -> new NotFoundException("product.not_found", Map.of("id", productId)));
         validate(request);
         String ext = extensionFor(request.getContentType());
         String key = "products/" + product.getId() + "/" + UUID.randomUUID() + "." + ext;
@@ -47,7 +50,9 @@ public class ProductImageServiceImpl implements ProductImageService {
     @Override
     public ProductResponse attach(String productId, AttachImageRequest request) {
         log.info("(attach)productId: {}, objectKey: {}", productId, request.getObjectKey());
-        Product product = productRepository.findById(productId).orElseThrow(NotFoundException::new);
+        Product product =
+            productRepository.findById(productId)
+                .orElseThrow(() -> new NotFoundException("product.not_found", Map.of("id", productId)));
         String prefix = "products/" + productId + "/";
         if (!request.getObjectKey().startsWith(prefix)) {
             throw new ImageKeyForbiddenException();
