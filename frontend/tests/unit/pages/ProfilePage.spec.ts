@@ -5,6 +5,8 @@ import { setActivePinia, createPinia } from 'pinia';
 import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query';
 import { router } from '@/router';
 import ProfilePage from '@/pages/account/ProfilePage.vue';
+import { ApiError } from '@/api/error';
+import { useToastStore } from '@/stores/toast';
 
 // ── mutation spies ────────────────────────────────────────────────────────────
 const updateProfileM = vi.fn();
@@ -119,5 +121,38 @@ describe('ProfilePage', () => {
 
     await waitFor(() => expect(screen.getByText(/Passwords do not match/i)).toBeInTheDocument());
     expect(passwordM).not.toHaveBeenCalled();
+  });
+
+  it('Test 4: failed profile save surfaces the backend message in the toast', async () => {
+    updateProfileM.mockRejectedValueOnce(
+      new ApiError(422, 'profile.address_too_long', 'Address must be under 200 characters.'),
+    );
+    mount();
+    await userEvent.type(screen.getByLabelText(/^NAME$/i), 'X');
+    await userEvent.click(screen.getByRole('button', { name: /SAVE COLOPHON/i }));
+
+    const toasts = useToastStore();
+    await waitFor(() =>
+      expect(
+        toasts.items.some(
+          (t) => t.tone === 'error' && t.body === 'Address must be under 200 characters.',
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it('Test 5: failed avatar upload surfaces the backend message in the inline banner', async () => {
+    presignM.mockRejectedValueOnce(
+      new ApiError(413, 'avatar.too_large', 'Image exceeds the 5 MB limit.'),
+    );
+    mount();
+
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
+    const file = new File(['x'], 'a.png', { type: 'image/png' });
+    await userEvent.upload(fileInput!, file);
+
+    await waitFor(() =>
+      expect(screen.getByText('Image exceeds the 5 MB limit.')).toBeInTheDocument(),
+    );
   });
 });
