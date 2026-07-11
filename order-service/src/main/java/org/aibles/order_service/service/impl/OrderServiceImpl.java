@@ -263,7 +263,7 @@ public class OrderServiceImpl implements OrderService {
     private void validatePriceForProduct(InventoryProductResponse product) {
         if (product.getPrice() == null) {
             log.error("(validatePriceForProduct) Product {} has null price - data integrity issue", product.getId());
-            throw new InternalErrorException();
+            throw new InternalErrorException("order.product.price_missing", Map.of("id", product.getId()));
         }
     }
 
@@ -511,12 +511,12 @@ public class OrderServiceImpl implements OrderService {
                 // Release all previously acquired locks in the context
                 lockContext.releaseAllInReverse();
 
-                throw new InternalErrorException();
+                throw new InternalErrorException("order.lock.interrupted", Map.of("key", lockKey));
             }
         }
 
         log.error("(acquireLockWithRetry) Failed to acquire lock after {} attempts: {}", MAX_LOCK_RETRY_ATTEMPTS, lockKey);
-        throw new InternalErrorException();
+        throw new InternalErrorException("order.lock.acquire_failed", Map.of("key", lockKey));
     }
 
     private void updateOrderStatus(String orderId, OrderStatus status) {
@@ -626,7 +626,8 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public OrderDetailResponse get(String userId, String orderId) {
         log.info("(get) userId: {}, orderId: {}", userId, orderId);
-        Order order = slaveOrderRepo.findByIdAndUserId(orderId, userId).orElseThrow(NotFoundException::new);
+        Order order = slaveOrderRepo.findByIdAndUserId(orderId, userId)
+                .orElseThrow(() -> new NotFoundException("order.not_found", Map.of("id", orderId)));
 
         List<OrderItem> orderItems = slaveOrderItemRepo.findAllByOrderId(orderId);
 
@@ -637,11 +638,12 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public OrderCancelResponse cancel(String userId, String orderId) {
         log.info("(cancel)orderId: {}", orderId);
-        Order order = slaveOrderRepo.findById(orderId).orElseThrow(NotFoundException::new);
+        Order order = slaveOrderRepo.findById(orderId)
+                .orElseThrow(() -> new NotFoundException("order.not_found", Map.of("id", orderId)));
 
         if (!userId.equals(order.getUserId())) {
             log.warn("(cancel)order : {} is not belong to user", orderId);
-            throw new ForbiddenException();
+            throw new ForbiddenException("order.cancel.forbidden", Map.of("id", orderId));
         }
 
         if (order.getStatus().equals(OrderStatus.CANCELED)) {

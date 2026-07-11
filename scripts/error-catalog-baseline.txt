@@ -13,7 +13,4 @@ Your password is incorrect
 Your reset password key is invalid
 Your token is invalid
 invalid_role_name_exception
-org.aibles.business.exception.OrderAlreadyCanceledException
-org.aibles.business.exception.OrderNotCancellableException
 org.aibles.business.exception.StorageUnavailableException
-org.aibles.order_service.exception.InvalidProductQuantity
