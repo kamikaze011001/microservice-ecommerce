@@ -16,6 +16,11 @@ spring:
         enabled: true
   config:
     import: optional:vault://
+application:
+  i18n:
+    resources:
+      - classpath:messages
+      - classpath:messages/bff
 server:
   servlet:
     context-path: /bff-service

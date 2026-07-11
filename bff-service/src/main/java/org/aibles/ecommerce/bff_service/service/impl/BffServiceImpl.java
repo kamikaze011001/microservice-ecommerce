@@ -69,7 +69,7 @@ public class BffServiceImpl implements BffService {
         } catch (FeignException.NotFound e) {
             // order-service couldn't find the order — surface as 404 to the client
             // instead of bubbling Feign's exception up as 500.
-            throw new NotFoundException();
+            throw new NotFoundException("bff.order.not_found", Map.of("id", orderId));
         }
         Map<String, Object> orderData = (Map<String, Object>) orderResponse.getData();
         OrderDetailView orderView = mapToOrderDetailView(orderData);

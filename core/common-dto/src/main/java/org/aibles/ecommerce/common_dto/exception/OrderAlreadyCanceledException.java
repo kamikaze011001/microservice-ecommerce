@@ -4,6 +4,6 @@ public class OrderAlreadyCanceledException extends BaseException {
 
   public OrderAlreadyCanceledException() {
     setStatus(409);
-    setCode("org.aibles.business.exception.OrderAlreadyCanceledException");
+    setCode("order.cancel.already_canceled");
   }
 }

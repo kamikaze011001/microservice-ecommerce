@@ -4,6 +4,6 @@ public class OrderNotCancellableException extends BaseException {
 
   public OrderNotCancellableException() {
     setStatus(409);
-    setCode("org.aibles.business.exception.OrderNotCancellableException");
+    setCode("order.cancel.not_cancellable");
   }
 }

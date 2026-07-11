@@ -35,7 +35,7 @@ class CartBffServiceImplTest {
 
     private BaseResponse cartResponse(List<Map<String, Object>> items) {
         BaseResponse r = new BaseResponse();
-        r.setData(Map.of("shoppingCarts", items));
+        r.setData(Map.of("shopping_carts", items));
         return r;
     }
 
@@ -56,10 +56,10 @@ class CartBffServiceImplTest {
     @Test
     void getCart_normal_mergesProductAndInventory() {
         when(orderFeignClient.getCart("u1")).thenReturn(cartResponse(List.of(
-            Map.of("id", "ci1", "productId", "p1", "price", 25.0, "quantity", 2)
+            Map.of("id", "ci1", "product_id", "p1", "price", 25.0, "quantity", 2)
         )));
         when(productFeignClient.listByIds(Set.of("p1"))).thenReturn(productListResponse(List.of(
-            Map.of("id", "p1", "name", "Issue Nº01", "imageUrl", "http://img/p1.png")
+            Map.of("id", "p1", "name", "Issue Nº01", "image_url", "http://img/p1.png")
         )));
         when(inventoryGrpcClientService.fetchInventory(anyList())).thenReturn(
             InventoryProductIdsResponse.newBuilder()
@@ -83,11 +83,11 @@ class CartBffServiceImplTest {
     @Test
     void getCart_productMissing_dropsRow() {
         when(orderFeignClient.getCart("u1")).thenReturn(cartResponse(List.of(
-            Map.of("id", "ci1", "productId", "p1", "price", 25.0, "quantity", 2),
-            Map.of("id", "ci2", "productId", "p2", "price", 30.0, "quantity", 1)
+            Map.of("id", "ci1", "product_id", "p1", "price", 25.0, "quantity", 2),
+            Map.of("id", "ci2", "product_id", "p2", "price", 30.0, "quantity", 1)
         )));
         when(productFeignClient.listByIds(any())).thenReturn(productListResponse(List.of(
-            Map.of("id", "p1", "name", "Issue Nº01", "imageUrl", "http://img/p1.png")
+            Map.of("id", "p1", "name", "Issue Nº01", "image_url", "http://img/p1.png")
         )));
         when(inventoryGrpcClientService.fetchInventory(anyList())).thenReturn(
             InventoryProductIdsResponse.newBuilder()
@@ -104,10 +104,10 @@ class CartBffServiceImplTest {
     @Test
     void getCart_inventoryMissing_defaultsStockToZero() {
         when(orderFeignClient.getCart("u1")).thenReturn(cartResponse(List.of(
-            Map.of("id", "ci1", "productId", "p1", "price", 25.0, "quantity", 2)
+            Map.of("id", "ci1", "product_id", "p1", "price", 25.0, "quantity", 2)
         )));
         when(productFeignClient.listByIds(any())).thenReturn(productListResponse(List.of(
-            Map.of("id", "p1", "name", "Issue Nº01", "imageUrl", "http://img/p1.png")
+            Map.of("id", "p1", "name", "Issue Nº01", "image_url", "http://img/p1.png")
         )));
         when(inventoryGrpcClientService.fetchInventory(anyList())).thenReturn(
             InventoryProductIdsResponse.newBuilder().build()

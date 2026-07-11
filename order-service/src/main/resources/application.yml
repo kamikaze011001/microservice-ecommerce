@@ -32,6 +32,10 @@ server:
   servlet:
     context-path: /order-service
 application:
+  i18n:
+    resources:
+      - classpath:messages
+      - classpath:messages/order
   kafka:
     group-id:
       order.update-status: order.update-status

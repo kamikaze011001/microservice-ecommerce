@@ -7,7 +7,7 @@ import java.util.List;
 public class InvalidProductQuantityException extends BadRequestException {
 
     public InvalidProductQuantityException(List<String> invalidProductName) {
-        setCode("org.aibles.order_service.exception.InvalidProductQuantity");
+        setCode("order.product.invalid_quantity");
         addParams("productName", invalidProductName.toString());
     }
 }
