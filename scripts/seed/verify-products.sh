@@ -47,4 +47,17 @@ case "$content_type" in
 esac
 log_ok "First image reachable: $first_image"
 
+missing_desc=$(echo "$body" | jq -r '
+  (.data.data // .data.items // .data.content)
+  | map(select((.description // "") == "" or ((.tags // []) | length) == 0))
+  | length')
+if [ "$missing_desc" != "0" ]; then
+    log_warn "$missing_desc product(s) on page 1 are missing description or tags"
+    echo "$body" | jq -r '(.data.data // .data.items // .data.content)
+      | map(select((.description // "") == "" or ((.tags // []) | length) == 0))
+      | .[].name'
+    exit 1
+fi
+log_ok "All products on page 1 carry description + tags"
+
 log_ok "Seed verification passed"
