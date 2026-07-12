@@ -403,18 +403,20 @@ source "$REPO_ROOT/scripts/lib/colors.sh"
 # webp -> jpg. No single converter is present on every machine, so try the
 # common ones in order and fail loudly rather than silently emitting a webp
 # with a .jpg extension (MinIO would then serve the wrong Content-Type).
+#
+# Each branch must produce a JPEG in ONE step. `dwebp` is deliberately absent:
+# it only decodes to png/pnm, so it would need a second converter anyway — and
+# the only reason we'd reach it is that the converters it depends on are missing.
 convert_webp() {
     local src="$1" dst="$2"
     if command -v magick >/dev/null 2>&1; then
         magick "$src" "$dst"
-    elif command -v dwebp >/dev/null 2>&1; then
-        dwebp -quiet "$src" -o "${dst%.jpg}.png" && magick "${dst%.jpg}.png" "$dst"
     elif command -v sips >/dev/null 2>&1; then
         sips -s format jpeg "$src" --out "$dst" >/dev/null
     elif python3 -c "import PIL" >/dev/null 2>&1; then
         python3 -c "from PIL import Image; Image.open('$src').convert('RGB').save('$dst', 'JPEG', quality=90)"
     else
-        log_err "no webp->jpg converter found. Install one of: imagemagick (brew install imagemagick), webp (brew install webp), or Pillow (pip install Pillow)."
+        log_err "no webp->jpg converter found. Install one of: imagemagick (brew install imagemagick) or Pillow (pip install Pillow)."
         exit 1
     fi
 }
