@@ -66,16 +66,8 @@ service_java_home() {
     [ -n "$best" ] && echo "$sdk_root/$best"
 }
 
-start_one() {
-    local name=$1
-    local dir="$REPO_ROOT/$name"
-    [ -d "$dir" ] || { log_err "Directory not found: $dir"; return 1; }
-
-    if [ -f "$PID_DIR/$name.pid" ] && kill -0 "$(cat "$PID_DIR/$name.pid")" 2>/dev/null; then
-        log_warn "$name already running (PID $(cat "$PID_DIR/$name.pid"))"
-        return 0
-    fi
-
+start_maven() {
+    local name=$1 dir=$2
     local jhome
     jhome=$(service_java_home "$dir")
 
@@ -88,6 +80,53 @@ start_one() {
     fi
     echo $! > "$PID_DIR/$name.pid"
     log_ok "$name started (PID $!)"
+}
+
+# Note: the PID recorded here belongs to `pnpm`, not to the Vite server it forks.
+# SIGTERM on it does not reliably reap the child — stop.sh's `lsof -tiTCP:5173`
+# fallback is what actually frees the port. Don't remove that fallback.
+start_node() {
+    local name=$1 dir=$2
+    if ! command -v pnpm >/dev/null 2>&1; then
+        log_err "$name needs pnpm (https://pnpm.io/installation) — install it, or drop $name from scripts/services.list"
+        return 1
+    fi
+
+    : > "$LOG_DIR/$name.log"
+    if [ ! -d "$dir/node_modules" ]; then
+        log_info "$name: node_modules missing — running pnpm install (first run, this takes a minute)..."
+        if ! (cd "$dir" && pnpm install --frozen-lockfile) >> "$LOG_DIR/$name.log" 2>&1; then
+            log_err "$name: pnpm install failed — see logs/services/$name.log"
+            return 1
+        fi
+    fi
+
+    log_info "Starting $name..."
+    (cd "$dir" && pnpm dev) >> "$LOG_DIR/$name.log" 2>&1 &
+    echo $! > "$PID_DIR/$name.pid"
+    log_ok "$name started (PID $!)"
+}
+
+start_one() {
+    local name=$1
+    local dir="$REPO_ROOT/$name"
+    [ -d "$dir" ] || { log_err "Directory not found: $dir"; return 1; }
+
+    if [ -f "$PID_DIR/$name.pid" ] && kill -0 "$(cat "$PID_DIR/$name.pid")" 2>/dev/null; then
+        log_warn "$name already running (PID $(cat "$PID_DIR/$name.pid"))"
+        return 0
+    fi
+
+    # Branch on what the directory actually contains — the registry holds JVM
+    # services and the Vue SPA side by side.
+    if [ -f "$dir/pom.xml" ]; then
+        start_maven "$name" "$dir"
+    elif [ -f "$dir/package.json" ]; then
+        start_node "$name" "$dir"
+    else
+        log_err "$name: no pom.xml or package.json in $dir — don't know how to launch it"
+        return 1
+    fi
 }
 
 wait_tier() {
@@ -121,12 +160,49 @@ start_tier() {
     wait_tier "$tier"
 }
 
+# Tolerant twin of start_tier/wait_tier, used only for tier 4 (frontend).
+# Differences, both deliberate:
+#   - Reports failure via return code instead of `set -e`, so a stuck/missing
+#     frontend can't take down `make up` for backend-only developers.
+#   - Accumulates rc explicitly rather than delegating to wait_tier: when
+#     grpc="-" (frontend's case), wait_tier's trailing `if [ grpc != - ]; then
+#     ...; fi` evaluates to exit 0 and silently discards whatever the HTTP
+#     wait_for_port returned. That's harmless in start_tier/wait_tier today
+#     because tiers 0-3 always abort via `set -e` the instant a wait fails —
+#     execution never reaches that line — but it would make this function's
+#     return code lie once `set -e` is no longer there to abort first.
+start_tier_tolerant() {
+    local tier=$1
+    local rc=0
+    while IFS= read -r line; do
+        local name http grpc t
+        name=$(svc_field "$line" 1)
+        http=$(svc_field "$line" 2)
+        grpc=$(svc_field "$line" 3)
+        t=$(svc_field "$line" 4)
+        [ "$t" = "$tier" ] || continue
+        start_one "$name" || rc=1
+        wait_for_port "$name HTTP" "$http" || rc=1
+        if [ "$grpc" != "-" ]; then
+            wait_for_port "$name gRPC" "$grpc" || rc=1
+        fi
+    done < <(svc_list)
+    return "$rc"
+}
+
 target=${1:-all}
 
 if [ "$target" = "all" ]; then
     for tier in 0 1 2 3; do
         start_tier "$tier"
     done
+    # Tier 4 (frontend) is best-effort: no pnpm, a failed `pnpm install`, or a
+    # port squatter must not take down `make up` for backend-only developers
+    # who never touch the SPA. Tiers 0-3 above keep failing hard. Running
+    # `start.sh frontend` directly (the else branch below) still fails hard.
+    if ! start_tier_tolerant 4; then
+        log_warn "Tier 4 (frontend) failed to start — backend is up regardless. See logs/services/frontend.log"
+    fi
     log_ok "All services running"
 else
     line=$(svc_get "$target") || { log_err "Unknown service: $target"; exit 1; }

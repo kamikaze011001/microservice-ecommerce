@@ -49,12 +49,13 @@ make infra-status  # ps table per stack
 1. First run: `make bootstrap` (see One-Time Setup above)
 2. Daily: `make up` brings everything up in tier order (eureka → auth+gateway → inventory → product/order/payment/orchestrator/bff)
 3. Tier order is enforced by `scripts/services/start.sh` reading `scripts/services.list`. inventory-service blocks until both HTTP (6969) and gRPC (9090) are listening before order-service starts.
-4. Swagger UI: `http://localhost:8080/swagger-ui.html`
+4. Swagger UI: `http://localhost:6868/swagger-ui.html`
 
 ### Service Ports
 | Service | Port |
 |---|---|
-| Gateway (entry point) | 8080 |
+| Gateway (entry point) | 6868 |
+| Frontend (Vite dev server) | 5173 |
 | Eureka Dashboard | 8761 |
 | Vault UI | 8200 |
 | Kafka Connect REST | 8093 |

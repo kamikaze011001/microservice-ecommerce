@@ -72,7 +72,7 @@ bootstrap: infra-up vault-init vault-unseal vault-import kafka-topics mongo-conn
 	@echo "✓ Bootstrap complete — stack is up"
 
 .PHONY: up
-up: infra-up vault-unseal mongo-connector-ensure svc-start
+up: infra-up vault-unseal mongo-seed-ensure mongo-connector-ensure svc-start
 	@echo "✓ Stack is up"
 
 .PHONY: down
@@ -145,7 +145,7 @@ build:
 # Seed
 # ============================================================================
 
-.PHONY: seed-data seed-mysql seed-mongo
+.PHONY: seed-data seed-mysql seed-mongo mongo-seed-ensure
 seed-data:
 	@bash scripts/seed/all.sh
 seed-mysql:
@@ -153,6 +153,13 @@ seed-mysql:
 seed-mongo:
 	@bash scripts/seed/mongo-roles.sh
 	@bash scripts/seed/mongo-products.sh
+
+# Idempotent: mongo-roles.sh skips when api_role is already populated. Safe to
+# call on every `make up`. Deliberately NOT seed-data / all.sh — mongo-products.sh
+# DROPS its collection before importing, so calling it from `up` would wipe local
+# product data on every start.
+mongo-seed-ensure:
+	@bash scripts/seed/mongo-roles.sh
 
 # ============================================================================
 # Service lifecycle

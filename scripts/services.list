@@ -11,4 +11,5 @@ SERVICES=(
   "orchestrator-service  9999  -     3"
   "bff-service           8087  -     3"
   "mock-paypal-service   8585  -     3"
+  "frontend              5173  -     4"
 )
