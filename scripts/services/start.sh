@@ -160,12 +160,49 @@ start_tier() {
     wait_tier "$tier"
 }
 
+# Tolerant twin of start_tier/wait_tier, used only for tier 4 (frontend).
+# Differences, both deliberate:
+#   - Reports failure via return code instead of `set -e`, so a stuck/missing
+#     frontend can't take down `make up` for backend-only developers.
+#   - Accumulates rc explicitly rather than delegating to wait_tier: when
+#     grpc="-" (frontend's case), wait_tier's trailing `if [ grpc != - ]; then
+#     ...; fi` evaluates to exit 0 and silently discards whatever the HTTP
+#     wait_for_port returned. That's harmless in start_tier/wait_tier today
+#     because tiers 0-3 always abort via `set -e` the instant a wait fails —
+#     execution never reaches that line — but it would make this function's
+#     return code lie once `set -e` is no longer there to abort first.
+start_tier_tolerant() {
+    local tier=$1
+    local rc=0
+    while IFS= read -r line; do
+        local name http grpc t
+        name=$(svc_field "$line" 1)
+        http=$(svc_field "$line" 2)
+        grpc=$(svc_field "$line" 3)
+        t=$(svc_field "$line" 4)
+        [ "$t" = "$tier" ] || continue
+        start_one "$name" || rc=1
+        wait_for_port "$name HTTP" "$http" || rc=1
+        if [ "$grpc" != "-" ]; then
+            wait_for_port "$name gRPC" "$grpc" || rc=1
+        fi
+    done < <(svc_list)
+    return "$rc"
+}
+
 target=${1:-all}
 
 if [ "$target" = "all" ]; then
-    for tier in 0 1 2 3 4; do
+    for tier in 0 1 2 3; do
         start_tier "$tier"
     done
+    # Tier 4 (frontend) is best-effort: no pnpm, a failed `pnpm install`, or a
+    # port squatter must not take down `make up` for backend-only developers
+    # who never touch the SPA. Tiers 0-3 above keep failing hard. Running
+    # `start.sh frontend` directly (the else branch below) still fails hard.
+    if ! start_tier_tolerant 4; then
+        log_warn "Tier 4 (frontend) failed to start — backend is up regardless. See logs/services/frontend.log"
+    fi
     log_ok "All services running"
 else
     line=$(svc_get "$target") || { log_err "Unknown service: $target"; exit 1; }

@@ -83,5 +83,6 @@ if [ "$target" = "all" ]; then
     done < <(svc_list)
     log_ok "All services stopped"
 else
+    svc_get "$target" >/dev/null || { log_err "Unknown service: $target"; exit 1; }
     stop_one "$target"
 fi
