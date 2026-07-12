@@ -9,7 +9,7 @@
       "name": "Broadsheet Check Shirt",
       "price": 58,
       "quantity": 30,
-      "description": "A cotton shirt in a blue-and-black check, cut for everyday wear. The weave holds a crisp line at the collar and cuff without feeling stiff. Layer it under a coat or wear it alone on a mild day.",
+      "description": "A cotton shirt in a blue, black, and white check, cut for everyday wear through the body and sleeve. The gingham-scale check holds a crisp line at the collar and cuff without feeling stiff. Layer it under a coat or wear it alone on a mild day.",
       "tags": ["shirt", "cotton", "check", "blue", "everyday"],
       "imageSource": "https://cdn.dummyjson.com/product-images/mens-shirts/blue-&-black-check-shirt/1.webp",
       "attributes": { "color": "Blue", "material": "cotton", "size": ["S", "M", "L", "XL"] }
@@ -21,22 +21,22 @@
       "name": "Broadsheet Plaid Shirt",
       "price": 62,
       "quantity": 18,
-      "description": "A brushed cotton plaid cut for layering, in muted red and navy. The collar holds its shape without starch, and the body is roomy enough to wear open over a tee. Warm enough for a cold newsroom, light enough to keep on all day.",
-      "tags": ["shirt", "cotton", "plaid", "layering", "warm"],
+      "description": "A brushed cotton buffalo check cut for layering, in bold red and black. The collar holds its shape without starch, and the body is roomy enough to wear open over a tee. Warm enough for a cold newsroom, bold enough to be seen across it.",
+      "tags": ["shirt", "cotton", "buffalo-check", "red", "black", "layering"],
       "imageSource": "https://cdn.dummyjson.com/product-images/mens-shirts/man-plaid-shirt/1.webp",
-      "attributes": { "color": "Red", "material": "cotton", "size": ["S", "M", "L", "XL"] }
+      "attributes": { "color": "Red/Black", "material": "cotton", "size": ["S", "M", "L", "XL"] }
     },
     {
-      "slug": "dispatch-short-sleeve-shirt",
+      "slug": "dispatch-floral-shirt",
       "productId": "67c000000000000000000003",
       "category": "apparel",
-      "name": "Dispatch Short-Sleeve Shirt",
+      "name": "Dispatch Floral Shirt",
       "price": 45,
       "quantity": 12,
-      "description": "A short-sleeve shirt in sky blue brushed cotton, cut straight through the body for a relaxed fit. The lightweight weave breathes in warm weather, and the collar sits flat under a jacket if the evening turns cool. Built for the last hot week of the season.",
-      "tags": ["shirt", "cotton", "short-sleeve", "summer", "lightweight", "sky-blue"],
+      "description": "A short-sleeve shirt in navy cotton, covered edge-to-edge in a pale-blue tropical floral print. The lightweight weave breathes in warm weather, and the collar sits flat under a jacket if the evening turns cool. Built for the last hot week of the season.",
+      "tags": ["shirt", "cotton", "floral", "navy", "short-sleeve", "summer"],
       "imageSource": "https://cdn.dummyjson.com/product-images/mens-shirts/man-short-sleeve-shirt/1.webp",
-      "attributes": { "color": "Sky Blue", "material": "cotton", "size": ["S", "M", "L", "XL"] }
+      "attributes": { "color": "Navy", "material": "cotton", "size": ["S", "M", "L", "XL"] }
     },
     {
       "slug": "gazette-check-shirt",
@@ -45,22 +45,22 @@
       "name": "Gazette Check Shirt",
       "price": 58,
       "quantity": 0,
-      "description": "A cotton check shirt in charcoal and white, buttoned through with a spread collar. The fabric has enough weight to hold a crease but stays soft against the skin. Reads sharp at a desk, easy after hours.",
-      "tags": ["shirt", "cotton", "check", "charcoal", "versatile"],
+      "description": "A cotton check shirt in teal and olive, buttoned through with a spread collar. The multi-colour plaid has enough weight to hold a crease but stays soft against the skin. Reads sharp at a desk, easy after hours.",
+      "tags": ["shirt", "cotton", "check", "teal", "olive"],
       "imageSource": "https://cdn.dummyjson.com/product-images/mens-shirts/men-check-shirt/1.webp",
-      "attributes": { "color": "Charcoal", "material": "cotton", "size": ["S", "M", "L", "XL"] }
+      "attributes": { "color": "Teal/Olive", "material": "cotton", "size": ["S", "M", "L", "XL"] }
     },
     {
-      "slug": "indigo-frock",
+      "slug": "dot-matrix-frock",
       "productId": "67c000000000000000000005",
       "category": "apparel",
-      "name": "Indigo Frock",
+      "name": "Dot Matrix Frock",
       "price": 78,
       "quantity": 8,
-      "description": "A fit-and-flare frock in indigo cotton, gathered at the waist with a full skirt. The fabric has a slight drape that moves when you walk, and the sleeves are cut short for warm days. An easy piece for a long afternoon on your feet.",
-      "tags": ["dress", "cotton", "indigo", "flare", "daywear"],
+      "description": "A fit-and-flare frock in white cotton, printed with a scatter of blue polka dots in different sizes. The cap sleeves and flared skirt keep it light for a warm afternoon. An easy piece for the parts of the day spent on your feet.",
+      "tags": ["dress", "cotton", "polka-dot", "blue", "white", "daywear"],
       "imageSource": "https://cdn.dummyjson.com/product-images/tops/blue-frock/1.webp",
-      "attributes": { "color": "Indigo", "material": "cotton", "size": ["XS", "S", "M", "L"] }
+      "attributes": { "color": "White/Blue", "material": "cotton", "size": ["XS", "S", "M", "L"] }
     },
     {
       "slug": "summer-issue-dress",
@@ -69,22 +69,22 @@
       "name": "Summer Issue Dress",
       "price": 68,
       "quantity": 25,
-      "description": "A sleeveless summer dress in pale yellow cotton, cut loose through the body with a tie at the waist. The fabric is light enough to wear through a full day of heat and packs down small for travel. Made for warm mornings and long light.",
-      "tags": ["dress", "cotton", "yellow", "sleeveless", "summer"],
+      "description": "An off-shoulder maxi dress in off-white cotton-blend, printed with a scatter of black tropical leaves. Thin straps hold the flounced neckline in place, and the skirt falls to the floor with room to move. Made for warm evenings, not the beach.",
+      "tags": ["dress", "cotton-blend", "leaf-print", "off-white", "black", "maxi"],
       "imageSource": "https://cdn.dummyjson.com/product-images/tops/girl-summer-dress/1.webp",
-      "attributes": { "color": "Pale Yellow", "material": "cotton", "size": ["XS", "S", "M", "L"] }
+      "attributes": { "color": "Off-White/Black", "material": "cotton-blend", "size": ["XS", "S", "M", "L"] }
     },
     {
-      "slug": "column-dress-ash",
+      "slug": "column-dress-sage",
       "productId": "67c000000000000000000007",
       "category": "apparel",
-      "name": "Column Dress, Ash",
+      "name": "Column Dress, Sage",
       "price": 84,
       "quantity": 22,
-      "description": "A sleeveless button-through dress in ash-grey crepe, belted at the waist with a self tie. The A-line skirt falls below the knee and moves well. Reads as tailored, wears as easy.",
-      "tags": ["dress", "crepe", "grey", "belted", "tailored"],
+      "description": "A sleeveless button-through dress in sage-green crepe, belted at the waist with a self tie. The A-line skirt falls below the knee and moves well. Reads as tailored, wears as easy.",
+      "tags": ["dress", "crepe", "sage-green", "belted", "tailored"],
       "imageSource": "https://cdn.dummyjson.com/product-images/tops/gray-dress/1.webp",
-      "attributes": { "color": "Ash Grey", "material": "crepe", "size": ["XS", "S", "M", "L"] }
+      "attributes": { "color": "Sage Green", "material": "crepe", "size": ["XS", "S", "M", "L"] }
     },
     {
       "slug": "quarto-short-frock",
@@ -93,10 +93,10 @@
       "name": "Quarto Short Frock",
       "price": 72,
       "quantity": 2,
-      "description": "A short frock in burgundy cotton-blend, fitted through the bodice with a flared skirt that stops above the knee. The fabric has a slight stretch for movement, and the neckline sits square across the collarbone. A compact piece for an evening out.",
-      "tags": ["dress", "cotton-blend", "burgundy", "short", "evening"],
+      "description": "A strapless mini dress in dusty-teal cotton-blend, fitted through the bodice with a tiered ruffle skirt that stops above the knee. A matching bow sits at the waist where the bodice meets the skirt. A compact piece for an evening out.",
+      "tags": ["dress", "cotton-blend", "teal", "strapless", "ruffle", "evening"],
       "imageSource": "https://cdn.dummyjson.com/product-images/tops/short-frock/1.webp",
-      "attributes": { "color": "Burgundy", "material": "cotton-blend", "size": ["XS", "S", "M", "L"] }
+      "attributes": { "color": "Dusty Teal", "material": "cotton-blend", "size": ["XS", "S", "M", "L"] }
     },
     {
       "slug": "tartan-folio-dress",
@@ -105,10 +105,10 @@
       "name": "Tartan Folio Dress",
       "price": 92,
       "quantity": 35,
-      "description": "A long-sleeve dress in red-and-navy tartan wool-blend, fitted at the waist with a pleated skirt. The wool content holds warmth through a cold commute, and the pleats keep their shape through the day. A dress built for a proper autumn.",
-      "tags": ["dress", "wool-blend", "tartan", "red", "autumn"],
+      "description": "A sleeveless dress in black-and-white tartan, cinched at the waist with a black bow. The plaid is crisp rather than heavy, and the skirt flares full from the waist. A dress built for a proper occasion, not an errand.",
+      "tags": ["dress", "cotton-blend", "tartan", "black", "white", "bow"],
       "imageSource": "https://cdn.dummyjson.com/product-images/tops/tartan-dress/1.webp",
-      "attributes": { "color": "Red Tartan", "material": "wool-blend", "size": ["XS", "S", "M", "L"] }
+      "attributes": { "color": "Black/White", "material": "cotton-blend", "size": ["XS", "S", "M", "L"] }
     },
     {
       "slug": "nocturne-gown",
@@ -117,10 +117,10 @@
       "name": "Nocturne Gown",
       "price": 210,
       "quantity": 40,
-      "description": "A floor-length gown in black satin, cut close through the bodice and falling loose to the hem. The fabric catches light without shine at every seam, and the silhouette needs no jewelry to carry a room. Built for a single long evening.",
-      "tags": ["gown", "satin", "black", "formal", "evening"],
+      "description": "A floor-length gown in black georgette, printed with a garden of pink, blue, and violet roses beneath a sheer lace overlay. The off-shoulder neckline sits fitted through the bodice before the skirt falls loose to the hem. Built for a single long evening.",
+      "tags": ["gown", "lace", "black", "floral", "evening", "formal"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-dresses/black-women's-gown/1.webp",
-      "attributes": { "color": "Black", "material": "satin", "size": ["XS", "S", "M", "L"] }
+      "attributes": { "color": "Black Floral", "material": "lace", "size": ["XS", "S", "M", "L"] }
     },
     {
       "slug": "letterpress-corset-leather-skirt",
@@ -129,10 +129,10 @@
       "name": "Letterpress Corset & Leather Skirt",
       "price": 165,
       "quantity": 28,
-      "description": "A boned corset top paired with a matching leather skirt, both in black. The corset structures the waist without a zipper up the back, and the leather skirt holds its shape through a night of standing. Two pieces built to be worn together.",
-      "tags": ["corset", "leather", "black", "skirt", "structured"],
+      "description": "A boned corset top in red leather, laced up the front, paired with a matching red leather skirt. The corset structures the waist without a zipper up the back, and the skirt holds its shape through a night of standing. Two pieces built to be worn together.",
+      "tags": ["corset", "leather", "red", "skirt", "structured"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-dresses/corset-leather-with-skirt/1.webp",
-      "attributes": { "color": "Black", "material": "leather", "size": ["XS", "S", "M", "L"] }
+      "attributes": { "color": "Red", "material": "leather", "size": ["XS", "S", "M", "L"] }
     },
     {
       "slug": "inkblack-corset-skirt",
@@ -141,32 +141,32 @@
       "name": "Inkblack Corset & Skirt",
       "price": 145,
       "quantity": 14,
-      "description": "A fitted corset and matching skirt set in matte black, boned through the bodice and finished with a hidden zip. The skirt falls to the knee in a heavier cotton-blend that holds pleats without pressing. A set built for a night that runs late.",
-      "tags": ["corset", "cotton-blend", "black", "skirt", "evening"],
+      "description": "A fitted corset and matching skirt set in matte black, boned through the bodice and laced up the front. The skirt falls to a full length in a heavier fabric that holds its shape through the night. A set built for an evening that runs late.",
+      "tags": ["corset", "leather", "black", "skirt", "evening"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-dresses/corset-with-black-skirt/1.webp",
-      "attributes": { "color": "Black", "material": "cotton-blend", "size": ["XS", "S", "M", "L"] }
+      "attributes": { "color": "Black", "material": "leather", "size": ["XS", "S", "M", "L"] }
     },
     {
-      "slug": "pea-coat-dress",
+      "slug": "redline-dot-dress",
       "productId": "67c00000000000000000000d",
       "category": "apparel",
-      "name": "Pea Coat Dress",
+      "name": "Redline Dot Dress",
       "price": 128,
       "quantity": 22,
-      "description": "A navy wool pea coat cut as a dress, double-breasted with a notched collar. The wool holds warmth through the coldest months, and the hem sits just above the knee for a coat that still reads as a dress. One piece for the entire winter.",
-      "tags": ["dress", "wool", "coat", "double-breasted", "winter", "navy"],
+      "description": "A strapless dress in white cotton, printed with red polka dots and finished with a scalloped hem and neckline. A matching bow sits at the natural waist, and the full skirt holds its shape without a crinoline. A dress built for a party, not a desk.",
+      "tags": ["dress", "cotton", "polka-dot", "red", "white", "strapless", "party"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-dresses/dress-pea/1.webp",
-      "attributes": { "color": "Navy", "material": "wool", "size": ["XS", "S", "M", "L"] }
+      "attributes": { "color": "White/Red", "material": "cotton", "size": ["XS", "S", "M", "L"] }
     },
     {
-      "slug": "foldover-slipper-black-brown",
+      "slug": "boldface-pump-black-brown",
       "productId": "67c00000000000000000000e",
       "category": "footwear",
-      "name": "Foldover Slipper, Black & Brown",
+      "name": "Boldface Pump, Black & Brown",
       "price": 48,
       "quantity": 10,
-      "description": "A foldover slipper in black-and-brown leather, slipped on with no laces or straps. The sole is flexible enough to pack flat, and the leather softens with wear. Made for the walk between the front door and the car, not the mile after.",
-      "tags": ["slipper", "leather", "black", "brown", "flat"],
+      "description": "A pointed-toe pump in black leather, finished with a slim brown-edged sole. The leather holds a clean line from toe to stiletto heel, built for a night on your feet rather than a walk to the car. A closed-toe pump for whenever heels are required.",
+      "tags": ["shoe", "leather", "black", "pump", "heel"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-shoes/black-&-brown-slipper/1.webp",
       "attributes": { "color": "Black/Brown", "size": ["6", "7", "8", "9"], "gender": "FEMALE" }
     },
@@ -177,22 +177,22 @@
       "name": "Gilt Edition Shoe",
       "price": 115,
       "quantity": 0,
-      "description": "A dress shoe in gold-tone metallic leather, cut low with a slim heel. The finish reflects light without flaking, built to survive one long night rather than daily wear. A shoe for the one evening you want to be seen.",
-      "tags": ["shoe", "leather", "gold", "metallic", "evening"],
+      "description": "A pointed-toe pump in rose-gold metallic leather, set on a slim stiletto heel. The mirror finish reflects light without flaking, built to survive one long night rather than daily wear. A shoe for the one evening you want to be seen.",
+      "tags": ["shoe", "leather", "rose-gold", "metallic", "stiletto", "evening"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-shoes/golden-shoes-woman/1.webp",
-      "attributes": { "color": "Gold", "size": ["6", "7", "8", "9"], "gender": "FEMALE" }
+      "attributes": { "color": "Rose Gold", "size": ["6", "7", "8", "9"], "gender": "FEMALE" }
     },
     {
-      "slug": "pampi-walking-shoe",
+      "slug": "broadside-pump",
       "productId": "67c000000000000000000010",
       "category": "footwear",
-      "name": "Pampi Walking Shoe",
+      "name": "Broadside Pump",
       "price": 95,
       "quantity": 30,
-      "description": "A walking shoe in white leather with a cushioned sole, built for distance rather than display. The upper is soft from the first wear, and the tread holds on wet pavement. Made for the days that involve a lot of standing.",
-      "tags": ["shoe", "leather", "white", "walking", "comfort"],
+      "description": "A pointed-toe pump in glossy black leather, set on a high stiletto heel. The finish holds a mirror shine through a full evening without scuffing at the toe. Built for standing out, not for distance.",
+      "tags": ["shoe", "leather", "black", "pump", "stiletto", "evening"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-shoes/pampi-shoes/1.webp",
-      "attributes": { "color": "White", "size": ["6", "7", "8", "9"], "gender": "FEMALE" }
+      "attributes": { "color": "Black", "size": ["6", "7", "8", "9"], "gender": "FEMALE" }
     },
     {
       "slug": "red-press-shoe",
@@ -201,22 +201,22 @@
       "name": "Red Press Shoe",
       "price": 105,
       "quantity": 6,
-      "description": "A pump in red patent leather, cut with a pointed toe and a mid-height heel. The patent finish holds a shine through a full day without scuffing, and the heel is low enough to walk city blocks in. A red shoe that still goes with everything else.",
-      "tags": ["shoe", "leather", "red", "heel", "formal"],
+      "description": "A pump in red patent-finish leather, cut with a pointed toe and a slim heel. The glossy finish holds its shine through a full day without scuffing, and the heel is slim enough to walk city blocks in. A red shoe that still goes with everything else.",
+      "tags": ["shoe", "leather", "red", "patent", "heel"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-shoes/red-shoes/1.webp",
       "attributes": { "color": "Red", "size": ["6", "7", "8", "9"], "gender": "FEMALE" }
     },
     {
-      "slug": "blackout-sunglasses",
+      "slug": "folio-frame-sunglasses",
       "productId": "67c000000000000000000012",
       "category": "accessories",
-      "name": "Blackout Sunglasses",
+      "name": "Folio Frame Sunglasses",
       "price": 85,
       "quantity": 1,
-      "description": "A wraparound sunglass in matte black acetate, with lenses cut wide to block glare from every angle. The frame sits close to the face and doesn't slip on a run. Built for full sun, not a café table.",
-      "tags": ["sunglasses", "acetate", "black", "wraparound", "sun"],
+      "description": "A half-rim sunglass in tortoiseshell acetate, with a thin gold-tone wire along the bottom of each lens and dark green glass. The clubmaster shape sits high on the brow and works for a narrow or wide face alike. An everyday pair for a desk drawer or a jacket pocket.",
+      "tags": ["sunglasses", "acetate", "tortoiseshell", "green", "clubmaster"],
       "imageSource": "https://cdn.dummyjson.com/product-images/sunglasses/black-sun-glasses/1.webp",
-      "attributes": { "color": "Black", "material": "acetate" }
+      "attributes": { "color": "Tortoiseshell", "material": "acetate" }
     },
     {
       "slug": "classic-frame-sunglasses",
@@ -225,46 +225,46 @@
       "name": "Classic Frame Sunglasses",
       "price": 75,
       "quantity": 18,
-      "description": "A classic frame sunglass in tortoiseshell acetate, round-lensed and lightweight on the nose. The shape works for a narrow or wide face without pinching at the temple. An everyday pair for a bag or a jacket pocket.",
-      "tags": ["sunglasses", "acetate", "tortoiseshell", "round", "everyday"],
+      "description": "A classic aviator in gold-tone metal, with teardrop lenses in a blue gradient. The double bridge sits high on the nose, and the frame is light enough to forget you're wearing it. An everyday pair from morning commute to afternoon glare.",
+      "tags": ["sunglasses", "metal", "gold", "aviator", "blue"],
       "imageSource": "https://cdn.dummyjson.com/product-images/sunglasses/classic-sun-glasses/1.webp",
-      "attributes": { "color": "Tortoiseshell", "material": "acetate" }
+      "attributes": { "color": "Gold/Blue", "material": "metal" }
     },
     {
-      "slug": "bicolour-frame-sunglasses",
+      "slug": "proof-frame-sunglasses",
       "productId": "67c000000000000000000014",
       "category": "accessories",
-      "name": "Bicolour Frame Sunglasses",
+      "name": "Proof Frame Sunglasses",
       "price": 88,
       "quantity": 24,
-      "description": "A bicolour sunglass in green-and-black acetate, with the two tones split across the frame's brow line. The frame sits close without pinching, built for daily wear from morning commute to afternoon errands. A pair with enough color to notice, not enough to shout.",
-      "tags": ["sunglasses", "acetate", "green", "black"],
-      "imageSource": "https://cdn.dummyjson.com/product-images/sunglasses/green-and-black-glasses/1.webp",
-      "attributes": { "color": "Green/Black", "material": "acetate" }
+      "description": "An oversized flat-top sunglass in clear acetate, with a squared frame and clear lenses. A small gold star sits at each hinge, the only note of colour against the transparent frame. Built to be seen through as much as looked at.",
+      "tags": ["sunglasses", "acetate", "clear", "transparent", "oversized"],
+      "imageSource": "https://cdn.dummyjson.com/product-images/sunglasses/sunglasses/1.webp",
+      "attributes": { "color": "Clear", "material": "acetate" }
     },
     {
-      "slug": "soiree-sunglasses",
+      "slug": "halftone-sunglasses",
       "productId": "67c000000000000000000015",
       "category": "accessories",
-      "name": "Soirée Sunglasses",
+      "name": "Halftone Sunglasses",
       "price": 42,
       "quantity": 50,
-      "description": "A cat-eye sunglass in glossy black acetate, angled up sharply at the outer corner. The frame is light enough for a full evening and catches the light at a bar or a rooftop. Built for after dark, not for driving.",
-      "tags": ["sunglasses", "acetate", "black", "cat-eye", "evening"],
+      "description": "A bold rectangular sunglass in matte black, with red lenses and a graphic white pixel-block inlay at each corner. The frame is heavier than a typical pair and reads as a statement rather than a squint-blocker. A loud pair for whoever wants to be noticed.",
+      "tags": ["sunglasses", "black", "red", "graphic", "statement"],
       "imageSource": "https://cdn.dummyjson.com/product-images/sunglasses/party-glasses/1.webp",
-      "attributes": { "color": "Black", "material": "acetate" }
+      "attributes": { "color": "Black/Red", "material": "acetate" }
     },
     {
-      "slug": "cerulean-handbag",
+      "slug": "cobalt-handbag",
       "productId": "67c000000000000000000016",
       "category": "accessories",
-      "name": "Cerulean Handbag",
+      "name": "Cobalt Handbag",
       "price": 130,
       "quantity": 18,
-      "description": "A structured handbag in cerulean blue leather, with a top handle and a detachable strap. The leather holds its shape without slouching through a full workday, and the interior fits a laptop sleeve and the rest of a bag's usual contents. A blue that reads as neutral against black or camel.",
-      "tags": ["handbag", "leather", "blue", "structured", "work"],
+      "description": "A structured tote in cobalt-blue leather, carried by two rolled top handles. The leather holds its shape without slouching through a full workday, and the seamed front panel gives the body its tapered silhouette. A saturated blue built to be the brightest thing in the room.",
+      "tags": ["handbag", "leather", "blue", "structured", "tote", "work"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-bags/blue-women's-handbag/1.webp",
-      "attributes": { "color": "Cerulean Blue", "material": "leather" }
+      "attributes": { "color": "Cobalt Blue", "material": "leather" }
     },
     {
       "slug": "offset-backpack-chalk",
@@ -273,8 +273,8 @@
       "name": "Offset Backpack, Chalk",
       "price": 110,
       "quantity": 32,
-      "description": "A backpack in chalk-white faux leather, with a padded strap and a laptop compartment lined in canvas. The faux leather wipes clean of most marks, unusual for a bag this light in colour. Built for a commute, not a hiking trail.",
-      "tags": ["backpack", "faux-leather", "white", "commute", "laptop"],
+      "description": "A backpack in chalk-white faux leather, closed with a flap and a pair of drawstring cords finished in gold-tone metal. A short top handle sits above the straps for a quick carry between rooms. The pale colour wipes clean of most everyday marks.",
+      "tags": ["backpack", "faux-leather", "white", "gold-hardware", "commute"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-bags/white-faux-leather-backpack/1.webp",
       "attributes": { "color": "Chalk", "material": "faux leather" }
     },
@@ -285,8 +285,8 @@
       "name": "Colophon Handbag, Black",
       "price": 150,
       "quantity": 14,
-      "description": "A structured handbag in black leather, with a flap closure and a gold-tone clasp. The leather is heavy enough to hold its shape empty, and the strap adjusts to wear crossbody or on the shoulder. A black bag built to be the only one you carry.",
-      "tags": ["handbag", "leather", "black", "structured", "everyday"],
+      "description": "A structured tote in black leather, carried by two top handles with a buckled tab at the front. The winged silhouette holds its shape empty, and the gold-tone hardware is the only bright note against the black. A bag built to be the only one you carry.",
+      "tags": ["handbag", "leather", "black", "structured", "tote", "everyday"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-bags/women-handbag-black/1.webp",
       "attributes": { "color": "Black", "material": "leather" }
     },
@@ -303,16 +303,16 @@
       "attributes": { "color": "Emerald", "material": "brass" }
     },
     {
-      "slug": "oval-signature-earring-emerald",
+      "slug": "harlequin-hoop-earring",
       "productId": "67c00000000000000000001a",
       "category": "accessories",
-      "name": "Oval Signature Earring, Emerald",
+      "name": "Harlequin Hoop Earring",
       "price": 58,
       "quantity": 40,
-      "description": "An oval-cut emerald crystal stud earring, set in gold-tone brass. The oval shape sits flat against the earlobe and doesn't catch on a scarf or collar. A quieter version of the drop, for daily wear.",
-      "tags": ["earring", "brass", "emerald", "stud", "daily"],
+      "description": "An open hoop earring in a sage-and-cream checkerboard pattern, finished matte. The ring shape sits flat against the shoulder and catches the eye without a single stone. A graphic pick for an outfit that's otherwise plain.",
+      "tags": ["earring", "hoop", "green", "cream", "checkerboard", "statement"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-jewellery/green-oval-earring/1.webp",
-      "attributes": { "color": "Emerald", "material": "brass" }
+      "attributes": { "color": "Sage/Cream", "material": "resin" }
     },
     {
       "slug": "tropic-edition-earring",
@@ -321,22 +321,22 @@
       "name": "Tropic Edition Earring",
       "price": 52,
       "quantity": 10,
-      "description": "A statement earring in enamel-coated brass, shaped like a stylized palm leaf in green and gold. The piece is light despite its size and hangs still rather than swinging. A single bright note for a plain outfit.",
-      "tags": ["earring", "brass", "green", "statement", "enamel"],
+      "description": "A leaf-shaped drop earring in matte mustard resin, cut like a monstera leaf with a gold-tone stud at the top. The piece is light despite its size and hangs still rather than swinging. A warm note for a plain outfit.",
+      "tags": ["earring", "mustard", "leaf", "gold", "statement"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-jewellery/tropical-earring/1.webp",
-      "attributes": { "color": "Green/Gold", "material": "brass" }
+      "attributes": { "color": "Mustard", "material": "resin" }
     },
     {
-      "slug": "deadline-watch-brown-leather",
+      "slug": "byline-shoulder-bag",
       "productId": "67c00000000000000000001c",
       "category": "accessories",
-      "name": "Deadline Watch, Brown Leather",
+      "name": "Byline Shoulder Bag",
       "price": 180,
       "quantity": 45,
-      "description": "A wristwatch with a stainless case and a brown leather strap, worn through and buckled like a belt. The dial is legible at a glance across a newsroom desk, no unnecessary complications. Built to be checked constantly and never babied.",
-      "tags": ["watch", "leather", "brown", "steel", "everyday"],
-      "imageSource": "https://cdn.dummyjson.com/product-images/mens-watches/brown-leather-belt-watch/1.webp",
-      "attributes": { "color": "Brown", "material": "leather/steel" }
+      "description": "A slouchy shoulder bag in cognac leather, with a rounded body and twin rolled top handles. Antique-gold hardware runs through the straps, and a zip pocket sits flush against the front. Built to carry the day's contents without structure getting in the way.",
+      "tags": ["bag", "leather", "cognac", "shoulder-bag", "everyday"],
+      "imageSource": "https://cdn.dummyjson.com/product-images/womens-bags/heshe-women's-leather-bag/1.webp",
+      "attributes": { "color": "Cognac", "material": "leather" }
     },
     {
       "slug": "masthead-wrist-watch",
@@ -345,10 +345,10 @@
       "name": "Masthead Wrist Watch",
       "price": 195,
       "quantity": 16,
-      "description": "A wristwatch with a slim stainless case and a mesh steel strap, sized small enough for a narrow wrist. The face is plain white with thin hands and no date window to clutter it. A watch that reads formal without trying.",
-      "tags": ["watch", "steel", "white", "slim", "formal"],
+      "description": "A wristwatch with a polished stainless case and a black dial, set with silver hour markers and a date window. The link bracelet matches the case in a bright steel finish. A watch that reads formal without trying, day to day.",
+      "tags": ["watch", "steel", "black", "bracelet", "formal"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-watches/women's-wrist-watch/1.webp",
-      "attributes": { "color": "Silver/White", "material": "steel" }
+      "attributes": { "color": "Black/Silver", "material": "steel" }
     },
     {
       "slug": "gilt-masthead-watch",
@@ -357,10 +357,10 @@
       "name": "Gilt Masthead Watch",
       "price": 420,
       "quantity": 8,
-      "description": "A wristwatch in gold-tone stainless steel, with a bracelet strap and a champagne dial. The finish is heavy enough to read as fine jewelry rather than a tool, and the bracelet adjusts with a hidden clasp. Suited to evening wear rather than a daily rotation.",
-      "tags": ["watch", "steel", "gold", "bracelet", "formal"],
+      "description": "A wristwatch in gold-tone stainless steel, with a blue dial marked in white Roman numerals and a red accent second hand. The chronograph-style case carries extra pushers at the side, and the bracelet adjusts with a hidden clasp. Suited to evening wear rather than a daily rotation.",
+      "tags": ["watch", "steel", "gold", "blue", "chronograph", "formal"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-watches/watch-gold-for-women/1.webp",
-      "attributes": { "color": "Gold", "material": "steel" }
+      "attributes": { "color": "Gold/Blue", "material": "steel" }
     }
   ]
 }

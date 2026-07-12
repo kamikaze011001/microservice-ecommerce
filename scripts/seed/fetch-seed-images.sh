@@ -63,7 +63,7 @@ pruned=0
 expected=$(jq -r '.products[] | "\(.category)/\(.slug).jpg"' "$MANIFEST" | sort)
 while IFS= read -r existing; do
     rel="${existing#"$OUT_DIR/"}"
-    if ! echo "$expected" | grep -qx "$rel"; then
+    if ! echo "$expected" | grep -Fqx "$rel"; then
         log_info "Pruning stale image $rel"
         rm -f "$existing"
         pruned=$((pruned + 1))
