@@ -26,6 +26,14 @@ This repo has **no shell test harness** — no bats, no `.bats` files, no `tests
 
 Tasks 1 and 3 have assertions that need **no Docker and no running stack** (pure parser behavior). Tasks 2 and 4 need the stack.
 
+**Mongo credentials in the assertion commands:** several `mongosh` / `mongoimport` assertions below authenticate as `-u "$MONGO_USERNAME" -p "$MONGO_PASSWORD"`. Those are **not** hardcoded — they live in `docker/.env` (gitignored; see `docker/.env.example`). Load them into your shell once before running any of them:
+
+```bash
+set -a; . docker/.env; set +a
+```
+
+The shipped seed script reads the same variables via `load_dotenv`, so there is no credential in any committed file.
+
 ## File structure
 
 | File | Change | Task |
@@ -254,7 +262,7 @@ Drop the collection to recreate the original bug, then confirm `make up` does no
 
 ```bash
 docker exec ecommerce-mongodb mongosh ecommerce_inventory --quiet \
-  --authenticationDatabase admin -u ecommerce -p ecommerce123 \
+  --authenticationDatabase admin -u "$MONGO_USERNAME" -p "$MONGO_PASSWORD" \
   --eval 'db.api_role.drop()'
 make up
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:6868/product-service/v1/products
@@ -326,7 +334,7 @@ Ordering matters: after `infra-up` (Mongo must exist) and before `svc-start` (no
 
 ```bash
 docker exec ecommerce-mongodb mongosh ecommerce_inventory --quiet \
-  --authenticationDatabase admin -u ecommerce -p ecommerce123 \
+  --authenticationDatabase admin -u "$MONGO_USERNAME" -p "$MONGO_PASSWORD" \
   --eval 'db.api_role.drop()'
 make down
 make up
@@ -347,11 +355,11 @@ Expected: `401` — not 403. This is the signature of the fix: with `api_role` p
 
 ```bash
 docker exec ecommerce-mongodb mongosh ecommerce_inventory --quiet \
-  --authenticationDatabase admin -u ecommerce -p ecommerce123 \
+  --authenticationDatabase admin -u "$MONGO_USERNAME" -p "$MONGO_PASSWORD" \
   --eval 'db.product.countDocuments()'   # note the number (expect 30)
 make up 2>&1 | grep -i api_role
 docker exec ecommerce-mongodb mongosh ecommerce_inventory --quiet \
-  --authenticationDatabase admin -u ecommerce -p ecommerce123 \
+  --authenticationDatabase admin -u "$MONGO_USERNAME" -p "$MONGO_PASSWORD" \
   --eval 'db.product.countDocuments()'   # expect the SAME number
 ```
 
@@ -696,7 +704,7 @@ This is the spec's Verification section, end to end. Start from a cold, unseeded
 ```bash
 # 1. Reproduce the original failure state
 docker exec ecommerce-mongodb mongosh ecommerce_inventory --quiet \
-  --authenticationDatabase admin -u ecommerce -p ecommerce123 \
+  --authenticationDatabase admin -u "$MONGO_USERNAME" -p "$MONGO_PASSWORD" \
   --eval 'db.api_role.drop()'
 make down
 make up
@@ -711,11 +719,11 @@ curl -s -o /dev/null -w 'cart (no token): %{http_code}\n' \
 
 # 4. Idempotent second run — seed is a no-op, products survive
 docker exec ecommerce-mongodb mongosh ecommerce_inventory --quiet \
-  --authenticationDatabase admin -u ecommerce -p ecommerce123 \
+  --authenticationDatabase admin -u "$MONGO_USERNAME" -p "$MONGO_PASSWORD" \
   --eval 'db.product.countDocuments()'
 make up 2>&1 | grep -i 'api_role already seeded'
 docker exec ecommerce-mongodb mongosh ecommerce_inventory --quiet \
-  --authenticationDatabase admin -u ecommerce -p ecommerce123 \
+  --authenticationDatabase admin -u "$MONGO_USERNAME" -p "$MONGO_PASSWORD" \
   --eval 'db.product.countDocuments()'
 
 # 5. Vite is up and same-origin
