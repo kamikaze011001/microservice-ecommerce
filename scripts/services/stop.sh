@@ -9,20 +9,32 @@
 #      tracking existed) survive `make nuke` and silently break fresh
 #      bootstraps — the port stays bound, so a new boot crashes on the
 #      Atomikos transaction-log lock and seed-data fails on missing tables.
+#      Step 2 is also the only thing that reaps `pnpm dev`'s forked Vite child,
+#      whose PID is not the one we wrote to the pidfile.
+#
+# services.list stores entries as quoted bash array elements, so it MUST be read
+# through registry.sh (which sources it, letting bash strip the quotes). Parsing
+# the raw text yields names like `"gateway` and silently stops nothing.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+export REPO_ROOT
 
 # shellcheck source=../lib/colors.sh
 source "$REPO_ROOT/scripts/lib/colors.sh"
+# shellcheck source=../lib/registry.sh
+source "$REPO_ROOT/scripts/lib/registry.sh"
 
 PID_DIR="$REPO_ROOT/logs/pids"
-SERVICES_LIST="$REPO_ROOT/scripts/services.list"
+
+load_registry
 
 port_for() {
-    awk -v s="$1" '$1 !~ /^#/ && $1 == s {print $2; exit}' "$SERVICES_LIST"
+    local line
+    line=$(svc_get "$1") || return 0
+    svc_field "$line" 2
 }
 
 kill_orphan_on_port() {
@@ -66,11 +78,9 @@ target=${1:-all}
 if [ "$target" = "all" ]; then
     # Iterate every service in services.list — covers both pidfile-tracked
     # processes AND port orphans that have no pidfile.
-    while read -r name port _grpc _tier; do
-        [ -z "$name" ] && continue
-        case "$name" in \#*) continue;; esac
-        stop_one "$name"
-    done < "$SERVICES_LIST"
+    while IFS= read -r line; do
+        stop_one "$(svc_field "$line" 1)"
+    done < <(svc_list)
     log_ok "All services stopped"
 else
     stop_one "$target"
