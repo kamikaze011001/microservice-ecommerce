@@ -66,16 +66,8 @@ service_java_home() {
     [ -n "$best" ] && echo "$sdk_root/$best"
 }
 
-start_one() {
-    local name=$1
-    local dir="$REPO_ROOT/$name"
-    [ -d "$dir" ] || { log_err "Directory not found: $dir"; return 1; }
-
-    if [ -f "$PID_DIR/$name.pid" ] && kill -0 "$(cat "$PID_DIR/$name.pid")" 2>/dev/null; then
-        log_warn "$name already running (PID $(cat "$PID_DIR/$name.pid"))"
-        return 0
-    fi
-
+start_maven() {
+    local name=$1 dir=$2
     local jhome
     jhome=$(service_java_home "$dir")
 
@@ -88,6 +80,53 @@ start_one() {
     fi
     echo $! > "$PID_DIR/$name.pid"
     log_ok "$name started (PID $!)"
+}
+
+# Note: the PID recorded here belongs to `pnpm`, not to the Vite server it forks.
+# SIGTERM on it does not reliably reap the child — stop.sh's `lsof -tiTCP:5173`
+# fallback is what actually frees the port. Don't remove that fallback.
+start_node() {
+    local name=$1 dir=$2
+    if ! command -v pnpm >/dev/null 2>&1; then
+        log_err "$name needs pnpm (https://pnpm.io/installation) — install it, or drop $name from scripts/services.list"
+        return 1
+    fi
+
+    : > "$LOG_DIR/$name.log"
+    if [ ! -d "$dir/node_modules" ]; then
+        log_info "$name: node_modules missing — running pnpm install (first run, this takes a minute)..."
+        if ! (cd "$dir" && pnpm install --frozen-lockfile) >> "$LOG_DIR/$name.log" 2>&1; then
+            log_err "$name: pnpm install failed — see logs/services/$name.log"
+            return 1
+        fi
+    fi
+
+    log_info "Starting $name..."
+    (cd "$dir" && pnpm dev) >> "$LOG_DIR/$name.log" 2>&1 &
+    echo $! > "$PID_DIR/$name.pid"
+    log_ok "$name started (PID $!)"
+}
+
+start_one() {
+    local name=$1
+    local dir="$REPO_ROOT/$name"
+    [ -d "$dir" ] || { log_err "Directory not found: $dir"; return 1; }
+
+    if [ -f "$PID_DIR/$name.pid" ] && kill -0 "$(cat "$PID_DIR/$name.pid")" 2>/dev/null; then
+        log_warn "$name already running (PID $(cat "$PID_DIR/$name.pid"))"
+        return 0
+    fi
+
+    # Branch on what the directory actually contains — the registry holds JVM
+    # services and the Vue SPA side by side.
+    if [ -f "$dir/pom.xml" ]; then
+        start_maven "$name" "$dir"
+    elif [ -f "$dir/package.json" ]; then
+        start_node "$name" "$dir"
+    else
+        log_err "$name: no pom.xml or package.json in $dir — don't know how to launch it"
+        return 1
+    fi
 }
 
 wait_tier() {
@@ -124,7 +163,7 @@ start_tier() {
 target=${1:-all}
 
 if [ "$target" = "all" ]; then
-    for tier in 0 1 2 3; do
+    for tier in 0 1 2 3 4; do
         start_tier "$tier"
     done
     log_ok "All services running"
