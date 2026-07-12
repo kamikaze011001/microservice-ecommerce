@@ -33,8 +33,8 @@
       "name": "Dispatch Short-Sleeve Shirt",
       "price": 45,
       "quantity": 12,
-      "description": "A short-sleeve shirt in brushed cotton, cut straight through the body for a relaxed fit. The lightweight weave breathes in warm weather, and the collar sits flat under a jacket if the evening turns cool. Built for the last hot week of the season.",
-      "tags": ["shirt", "cotton", "short-sleeve", "summer", "lightweight"],
+      "description": "A short-sleeve shirt in sky blue brushed cotton, cut straight through the body for a relaxed fit. The lightweight weave breathes in warm weather, and the collar sits flat under a jacket if the evening turns cool. Built for the last hot week of the season.",
+      "tags": ["shirt", "cotton", "short-sleeve", "summer", "lightweight", "sky-blue"],
       "imageSource": "https://cdn.dummyjson.com/product-images/mens-shirts/man-short-sleeve-shirt/1.webp",
       "attributes": { "color": "Sky Blue", "material": "cotton", "size": ["S", "M", "L", "XL"] }
     },
@@ -153,8 +153,8 @@
       "name": "Pea Coat Dress",
       "price": 128,
       "quantity": 22,
-      "description": "A wool pea coat cut as a dress, double-breasted with a notched collar. The wool holds warmth through the coldest months, and the hem sits just above the knee for a coat that still reads as a dress. One piece for the entire winter.",
-      "tags": ["dress", "wool", "coat", "double-breasted", "winter"],
+      "description": "A navy wool pea coat cut as a dress, double-breasted with a notched collar. The wool holds warmth through the coldest months, and the hem sits just above the knee for a coat that still reads as a dress. One piece for the entire winter.",
+      "tags": ["dress", "wool", "coat", "double-breasted", "winter", "navy"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-dresses/dress-pea/1.webp",
       "attributes": { "color": "Navy", "material": "wool", "size": ["XS", "S", "M", "L"] }
     },
@@ -237,8 +237,8 @@
       "name": "Bicolour Frame Sunglasses",
       "price": 88,
       "quantity": 24,
-      "description": "A bicolour sunglass in green-and-black acetate, with the two tones split across the frame's brow line. The lenses are polarized against glare off pavement and water alike. A pair with enough color to notice, not enough to shout.",
-      "tags": ["sunglasses", "acetate", "green", "black", "polarized"],
+      "description": "A bicolour sunglass in green-and-black acetate, with the two tones split across the frame's brow line. The frame sits close without pinching, built for daily wear from morning commute to afternoon errands. A pair with enough color to notice, not enough to shout.",
+      "tags": ["sunglasses", "acetate", "green", "black"],
       "imageSource": "https://cdn.dummyjson.com/product-images/sunglasses/green-and-black-glasses/1.webp",
       "attributes": { "color": "Green/Black", "material": "acetate" }
     },
@@ -357,7 +357,7 @@
       "name": "Gilt Masthead Watch",
       "price": 420,
       "quantity": 8,
-      "description": "A wristwatch in gold-tone stainless steel, with a bracelet strap and a champagne dial. The finish is heavy enough to read as fine jewelry rather than a tool, and the bracelet adjusts with a hidden clasp. The one watch in the case worth the price.",
+      "description": "A wristwatch in gold-tone stainless steel, with a bracelet strap and a champagne dial. The finish is heavy enough to read as fine jewelry rather than a tool, and the bracelet adjusts with a hidden clasp. Suited to evening wear rather than a daily rotation.",
       "tags": ["watch", "steel", "gold", "bracelet", "formal"],
       "imageSource": "https://cdn.dummyjson.com/product-images/womens-watches/watch-gold-for-women/1.webp",
       "attributes": { "color": "Gold", "material": "steel" }
