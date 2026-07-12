@@ -10,6 +10,7 @@ import lombok.experimental.SuperBuilder;
 import org.aibles.ecommerce.product_service.dto.request.ProductRequest;
 import org.aibles.ecommerce.product_service.entity.Product;
 
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -33,6 +34,10 @@ public class ProductResponse {
 
     private String imageUrl;
 
+    private String description;
+
+    private List<String> tags;
+
     public static ProductResponse from(final Product product, final long quantity) {
         return ProductResponse.builder()
                 .id(product.getId())
@@ -42,6 +47,8 @@ public class ProductResponse {
                 .attributes(product.getAttributes())
                 .category(product.getCategory())
                 .imageUrl(product.getImageUrl())
+                .description(product.getDescription())
+                .tags(product.getTags())
                 .build();
     }
 }
