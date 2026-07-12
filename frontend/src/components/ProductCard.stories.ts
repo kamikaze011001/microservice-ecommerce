@@ -10,6 +10,8 @@ const baseProduct: ProductDto = {
   quantity: 12,
   category: 'STATIONERY',
   image_url: 'https://placehold.co/600x600',
+  description: 'A ruled press jacket for field notes.',
+  tags: ['stationery', 'notebook'],
 };
 
 const meta: Meta<typeof ProductCard> = {

@@ -10,6 +10,8 @@ export interface ProductDto {
   quantity: number;
   category: string | null;
   image_url: string | null;
+  description: string | null;
+  tags: string[] | null;
 }
 
 export interface ProductPage {
