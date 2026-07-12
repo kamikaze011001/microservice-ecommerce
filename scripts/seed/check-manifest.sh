@@ -49,10 +49,23 @@ while IFS=$'\t' read -r id desc_len tag_count src; do
     esac
 done < <(jq -r '.products[] | "\(.productId)\t\(.description | length)\t\(.tags | length)\t\(.imageSource)"' "$MANIFEST")
 
-# Trademarked brands must never re-enter the catalog.
-if jq -r '.products[] | .name' "$MANIFEST" \
-   | grep -inE 'nike|puma|off.?white|prada|calvin klein|rolex|marni|gigabyte|heshe'; then
-    err "trademarked brand name found in catalog"
+# Trademarked brands must never re-enter the catalog. Scans name, description,
+# and tags (word-boundary matched, so "nike" doesn't match "unlikely").
+#
+# Deliberately does NOT scan imageSource: product …001c's imageSource
+# legitimately contains the upstream DummyJSON slug
+# "heshe-women's-leather-bag" — that's authoring-time provenance, never
+# rendered to a user, and our own name/description/tags for it are clean.
+# Don't "fix" this by adding imageSource to the scan.
+#
+# "off-white" is deliberately absent from this denylist: it's a legitimate
+# colour word (product …0006's description uses it for that reason) and
+# collides with the Off-White™ brand pattern. A colour name isn't a brand
+# mark by itself, so it stays out rather than forcing per-product exceptions.
+DENYLIST='nike|puma|prada|calvin klein|rolex|marni|gigabyte|heshe'
+if jq -r '.products[] | "\(.productId)\t\(.name) \(.description) \(.tags | join(" "))"' "$MANIFEST" \
+   | grep -inE "\\b($DENYLIST)\\b"; then
+    err "trademarked brand name found in catalog (name/description/tags — see match above)"
 fi
 
 # Slugs must be unique — they are the image filenames.

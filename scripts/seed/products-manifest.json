@@ -165,9 +165,9 @@
       "name": "Boldface Pump, Black & Brown",
       "price": 48,
       "quantity": 10,
-      "description": "A pointed-toe pump in black leather, finished with a slim brown-edged sole. The leather holds a clean line from toe to stiletto heel, built for a night on your feet rather than a walk to the car. A closed-toe pump for whenever heels are required.",
+      "description": "A pointed-toe pump in matte black leather, lined in cognac brown, set on a slim stiletto heel. The leather holds a clean line from toe to heel, built for a night on your feet rather than a walk to the car. A closed-toe pump for whenever heels are required.",
       "tags": ["shoe", "leather", "black", "pump", "heel"],
-      "imageSource": "https://cdn.dummyjson.com/product-images/womens-shoes/black-&-brown-slipper/1.webp",
+      "imageSource": "https://cdn.dummyjson.com/product-images/womens-shoes/black-&-brown-slipper/2.webp",
       "attributes": { "color": "Black/Brown", "size": ["6", "7", "8", "9"], "gender": "FEMALE" }
     },
     {
@@ -179,7 +179,7 @@
       "quantity": 0,
       "description": "A pointed-toe pump in rose-gold metallic leather, set on a slim stiletto heel. The mirror finish reflects light without flaking, built to survive one long night rather than daily wear. A shoe for the one evening you want to be seen.",
       "tags": ["shoe", "leather", "rose-gold", "metallic", "stiletto", "evening"],
-      "imageSource": "https://cdn.dummyjson.com/product-images/womens-shoes/golden-shoes-woman/1.webp",
+      "imageSource": "https://cdn.dummyjson.com/product-images/womens-shoes/golden-shoes-woman/2.webp",
       "attributes": { "color": "Rose Gold", "size": ["6", "7", "8", "9"], "gender": "FEMALE" }
     },
     {
