@@ -1,6 +1,8 @@
 # frontend
 
-Vue 3 + Vite + TypeScript SPA. Hits the JVM stack through the gateway at `http://localhost:8080`.
+Vue 3 + Vite + TypeScript SPA. Hits the JVM stack through the gateway, which runs on `:6868` locally.
+In dev the SPA calls the same-origin path `/api/...`, which the Vite proxy (`vite.config.ts`) forwards
+to `http://localhost:6868`. `make up` starts the dev server as a tier-4 service on `:5173`.
 
 ## Stack
 
@@ -39,7 +41,11 @@ pnpm api:gen      # regen src/api/schema.d.ts from gateway swagger
 - All API calls go through `src/api/client.ts` and `src/api/queries/*.ts` — never hand-roll `fetch`.
 - Endpoints use `/bff-service/v1/...` for SPA-shaped responses, `/<service>/v1/...` for direct calls. Storefront browse hits `/product-service/v1/products` (`PERMIT_ALL`).
 - Wire format is **snake_case** (Java side uses `SnakeCaseStrategy`); the generated TS types reflect that — don't manually camelCase.
-- Auth: gateway sets cookies / returns JWT; client sends credentials. CORS is permissive on `:5173`.
+- Auth: the gateway returns a JWT, which `src/api/client.ts` attaches as an `Authorization: Bearer`
+  header. There are **no cookies and no `credentials: 'include'`** anywhere in `src/` — don't add them.
+- Dev traffic is same-origin via the `/api` proxy (`VITE_API_BASE_URL=/api` in `.env.development`),
+  so CORS is not in the request path at all. The gateway's allow-list still lists `:5173` as a
+  belt-and-braces fallback for anyone running the SPA without the proxy.
 
 ## Design system — single source of truth
 
