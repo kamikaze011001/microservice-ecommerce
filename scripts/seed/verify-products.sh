@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../lib/colors.sh
 source "$REPO_ROOT/scripts/lib/colors.sh"
 
-GATEWAY="${GATEWAY_URL:-http://localhost:8080}"
+GATEWAY="${GATEWAY_URL:-http://localhost:6868}"
 
 log_info "GET $GATEWAY/product-service/v1/products?page=1&size=12"
 body=$(curl -sSf "$GATEWAY/product-service/v1/products?page=1&size=12")
