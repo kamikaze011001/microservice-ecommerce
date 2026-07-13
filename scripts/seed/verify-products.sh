@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../lib/colors.sh
 source "$REPO_ROOT/scripts/lib/colors.sh"
 
-GATEWAY="${GATEWAY_URL:-http://localhost:8080}"
+GATEWAY="${GATEWAY_URL:-http://localhost:6868}"
 
 log_info "GET $GATEWAY/product-service/v1/products?page=1&size=12"
 body=$(curl -sSf "$GATEWAY/product-service/v1/products?page=1&size=12")
@@ -46,5 +46,27 @@ case "$content_type" in
     *) log_warn "Image Content-Type was '$content_type' (expected image/jpeg)"; exit 1 ;;
 esac
 log_ok "First image reachable: $first_image"
+
+log_info "GET $GATEWAY/product-service/v1/products?page=1&size=$total"
+all_body=$(curl -sSf "$GATEWAY/product-service/v1/products?page=1&size=$total")
+
+checked=$(echo "$all_body" | jq -r '(.data.data // .data.items // .data.content) | length')
+if [ "$checked" != "$total" ]; then
+    log_warn "completeness check only covered $checked of $total products (expected all of them)"
+    exit 1
+fi
+
+missing_desc=$(echo "$all_body" | jq -r '
+  (.data.data // .data.items // .data.content)
+  | map(select((.description // "") == "" or ((.tags // []) | length) == 0))
+  | length')
+if [ "$missing_desc" != "0" ]; then
+    log_warn "$missing_desc of $checked product(s) are missing description or tags"
+    echo "$all_body" | jq -r '(.data.data // .data.items // .data.content)
+      | map(select((.description // "") == "" or ((.tags // []) | length) == 0))
+      | .[].name'
+    exit 1
+fi
+log_ok "All $checked products carry description + tags"
 
 log_ok "Seed verification passed"

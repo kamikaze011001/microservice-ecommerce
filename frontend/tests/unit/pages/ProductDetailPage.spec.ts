@@ -32,6 +32,8 @@ function makeProduct(overrides: Partial<Record<string, unknown>> = {}) {
     quantity: 5,
     category: 'home',
     image_url: null,
+    description: 'A hand-blown glass vase in clear soda-lime, for a single stem.',
+    tags: ['vase', 'glass', 'home'],
     ...overrides,
   };
 }
@@ -69,6 +71,17 @@ describe('ProductDetailPage render', () => {
     expect(screen.getByText('$49.50')).toBeInTheDocument();
     expect(screen.getByText(/material/i)).toBeInTheDocument();
     expect(screen.getAllByText(/glass/i).length).toBeGreaterThan(0);
+  });
+
+  it('renders the product description', () => {
+    useProductDetailQuery.mockReturnValue({
+      data: { value: makeProduct() },
+      isLoading: { value: false },
+      isError: { value: false },
+      error: { value: null },
+    });
+    mount();
+    expect(screen.getByText(/hand-blown glass vase in clear soda-lime/i)).toBeInTheDocument();
   });
 
   it('renders image fallback when image_url is null', () => {

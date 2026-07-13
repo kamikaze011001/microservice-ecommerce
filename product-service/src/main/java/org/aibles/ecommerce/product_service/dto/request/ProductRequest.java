@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.aibles.ecommerce.product_service.entity.Product;
 
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -31,12 +32,18 @@ public class ProductRequest {
 
     private String category;
 
+    private String description;
+
+    private List<String> tags;
+
     public static Product to(final ProductRequest productRequest) {
         return Product.builder()
                 .name(productRequest.name)
                 .price(productRequest.price)
                 .attributes(productRequest.attributes)
                 .category(productRequest.category)
+                .description(productRequest.description)
+                .tags(productRequest.tags)
                 .build();
     }
 }

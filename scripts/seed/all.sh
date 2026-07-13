@@ -18,6 +18,9 @@ log_info "Seeding MongoDB api_role..."
 log_info "Uploading product images to MinIO..."
 "$SCRIPT_DIR/minio-product-images.sh"
 
+log_info "Checking products manifest (frozen IDs, stock, trademarks)..."
+"$SCRIPT_DIR/check-manifest.sh"
+
 log_info "Seeding MongoDB product..."
 "$SCRIPT_DIR/mongo-products.sh"
 

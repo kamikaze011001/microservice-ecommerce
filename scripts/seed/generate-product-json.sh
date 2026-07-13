@@ -20,13 +20,15 @@ base_url=$(jq -r '.publicBaseUrl' "$MANIFEST")
 # scripts/seed/generate-quantity-history.sh for the quantity seed.
 jq --arg base "$base_url" '
   .products | map({
-    "_id":        { "$oid": .productId },
-    "_class":     "org.aibles.ecommerce.product_service.entity.Product",
-    "name":       .name,
-    "price":      .price,
-    "category":   .category,
-    "attributes": .attributes,
-    "imageUrl":   ($base + "/products/" + .productId + "/" + .slug + ".jpg")
+    "_id":         { "$oid": .productId },
+    "_class":      "org.aibles.ecommerce.product_service.entity.Product",
+    "name":        .name,
+    "price":       .price,
+    "category":    .category,
+    "attributes":  .attributes,
+    "description": .description,
+    "tags":        .tags,
+    "imageUrl":    ($base + "/products/" + .productId + "/" + .slug + ".jpg")
   })
 ' "$MANIFEST" > "$OUT"
 

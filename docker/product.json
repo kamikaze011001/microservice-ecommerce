@@ -4,11 +4,11 @@
       "$oid": "67c000000000000000000001"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Cotton Crewneck Tee",
-    "price": 25,
+    "name": "Broadsheet Check Shirt",
+    "price": 58,
     "category": "apparel",
     "attributes": {
-      "color": "White",
+      "color": "Blue",
       "material": "cotton",
       "size": [
         "S",
@@ -17,19 +17,27 @@
         "XL"
       ]
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000001/cotton-crewneck-tee.jpg"
+    "description": "A cotton shirt in a blue, black, and white check, cut for everyday wear through the body and sleeve. The gingham-scale check holds a crisp line at the collar and cuff without feeling stiff. Layer it under a coat or wear it alone on a mild day.",
+    "tags": [
+      "shirt",
+      "cotton",
+      "check",
+      "blue",
+      "everyday"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000001/broadsheet-check-shirt.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000002"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Heavyweight Hoodie",
-    "price": 65,
+    "name": "Broadsheet Plaid Shirt",
+    "price": 62,
     "category": "apparel",
     "attributes": {
-      "color": "Black",
-      "material": "fleece",
+      "color": "Red/Black",
+      "material": "cotton",
       "size": [
         "S",
         "M",
@@ -37,274 +45,343 @@
         "XL"
       ]
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000002/heavyweight-hoodie.jpg"
+    "description": "A brushed cotton buffalo check cut for layering, in bold red and black. The collar holds its shape without starch, and the body is roomy enough to wear open over a tee. Warm enough for a cold newsroom, bold enough to be seen across it.",
+    "tags": [
+      "shirt",
+      "cotton",
+      "buffalo-check",
+      "red",
+      "black",
+      "layering"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000002/broadsheet-plaid-shirt.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000003"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Linen Button-Up",
-    "price": 55,
+    "name": "Dispatch Floral Shirt",
+    "price": 45,
     "category": "apparel",
     "attributes": {
-      "color": "Sand",
-      "material": "linen",
+      "color": "Navy",
+      "material": "cotton",
       "size": [
         "S",
         "M",
-        "L"
+        "L",
+        "XL"
       ]
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000003/linen-button-up.jpg"
+    "description": "A short-sleeve shirt in navy cotton, covered edge-to-edge in a pale-blue tropical floral print. The lightweight weave breathes in warm weather, and the collar sits flat under a jacket if the evening turns cool. Built for the last hot week of the season.",
+    "tags": [
+      "shirt",
+      "cotton",
+      "floral",
+      "navy",
+      "short-sleeve",
+      "summer"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000003/dispatch-floral-shirt.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000004"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Denim Jacket",
-    "price": 90,
+    "name": "Gazette Check Shirt",
+    "price": 58,
     "category": "apparel",
     "attributes": {
-      "color": "Indigo",
-      "material": "denim",
+      "color": "Teal/Olive",
+      "material": "cotton",
       "size": [
+        "S",
         "M",
         "L",
         "XL"
       ]
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000004/denim-jacket.jpg"
+    "description": "A cotton check shirt in teal and olive, buttoned through with a spread collar. The multi-colour plaid has enough weight to hold a crease but stays soft against the skin. Reads sharp at a desk, easy after hours.",
+    "tags": [
+      "shirt",
+      "cotton",
+      "check",
+      "teal",
+      "olive"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000004/gazette-check-shirt.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000005"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Wool Overcoat",
-    "price": 220,
+    "name": "Dot Matrix Frock",
+    "price": 78,
     "category": "apparel",
     "attributes": {
-      "color": "Camel",
-      "material": "wool",
+      "color": "White/Blue",
+      "material": "cotton",
       "size": [
+        "XS",
+        "S",
         "M",
-        "L",
-        "XL"
+        "L"
       ]
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000005/wool-overcoat.jpg"
+    "description": "A fit-and-flare frock in white cotton, printed with a scatter of blue polka dots in different sizes. The cap sleeves and flared skirt keep it light for a warm afternoon. An easy piece for the parts of the day spent on your feet.",
+    "tags": [
+      "dress",
+      "cotton",
+      "polka-dot",
+      "blue",
+      "white",
+      "daywear"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000005/dot-matrix-frock.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000006"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Raw Denim Jeans",
-    "price": 110,
+    "name": "Summer Issue Dress",
+    "price": 68,
     "category": "apparel",
     "attributes": {
-      "color": "Indigo",
-      "material": "denim",
+      "color": "Off-White/Black",
+      "material": "cotton-blend",
       "size": [
-        "30",
-        "32",
-        "34",
-        "36"
+        "XS",
+        "S",
+        "M",
+        "L"
       ]
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000006/raw-denim-jeans.jpg"
+    "description": "An off-shoulder maxi dress in off-white cotton-blend, printed with a scatter of black tropical leaves. Thin straps hold the flounced neckline in place, and the skirt falls to the floor with room to move. Made for warm evenings, not the beach.",
+    "tags": [
+      "dress",
+      "cotton-blend",
+      "leaf-print",
+      "off-white",
+      "black",
+      "maxi"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000006/summer-issue-dress.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000007"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Flannel Shirt",
-    "price": 48,
+    "name": "Column Dress, Sage",
+    "price": 84,
     "category": "apparel",
     "attributes": {
-      "color": "Red",
-      "material": "cotton",
+      "color": "Sage Green",
+      "material": "crepe",
       "size": [
+        "XS",
         "S",
         "M",
-        "L",
-        "XL"
+        "L"
       ]
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000007/flannel-shirt.jpg"
+    "description": "A sleeveless button-through dress in sage-green crepe, belted at the waist with a self tie. The A-line skirt falls below the knee and moves well. Reads as tailored, wears as easy.",
+    "tags": [
+      "dress",
+      "crepe",
+      "sage-green",
+      "belted",
+      "tailored"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000007/column-dress-sage.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000008"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Cashmere Sweater",
-    "price": 180,
+    "name": "Quarto Short Frock",
+    "price": 72,
     "category": "apparel",
     "attributes": {
-      "color": "Cream",
-      "material": "cashmere",
+      "color": "Dusty Teal",
+      "material": "cotton-blend",
       "size": [
+        "XS",
         "S",
         "M",
         "L"
       ]
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000008/cashmere-sweater.jpg"
+    "description": "A strapless mini dress in dusty-teal cotton-blend, fitted through the bodice with a tiered ruffle skirt that stops above the knee. A matching bow sits at the waist where the bodice meets the skirt. A compact piece for an evening out.",
+    "tags": [
+      "dress",
+      "cotton-blend",
+      "teal",
+      "strapless",
+      "ruffle",
+      "evening"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000008/quarto-short-frock.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000009"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Utility Pants",
-    "price": 75,
+    "name": "Tartan Folio Dress",
+    "price": 92,
     "category": "apparel",
     "attributes": {
-      "color": "Olive",
-      "material": "cotton",
+      "color": "Black/White",
+      "material": "cotton-blend",
       "size": [
-        "30",
-        "32",
-        "34",
-        "36"
+        "XS",
+        "S",
+        "M",
+        "L"
       ]
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000009/utility-pants.jpg"
+    "description": "A sleeveless dress in black-and-white tartan, cinched at the waist with a black bow. The plaid is crisp rather than heavy, and the skirt flares full from the waist. A dress built for a proper occasion, not an errand.",
+    "tags": [
+      "dress",
+      "cotton-blend",
+      "tartan",
+      "black",
+      "white",
+      "bow"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000009/tartan-folio-dress.jpg"
   },
   {
     "_id": {
       "$oid": "67c00000000000000000000a"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Graphic Tee",
-    "price": 30,
+    "name": "Nocturne Gown",
+    "price": 210,
     "category": "apparel",
     "attributes": {
-      "color": "Black",
-      "material": "cotton",
+      "color": "Black Floral",
+      "material": "lace",
       "size": [
+        "XS",
         "S",
         "M",
-        "L",
-        "XL"
+        "L"
       ]
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000a/graphic-tee.jpg"
+    "description": "A floor-length gown in black georgette, printed with a garden of pink, blue, and violet roses beneath a sheer lace overlay. The off-shoulder neckline sits fitted through the bodice before the skirt falls loose to the hem. Built for a single long evening.",
+    "tags": [
+      "gown",
+      "lace",
+      "black",
+      "floral",
+      "evening",
+      "formal"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000a/nocturne-gown.jpg"
   },
   {
     "_id": {
       "$oid": "67c00000000000000000000b"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Canvas Low-Tops",
-    "price": 50,
-    "category": "footwear",
+    "name": "Letterpress Corset & Leather Skirt",
+    "price": 165,
+    "category": "apparel",
     "attributes": {
-      "color": "White",
+      "color": "Red",
+      "material": "leather",
       "size": [
-        "8",
-        "9",
-        "10",
-        "11"
-      ],
-      "gender": "UNISEX"
+        "XS",
+        "S",
+        "M",
+        "L"
+      ]
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000b/canvas-low-tops.jpg"
+    "description": "A boned corset top in red leather, laced up the front, paired with a matching red leather skirt. The corset structures the waist without a zipper up the back, and the skirt holds its shape through a night of standing. Two pieces built to be worn together.",
+    "tags": [
+      "corset",
+      "leather",
+      "red",
+      "skirt",
+      "structured"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000b/letterpress-corset-leather-skirt.jpg"
   },
   {
     "_id": {
       "$oid": "67c00000000000000000000c"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Leather Derbies",
-    "price": 185,
-    "category": "footwear",
+    "name": "Inkblack Corset & Skirt",
+    "price": 145,
+    "category": "apparel",
     "attributes": {
-      "color": "Brown",
+      "color": "Black",
+      "material": "leather",
       "size": [
-        "8",
-        "9",
-        "10",
-        "11"
-      ],
-      "gender": "MALE"
+        "XS",
+        "S",
+        "M",
+        "L"
+      ]
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000c/leather-derbies.jpg"
+    "description": "A fitted corset and matching skirt set in matte black, boned through the bodice and laced up the front. The skirt falls to a full length in a heavier fabric that holds its shape through the night. A set built for an evening that runs late.",
+    "tags": [
+      "corset",
+      "leather",
+      "black",
+      "skirt",
+      "evening"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000c/inkblack-corset-skirt.jpg"
   },
   {
     "_id": {
       "$oid": "67c00000000000000000000d"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Trail Runners",
-    "price": 135,
-    "category": "footwear",
+    "name": "Redline Dot Dress",
+    "price": 128,
+    "category": "apparel",
     "attributes": {
-      "color": "Grey",
+      "color": "White/Red",
+      "material": "cotton",
       "size": [
-        "8",
-        "9",
-        "10",
-        "11"
-      ],
-      "gender": "UNISEX"
+        "XS",
+        "S",
+        "M",
+        "L"
+      ]
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000d/trail-runners.jpg"
+    "description": "A strapless dress in white cotton, printed with red polka dots and finished with a scalloped hem and neckline. A matching bow sits at the natural waist, and the full skirt holds its shape without a crinoline. A dress built for a party, not a desk.",
+    "tags": [
+      "dress",
+      "cotton",
+      "polka-dot",
+      "red",
+      "white",
+      "strapless",
+      "party"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000d/redline-dot-dress.jpg"
   },
   {
     "_id": {
       "$oid": "67c00000000000000000000e"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Chelsea Boots",
-    "price": 210,
+    "name": "Boldface Pump, Black & Brown",
+    "price": 48,
     "category": "footwear",
     "attributes": {
-      "color": "Black",
-      "size": [
-        "8",
-        "9",
-        "10",
-        "11"
-      ],
-      "gender": "UNISEX"
-    },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000e/chelsea-boots.jpg"
-  },
-  {
-    "_id": {
-      "$oid": "67c00000000000000000000f"
-    },
-    "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Court Sneakers",
-    "price": 90,
-    "category": "footwear",
-    "attributes": {
-      "color": "White",
-      "size": [
-        "8",
-        "9",
-        "10",
-        "11"
-      ],
-      "gender": "UNISEX"
-    },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000f/court-sneakers.jpg"
-  },
-  {
-    "_id": {
-      "$oid": "67c000000000000000000010"
-    },
-    "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Running Flats",
-    "price": 115,
-    "category": "footwear",
-    "attributes": {
-      "color": "Pink",
+      "color": "Black/Brown",
       "size": [
         "6",
         "7",
@@ -313,225 +390,390 @@
       ],
       "gender": "FEMALE"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000010/running-flats.jpg"
+    "description": "A pointed-toe pump in matte black leather, lined in cognac brown, set on a slim stiletto heel. The leather holds a clean line from toe to heel, built for a night on your feet rather than a walk to the car. A closed-toe pump for whenever heels are required.",
+    "tags": [
+      "shoe",
+      "leather",
+      "black",
+      "pump",
+      "heel"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000e/boldface-pump-black-brown.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c00000000000000000000f"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Gilt Edition Shoe",
+    "price": 115,
+    "category": "footwear",
+    "attributes": {
+      "color": "Rose Gold",
+      "size": [
+        "6",
+        "7",
+        "8",
+        "9"
+      ],
+      "gender": "FEMALE"
+    },
+    "description": "A pointed-toe pump in rose-gold metallic leather, set on a slim stiletto heel. The mirror finish reflects light without flaking, built to survive one long night rather than daily wear. A shoe for the one evening you want to be seen.",
+    "tags": [
+      "shoe",
+      "leather",
+      "rose-gold",
+      "metallic",
+      "stiletto",
+      "evening"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000f/gilt-edition-shoe.jpg"
+  },
+  {
+    "_id": {
+      "$oid": "67c000000000000000000010"
+    },
+    "_class": "org.aibles.ecommerce.product_service.entity.Product",
+    "name": "Broadside Pump",
+    "price": 95,
+    "category": "footwear",
+    "attributes": {
+      "color": "Black",
+      "size": [
+        "6",
+        "7",
+        "8",
+        "9"
+      ],
+      "gender": "FEMALE"
+    },
+    "description": "A pointed-toe pump in glossy black leather, set on a high stiletto heel. The finish holds a mirror shine through a full evening without scuffing at the toe. Built for standing out, not for distance.",
+    "tags": [
+      "shoe",
+      "leather",
+      "black",
+      "pump",
+      "stiletto",
+      "evening"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000010/broadside-pump.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000011"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Work Boots",
-    "price": 245,
+    "name": "Red Press Shoe",
+    "price": 105,
     "category": "footwear",
     "attributes": {
-      "color": "Tan",
+      "color": "Red",
       "size": [
-        "9",
-        "10",
-        "11",
-        "12"
+        "6",
+        "7",
+        "8",
+        "9"
       ],
-      "gender": "MALE"
+      "gender": "FEMALE"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000011/work-boots.jpg"
+    "description": "A pump in red patent-finish leather, cut with a pointed toe and a slim heel. The glossy finish holds its shine through a full day without scuffing, and the heel is slim enough to walk city blocks in. A red shoe that still goes with everything else.",
+    "tags": [
+      "shoe",
+      "leather",
+      "red",
+      "patent",
+      "heel"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000011/red-press-shoe.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000012"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Slip-On Loafers",
-    "price": 140,
-    "category": "footwear",
+    "name": "Folio Frame Sunglasses",
+    "price": 85,
+    "category": "accessories",
     "attributes": {
-      "color": "Navy",
-      "size": [
-        "8",
-        "9",
-        "10"
-      ],
-      "gender": "UNISEX"
+      "color": "Tortoiseshell",
+      "material": "acetate"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000012/slip-on-loafers.jpg"
+    "description": "A half-rim sunglass in tortoiseshell acetate, with a thin gold-tone wire along the bottom of each lens and dark green glass. The clubmaster shape sits high on the brow and works for a narrow or wide face alike. An everyday pair for a desk drawer or a jacket pocket.",
+    "tags": [
+      "sunglasses",
+      "acetate",
+      "tortoiseshell",
+      "green",
+      "clubmaster"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000012/folio-frame-sunglasses.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000013"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "High-Tops",
-    "price": 80,
-    "category": "footwear",
+    "name": "Classic Frame Sunglasses",
+    "price": 75,
+    "category": "accessories",
     "attributes": {
-      "color": "Black",
-      "size": [
-        "8",
-        "9",
-        "10",
-        "11"
-      ],
-      "gender": "UNISEX"
+      "color": "Gold/Blue",
+      "material": "metal"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000013/high-tops.jpg"
+    "description": "A classic aviator in gold-tone metal, with teardrop lenses in a blue gradient. The double bridge sits high on the nose, and the frame is light enough to forget you're wearing it. An everyday pair from morning commute to afternoon glare.",
+    "tags": [
+      "sunglasses",
+      "metal",
+      "gold",
+      "aviator",
+      "blue"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000013/classic-frame-sunglasses.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000014"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Retro Runners",
-    "price": 125,
-    "category": "footwear",
+    "name": "Proof Frame Sunglasses",
+    "price": 88,
+    "category": "accessories",
     "attributes": {
-      "color": "Cream",
-      "size": [
-        "8",
-        "9",
-        "10",
-        "11"
-      ],
-      "gender": "UNISEX"
+      "color": "Clear",
+      "material": "acetate"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000014/retro-runners.jpg"
+    "description": "An oversized flat-top sunglass in clear acetate, with a squared frame and clear lenses. A small gold star sits at each hinge, the only note of colour against the transparent frame. Built to be seen through as much as looked at.",
+    "tags": [
+      "sunglasses",
+      "acetate",
+      "clear",
+      "transparent",
+      "oversized"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000014/proof-frame-sunglasses.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000015"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Canvas Tote",
-    "price": 35,
+    "name": "Halftone Sunglasses",
+    "price": 42,
     "category": "accessories",
     "attributes": {
-      "color": "Natural",
-      "material": "canvas"
+      "color": "Black/Red",
+      "material": "acetate"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000015/canvas-tote.jpg"
+    "description": "A bold rectangular sunglass in matte black, with red lenses and a graphic white pixel-block inlay at each corner. The frame is heavier than a typical pair and reads as a statement rather than a squint-blocker. A loud pair for whoever wants to be noticed.",
+    "tags": [
+      "sunglasses",
+      "black",
+      "red",
+      "graphic",
+      "statement"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000015/halftone-sunglasses.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000016"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Leather Belt",
-    "price": 65,
+    "name": "Cobalt Handbag",
+    "price": 130,
     "category": "accessories",
     "attributes": {
-      "color": "Brown",
+      "color": "Cobalt Blue",
       "material": "leather"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000016/leather-belt.jpg"
+    "description": "A structured tote in cobalt-blue leather, carried by two rolled top handles. The leather holds its shape without slouching through a full workday, and the seamed front panel gives the body its tapered silhouette. A saturated blue built to be the brightest thing in the room.",
+    "tags": [
+      "handbag",
+      "leather",
+      "blue",
+      "structured",
+      "tote",
+      "work"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000016/cobalt-handbag.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000017"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Wool Beanie",
-    "price": 28,
+    "name": "Offset Backpack, Chalk",
+    "price": 110,
     "category": "accessories",
     "attributes": {
-      "color": "Charcoal",
-      "material": "wool"
+      "color": "Chalk",
+      "material": "faux leather"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000017/wool-beanie.jpg"
+    "description": "A backpack in chalk-white faux leather, closed with a flap and a pair of drawstring cords finished in gold-tone metal. A short top handle sits above the straps for a quick carry between rooms. The pale colour wipes clean of most everyday marks.",
+    "tags": [
+      "backpack",
+      "faux-leather",
+      "white",
+      "gold-hardware",
+      "commute"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000017/offset-backpack-chalk.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000018"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Linen Scarf",
-    "price": 42,
+    "name": "Colophon Handbag, Black",
+    "price": 150,
     "category": "accessories",
     "attributes": {
-      "color": "Stone",
-      "material": "linen"
+      "color": "Black",
+      "material": "leather"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000018/linen-scarf.jpg"
+    "description": "A structured tote in black leather, carried by two top handles with a buckled tab at the front. The winged silhouette holds its shape empty, and the gold-tone hardware is the only bright note against the black. A bag built to be the only one you carry.",
+    "tags": [
+      "handbag",
+      "leather",
+      "black",
+      "structured",
+      "tote",
+      "everyday"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000018/colophon-handbag-black.jpg"
   },
   {
     "_id": {
       "$oid": "67c000000000000000000019"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Card Wallet",
-    "price": 55,
+    "name": "Colophon Drop Earring, Emerald",
+    "price": 65,
     "category": "accessories",
     "attributes": {
-      "color": "Black",
-      "material": "leather"
+      "color": "Emerald",
+      "material": "brass"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000019/card-wallet.jpg"
+    "description": "A faceted emerald crystal drop suspended from gold-tone brass. Light catches the facets at every angle, so it carries a plain outfit on its own. Weighs almost nothing on the ear.",
+    "tags": [
+      "earring",
+      "brass",
+      "emerald",
+      "drop",
+      "statement"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000019/colophon-drop-earring-emerald.jpg"
   },
   {
     "_id": {
       "$oid": "67c00000000000000000001a"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Baseball Cap",
-    "price": 32,
+    "name": "Harlequin Hoop Earring",
+    "price": 58,
     "category": "accessories",
     "attributes": {
-      "color": "Navy",
-      "material": "cotton"
+      "color": "Sage/Cream",
+      "material": "resin"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001a/baseball-cap.jpg"
+    "description": "An open hoop earring in a sage-and-cream checkerboard pattern, finished matte. The ring shape sits flat against the shoulder and catches the eye without a single stone. A graphic pick for an outfit that's otherwise plain.",
+    "tags": [
+      "earring",
+      "hoop",
+      "green",
+      "cream",
+      "checkerboard",
+      "statement"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001a/harlequin-hoop-earring.jpg"
   },
   {
     "_id": {
       "$oid": "67c00000000000000000001b"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Crossbody Bag",
-    "price": 130,
+    "name": "Tropic Edition Earring",
+    "price": 52,
     "category": "accessories",
     "attributes": {
-      "color": "Black",
-      "material": "nylon"
+      "color": "Mustard",
+      "material": "resin"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001b/crossbody-bag.jpg"
+    "description": "A leaf-shaped drop earring in matte mustard resin, cut like a monstera leaf with a gold-tone stud at the top. The piece is light despite its size and hangs still rather than swinging. A warm note for a plain outfit.",
+    "tags": [
+      "earring",
+      "mustard",
+      "leaf",
+      "gold",
+      "statement"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001b/tropic-edition-earring.jpg"
   },
   {
     "_id": {
       "$oid": "67c00000000000000000001c"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Socks 3-Pack",
-    "price": 18,
+    "name": "Byline Shoulder Bag",
+    "price": 180,
     "category": "accessories",
     "attributes": {
-      "color": "Mixed",
-      "material": "cotton"
+      "color": "Cognac",
+      "material": "leather"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001c/socks-3pack.jpg"
+    "description": "A slouchy shoulder bag in cognac leather, with a rounded body and twin rolled top handles. Antique-gold hardware runs through the straps, and a zip pocket sits flush against the front. Built to carry the day's contents without structure getting in the way.",
+    "tags": [
+      "bag",
+      "leather",
+      "cognac",
+      "shoulder-bag",
+      "everyday"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001c/byline-shoulder-bag.jpg"
   },
   {
     "_id": {
       "$oid": "67c00000000000000000001d"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Ribbed Gloves",
-    "price": 38,
+    "name": "Masthead Wrist Watch",
+    "price": 195,
     "category": "accessories",
     "attributes": {
-      "color": "Black",
-      "material": "wool"
+      "color": "Black/Silver",
+      "material": "steel"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001d/ribbed-gloves.jpg"
+    "description": "A wristwatch with a polished stainless case and a black dial, set with silver hour markers and a date window. The link bracelet matches the case in a bright steel finish. A watch that reads formal without trying, day to day.",
+    "tags": [
+      "watch",
+      "steel",
+      "black",
+      "bracelet",
+      "formal"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001d/masthead-wrist-watch.jpg"
   },
   {
     "_id": {
       "$oid": "67c00000000000000000001e"
     },
     "_class": "org.aibles.ecommerce.product_service.entity.Product",
-    "name": "Messenger Bag",
-    "price": 165,
+    "name": "Gilt Masthead Watch",
+    "price": 420,
     "category": "accessories",
     "attributes": {
-      "color": "Olive",
-      "material": "canvas"
+      "color": "Gold/Blue",
+      "material": "steel"
     },
-    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001e/messenger-bag.jpg"
+    "description": "A wristwatch in gold-tone stainless steel, with a blue dial marked in white Roman numerals and a red accent second hand. The chronograph-style case carries extra pushers at the side, and the bracelet adjusts with a hidden clasp. Suited to evening wear rather than a daily rotation.",
+    "tags": [
+      "watch",
+      "steel",
+      "gold",
+      "blue",
+      "chronograph",
+      "formal"
+    ],
+    "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001e/gilt-masthead-watch.jpg"
   }
 ]

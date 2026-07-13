@@ -93,6 +93,7 @@ function handleAddToCart() {
       <div class="pdp__info">
         <h1 class="pdp__name">{{ product.name }}</h1>
         <p class="pdp__price">{{ formattedPrice }}</p>
+        <p v-if="product.description" class="pdp__description">{{ product.description }}</p>
         <dl v-if="attributeRows.length" class="pdp__attrs">
           <template v-for="[k, v] in attributeRows" :key="k">
             <dt>{{ k }}</dt>
@@ -160,6 +161,12 @@ function handleAddToCart() {
   font-family: var(--font-mono);
   font-size: var(--type-h2);
   margin: var(--space-3) 0 var(--space-6);
+}
+.pdp__description {
+  margin-top: var(--space-3);
+  max-width: 60ch;
+  color: var(--muted-ink);
+  line-height: 1.6;
 }
 .pdp__attrs {
   display: grid;
