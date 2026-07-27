@@ -34,6 +34,19 @@ for ns in infra monitoring bootstrap; do
   kubectl get ns "$ns" >/dev/null 2>&1 || kubectl create ns "$ns"
 done
 
+# ── Default StorageClass: gp3 (xfs, encrypted) — MUST precede any PVC ─────────
+# The infra statefulsets' volumeClaimTemplates name no storageClassName, so each
+# PVC binds to the cluster's DEFAULT class. A fresh EKS ships gp2 as the default
+# (in-tree provisioner, ext4 → Kafka's lost+found crash). Apply our gp3 class
+# (ebs.csi.aws.com, xfs, encrypted) as the new default and demote gp2 BEFORE the
+# statefulsets below create their PVCs, or those PVCs sit Pending forever with
+# "no storage class is set". Idempotent: apply + patch both re-run cleanly.
+echo "▶ applying gp3 default StorageClass (xfs) + demoting gp2"
+kubectl apply -f k8s/infra/overlays/aws/storageclass-gp3.yaml
+kubectl patch storageclass gp2 \
+  -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}' \
+  >/dev/null 2>&1 || true
+
 # ── Helm repos for the observability charts ──────────────────────────────────
 helm repo add vm https://victoriametrics.github.io/helm-charts/ 2>/dev/null || true
 helm repo add grafana https://grafana.github.io/helm-charts 2>/dev/null || true

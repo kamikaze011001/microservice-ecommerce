@@ -28,6 +28,25 @@
             <artifactId>s3</artifactId>
             <version>${aws.sdk.version}</version>
         </dependency>
+        <!-- STS module: required for IRSA on EKS. DefaultCredentialsProvider's
+             WebIdentityTokenCredentialsProvider calls AssumeRoleWithWebIdentity
+             to exchange the pod's projected SA token for the IAM role's temp
+             creds. AWS SDK v2 is intentionally modular — the `s3` artifact does
+             NOT pull `sts` in transitively — so without this on the classpath the
+             SDK logs "To use web identity tokens, the 'sts' service module must
+             be on the class path", IRSA fails silently, and the credential chain
+             falls back to the EKS NODE's instance profile (IMDS). That node role
+             has no s3:PutObject on the media bucket → every presigned-upload PUT
+             returns 403 AccessDenied (the presign itself succeeds because it
+             signs with whatever creds it resolved, and the URL even carries an
+             X-Amz-Security-Token, so it looks like IRSA worked). Both
+             authorization-server (avatars) and product-service (product images)
+             depend on core-s3, so they pick STS up transitively. -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sts</artifactId>
+            <version>${aws.sdk.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

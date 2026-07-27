@@ -46,6 +46,15 @@ REDIS_AUTH="$(tf_out redis_auth_token)"
 DB_PASS="$(tf_out db_master_password)"
 S3_BUCKET="$(tf_out s3_bucket_name)"
 S3_BASE_URL="$(tf_out s3_public_base_url)"
+# Public HTTPS storefront/gateway URL (Phase 5b). The gateway ALB is
+# internet-facing with valid TLS, so PayPal can reach the return URLs directly —
+# no tunnel needed on AWS (unlike local kind, which uses PAYPAL_TUNNEL_URL via
+# /etc/hosts + port-forward). This feeds application.paypal.tunnel-url below so
+# the PayPal create-order returnUrl/cancelUrl are absolute https URLs PayPal
+# accepts. Without it, application.yml's ${PAYPAL_TUNNEL_URL} placeholder is
+# never resolved (no envFrom app-secrets on the AWS overlay) and gets sent
+# literally → PayPal 400 INVALID_PARAMETER_SYNTAX.
+SHOP_URL="$(tf_out shop_url)"
 
 put() {  # put <service> <json>
   local svc="$1" json="$2"
@@ -168,10 +177,11 @@ put orchestrator-service "$(jq -n \
 }')"
 
 put payment-service "$(jq -n \
-  --arg cid "$PAYPAL_CLIENT_ID" --arg sec "$PAYPAL_CLIENT_SECRET" '{
+  --arg cid "$PAYPAL_CLIENT_ID" --arg sec "$PAYPAL_CLIENT_SECRET" --arg shop "$SHOP_URL" '{
   "server.port":"8484",
   "application.frontend.base-url":"",
   "application.paypal.base-url":"https://api-m.sandbox.paypal.com",
+  "application.paypal.tunnel-url":$shop,
   "application.paypal.success-path":"/payment-service/v1/paypal:success",
   "application.paypal.cancel-path":"/payment-service/v1/paypal:cancel",
   "application.paypal.client-id":$cid,"application.paypal.client-secret":$sec

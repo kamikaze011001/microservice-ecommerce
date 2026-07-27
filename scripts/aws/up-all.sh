@@ -126,6 +126,13 @@ fi
 # pinned us to microecom-eks.
 S3_ROLE_ARN="$(terraform -chdir="$TF" output -raw s3_irsa_role_arn)" \
   || { echo "ERROR: 'terraform output s3_irsa_role_arn' failed — run step 1 (terraform apply) first" >&2; exit 1; }
+# Create the `apps` namespace BEFORE the IRSA ServiceAccounts. The overlay's
+# namespace.yaml is applied last (inside `kubectl apply -k`), but the IRSA SAs
+# below are stamped and applied imperatively first — both target namespace
+# `apps`, which doesn't exist yet → "namespaces 'apps' not found". Apply the
+# Namespace directly so the SAs land; the later `apply -k` reconciles it
+# idempotently (Namespace apply is a no-op once it exists).
+kubectl apply -f "$ROOT/k8s/apps/overlays/aws/namespace.yaml"
 sed "s|PLACEHOLDER_S3_ROLE_ARN|${S3_ROLE_ARN}|g" \
   "$ROOT/k8s/apps/overlays/aws/s3-irsa-serviceaccounts.yaml" | kubectl apply -f -
 
@@ -157,6 +164,20 @@ banner "Step 7/9 · seed RDS data (accounts/roles/users)"
 # ── Step 8 — RDS inventory stock (tables now exist) ───────────────────────────
 banner "Step 8/9 · seed RDS inventory stock"
 "$ROOT/scripts/aws/seed-inventory.sh"
+
+# AvailableStockSeeder runs at inventory-service startup (step 6) and seeds the
+# Redis `available:{productId}` reservation counters from SUM(product_quantity_history).
+# At step 6 the ledger was EMPTY, so it backfilled 0 rows and created NO counters
+# — every order then fails "Insufficient available stock" (the Lua reservation
+# reads a missing key as 0). The ledger rows were just inserted above, so restart
+# inventory-service: the seeder re-runs, backfills inventory_product.stock from
+# the ledger SUM, and re-incrs every `available:*` counter. It deletes-then-incrs
+# each key, so this is safe and idempotent. See AvailableStockSeeder ("On Redis
+# loss/restart, this runner reseeds all counters from the DB floor"). Without this
+# restart, order placement is broken until the next inventory-service pod restart.
+echo "▶ restarting inventory-service so AvailableStockSeeder re-seeds Redis from the populated ledger ..."
+kubectl -n apps rollout restart deploy/inventory-service
+kubectl -n apps rollout status deploy/inventory-service --timeout=300s
 
 # ── Step 9 — S3 product images (Phase 4c) ─────────────────────────────────────
 banner "Step 9/9 · seed S3 product images"
