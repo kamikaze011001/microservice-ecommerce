@@ -88,3 +88,24 @@ seed_table product_quantity_history "$QTY_JSON" '
 '
 
 echo "inventory seed complete"
+
+# AvailableStockSeeder runs at inventory-service startup (during k8s-apps, BEFORE
+# this script) and seeds the Redis `available:{productId}` reservation counters
+# from SUM(product_quantity_history). At that point the ledger was EMPTY, so it
+# backfilled 0 rows and created NO counters — every order then fails
+# "Insufficient available stock" (the Lua reservation reads a missing key as 0).
+# The ledger rows were just inserted above, so restart inventory-service: the
+# seeder re-runs, backfills inventory_product.stock from the ledger SUM, and
+# re-incrs every `available:*` counter. It deletes-then-incrs each key, so this
+# is safe and idempotent (a no-op seed just costs one extra rollout). Without
+# this restart, order placement stays broken until the next inventory-service
+# pod restart. Mirrors the same fix in scripts/aws/up-all.sh step 8.
+#
+# Skipped when the inventory-service Deployment isn't present (e.g. running the
+# seed standalone before k8s-apps) — the empty-table WARN above already covers
+# that case, and restarting a nonexistent Deployment would just add noise.
+if kubectl -n apps get deploy inventory-service >/dev/null 2>&1; then
+  echo "==> restarting inventory-service so AvailableStockSeeder re-seeds Redis from the populated ledger"
+  kubectl -n apps rollout restart deploy/inventory-service
+  kubectl -n apps rollout status deploy/inventory-service --timeout=300s
+fi

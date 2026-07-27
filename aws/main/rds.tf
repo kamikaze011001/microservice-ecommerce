@@ -67,6 +67,8 @@ resource "aws_db_subnet_group" "main" {
 #     - db_subnet_group_name = aws_db_subnet_group.main.name
 #     - vpc_security_group_ids = [aws_security_group.rds.id]
 #     - skip_final_snapshot=true, deletion_protection=false  (ephemeral; destroys clean)
+#     - backup_retention_period=7  (REQUIRED >0 — PART D's read replica is built from
+#         the source's automated backups; 0 => CreateDBInstanceReadReplica fails)
 #   Docs: https://registry.terraform.io/modules/terraform-aws-modules/rds/aws/latest
 module "rds" {
   source                      = "terraform-aws-modules/rds/aws"
@@ -90,6 +92,12 @@ module "rds" {
   skip_final_snapshot         = true
   deletion_protection         = false
   manage_master_user_password = false
+  # A read replica (PART D) is built from the source's automated backups, so the
+  # primary MUST have backups on (retention > 0) or CreateDBInstanceReadReplica
+  # fails with InvalidDBInstanceState. apply_immediately enables backups on the
+  # already-created primary now (brief outage) instead of at the maintenance window.
+  backup_retention_period     = 7
+  apply_immediately           = true
 }
 # ─────────────────────────────────────────────────────────────────────────────
 # PART D — [HUMAN ✍️]  the read replica   module "rds_replica"
@@ -98,7 +106,7 @@ module "rds" {
 #     - identifier            = "${var.project}-mysql-replica"
 #     - replicate_source_db   = module.rds.db_instance_identifier
 #     - instance_class="db.t4g.micro", port=3306
-#     - create_db_subnet_group=false, db_subnet_group_name = aws_db_subnet_group.main.name
+#     - create_db_subnet_group=false (same-region replica inherits the source's subnet group — do NOT set db_subnet_group_name)
 #     - vpc_security_group_ids = [aws_security_group.rds.id]
 #     - skip_final_snapshot=true
 #   🎓 Be ready to explain: the app keeps its master/slave routing datasource
@@ -112,9 +120,12 @@ module "rds_replica" {
   port                   = 3306
   replicate_source_db    = module.rds.db_instance_identifier
   create_db_subnet_group = false
-  db_subnet_group_name   = aws_db_subnet_group.main.name
+  # Same-region replica: OMIT db_subnet_group_name — it inherits the source's
+  # subnet group. Setting it forces replicate_source_db to be an ARN (provider rule).
   vpc_security_group_ids = [aws_security_group.rds.id]
   skip_final_snapshot    = true
+  create_db_option_group    = false   # replica inherits the source's option group
+  create_db_parameter_group = false   # replica inherits the source's parameter group
 }
 # ─────────────────────────────────────────────────────────────────────────────
 # PART E — [HUMAN ✍️]  outputs (seed-secrets.sh + seed-rds.sh read these)
