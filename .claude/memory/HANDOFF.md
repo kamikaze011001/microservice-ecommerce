@@ -31,17 +31,36 @@ edits `k8s/apps/overlays/aws/*` and `scripts/aws/gen-aws-overlay.sh`.
   `kubectl kustomize k8s/apps/overlays/{local,aws}` build clean.
 
 ## In progress — Next
-1. **WAS RUNNING when the session ended:** `make k8s-infra` (Task 8 step 3). Re-check or re-run.
-2. **NEEDS THE USER:** `make k8s-tunnel` in a separate terminal — binds :80/:443, prompts for
-   sudo, must stay alive. ingress-nginx sits `<pending>` until it runs.
-3. Then: `k8s-build` → `k8s-seed` → `k8s-seed-images` → `k8s-apps` → `k8s-seed-{mysql,inventory,perftest}`.
-4. **The actual unverified gate (Task 8 steps 12–14):** storefront 200, gateway liveness UP,
-   product browse JSON, and `make k8s-rebuild svc=order-service`.
-5. Tick the plan checkboxes, then commit the ~40 files in the plan's per-task commit structure.
+**Plan 1 is functionally complete and committed. One step remains, and it needs the user.**
+
+1. **NEEDS THE USER:** `make k8s-tunnel` in a separate terminal — binds :80/:443, prompts for
+   sudo, must stay alive. `ingress-nginx-controller` sits at `EXTERNAL-IP <pending>` until it
+   runs (confirmed this session). This is the *only* unverified path.
+2. Once the tunnel is up, verify the 4 remaining Plan 1 checkboxes (lines ~1080/1094/1108/1165
+   and the acceptance criteria): `/etc/hosts` resolves, ingress returns 404 from nginx,
+   `http://microecom.local` returns 200, `http://api.microecom.local/...` serves gateway health
+   + product JSON.
+3. Also still unticked: `make k8s-down` tears down cleanly (not exercised — the cluster was
+   deliberately left running for the tunnel check).
+4. Then Plan 2 (Helm chart).
+
+## Verified this session (full E2E, cluster still running)
+- Infra all Running; `schema-registry` + `kafka-exporter` healthy = functional proof of the two
+  `install.sh` fixes (both crash without them).
+- 11 images pushed, confirmed by reading the registry catalog rather than trusting exit 0.
+- All 4 seed jobs + mysql/inventory/images/perftest seeds completed (`uploaded=30 missing=0`).
+- All 10 app pods 1/1, 0 restarts — the node over-subscription did **not** bite.
+- **Via port-forward (bypassing the tunnel):** product browse returns 200 with all 30 seeded
+  products incl. MinIO image URLs; frontend returns 200; gateway liveness + readiness both UP on
+  the management port (19093 — **not** 9091, and the gateway deliberately does not route
+  `/actuator/**`, so a 404 on :6868 is correct, not a failure).
+- Inner loop: `make k8s-rebuild svc=order-service` rebuilt, pushed and rolled a new pod cleanly.
 
 ## Settled decisions
-- **Everything is still uncommitted** — zero commits since `e041fe2`. Committing IS the remaining
-  task; do not treat the working tree as scratch.
+- **All work is committed** — 12 commits on `feat/aws-live-deploy` (`e041fe2..aa7bcce`), working
+  tree clean. This reverses the previous handoff's warning.
+- `deploy/` empty dirs carry `.gitkeep`; the plan verified the tree with `find -type d`, which
+  does not catch that git cannot track empty directories.
 - The **5001-host / 5000-pod registry split is correct**, not a bug. Plan 1's acceptance criterion
   "no `localhost:5001` references remain anywhere" is **obsolete** — do not enforce it.
 - Re-running the full E2E before committing was the user's explicit choice this session.
