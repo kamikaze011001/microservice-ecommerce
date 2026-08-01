@@ -191,6 +191,68 @@ Re-run the baseline measurements. The numbers to beat: **459 downloads, 41s**.
 
 Verification needs a running cluster: the push step requires the registry port-forward.
 
+### Measured results (2026-08-01, after implementation)
+
+| Metric | Before | After |
+|---|---|---|
+| `order-service` source-only rebuild, wall | 41s | **10.7s** (`time make k8s-rebuild svc=order-service`) |
+| `order-service` source-only rebuild, downloads | 459 | **0** |
+| Full `make k8s-build`, cold cache | n/a (serial) | **424s** (~7m04s), 683 `Downloaded from central` lines |
+| Full `make k8s-build`, warm cache | n/a (serial) | **9.5s**, 0 downloads |
+| Maven build cache on disk | 0 | **6.95 GB** total BuildKit builder cache after the warm build (`docker builder du`) |
+
+All eight service JARs verified non-truncated (`BOOT-INF/lib/` entry counts in the hundreds: 233,
+198, 211, 185, 226, 195, 140, 165 for authorization-server, gateway, inventory-service,
+product-service, order-service, payment-service, orchestrator-service, bff-service respectively),
+and a rebuilt `order-service` rolled out and served traffic through the ingress rule.
+
+Method notes, for anyone re-running this:
+
+- **Cold-cache methodology deviation.** `make k8s-build-cache-prune` only removes BuildKit's
+  `type=exec.cachemount` entries (the per-service `/root/.m2` mounts) — it does not touch BuildKit's
+  regular content-addressed layer cache. Tasks 1–3's standalone `docker build` verification runs had
+  already warmed that layer cache against this exact unchanged source, so the first "cold" attempt
+  (prune + `make k8s-build`) hit full layer-cache reuse on every `RUN` step (`CACHED` in the BuildKit
+  output) and finished in 27s with 0 downloads — not a cold build, a false cold reading. Confirmed by
+  inspecting the build log for `CACHED` markers before drawing that conclusion. The real cold number
+  above (424s / 683 downloads) was measured after `docker builder prune -af` (a full builder-cache
+  wipe, not just the exec.cachemount filter), which is the state a genuinely fresh host or CI runner
+  would start from.
+- **683 vs. 459 is not a like-for-like count.** The baseline's 459 downloads were for one service
+  (`order-service`) alone. The cold `make k8s-build` run builds the `maven-cores` base plus all eight
+  services in one pass, each with its own isolated `m2-${SERVICE}` cache per the per-service-cache-id
+  design — so 683 is the total across nine independent Maven resolutions from empty caches, not a
+  regression versus 459.
+- **Warm full build (9.5s, 0 downloads)** re-ran `make k8s-build` immediately after the cold run with
+  no source changes: every layer, including the `mvn package` `RUN` steps, hit BuildKit's layer cache
+  directly (not just the `/root/.m2` mount), so this is the best case — nothing rebuilt at all.
+- **Inner loop (10.7s, 0 downloads)** is the meaningful headline number: a real content edit to
+  `OrderServiceApplication.java` (a comment line, not `touch` — BuildKit content-hashes `COPY` inputs,
+  so `touch` alone would not invalidate the layer) invalidated the `COPY order-service/` layer and
+  forced `RUN --mount=type=cache,...,id=m2-order-service ... mvn package` to actually re-execute;
+  the BuildKit log shows `mvn` reaching `BUILD SUCCESS` in 4.4s with zero `Downloaded from central`
+  lines, pulling every dependency from the warm per-service cache mount instead of the network. The
+  full `make k8s-rebuild` wall time (10.7s) also includes the image push and triggering
+  `kubectl rollout restart`.
+- **JAR verification substitution.** The runtime images ship a JRE-slim base with no `unzip` binary,
+  so `docker run --entrypoint sh ... unzip -l` (the brief's literal command) silently returned 0 for
+  all eight services — a false corruption signal caused by a missing tool, not a truncated JAR. Each
+  jar was instead extracted with `docker run --rm --entrypoint cat <image> /app/app.jar > file.jar`
+  and checked with Python's `zipfile.ZipFile(...).testzip()` (stronger than `unzip -l`: it CRC-checks
+  every member, not just lists names) plus a `BOOT-INF/lib/` count. All eight passed with no
+  `testzip()` failures and sizes in the 99–142 MB range.
+- **Ingress path.** `sudo -v && make k8s-cluster-up` could not cache a sudo credential in this
+  non-interactive agent shell (macOS `tty_tickets` scopes the credential to the terminal that created
+  it, and this shell has no TTY at all), so `minikube tunnel` was not started — `cluster.sh` detects
+  this and treats it as non-fatal, matching its documented design. Both the pre-rebuild and
+  post-rebuild HTTP checks in Step 7 were therefore run against
+  `kubectl -n infra port-forward svc/ingress-nginx-controller 18080:80` with an explicit
+  `Host: api.microecom.local` header (`curl -H 'Host: api.microecom.local' http://127.0.0.1:18080/product-service/v1/products`),
+  both returning `200` with real catalog data. **This verifies the Ingress rule and the app behind
+  it, not the `minikube tunnel` transport itself** — the tunnel path (`http://api.microecom.local/...`
+  directly) remains unverified in this session and needs a user-run
+  `sudo -v && make k8s-tunnel` from an interactive terminal.
+
 ## Out of scope
 
 - `deploy/` Helm work (Plan 2 onward).
