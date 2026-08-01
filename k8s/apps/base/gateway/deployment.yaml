@@ -18,7 +18,7 @@ spec:
       serviceAccountName: gateway
       containers:
         - name: gateway
-          image: localhost:5001/gateway:dev
+          image: localhost:5000/gateway:dev
           # Always re-pull: :dev is a MUTABLE tag rebuilt in place by
           # k8s/images/build.sh. With IfNotPresent, kind nodes serve the stale
           # cached layer and code changes never reach the pod. Always forces a

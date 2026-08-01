@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: inventory-service
-          image: localhost:5001/inventory-service:dev
+          image: localhost:5000/inventory-service:dev
           imagePullPolicy: Always
           ports:
             - { name: http, containerPort: 6969 }
