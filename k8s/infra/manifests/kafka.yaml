@@ -61,6 +61,17 @@ spec:
       securityContext:
         # apache/kafka runs as uid 1000 (appuser); fsGroup makes the PVC writable.
         fsGroup: 1000
+      initContainers:
+        # minikube-hostpath volumes are root-owned and do not honor fsGroup
+        # consistently. Set ownership explicitly before Kafka formats storage.
+        - name: prepare-data
+          image: apache/kafka:3.9.1
+          securityContext:
+            runAsUser: 0
+          command: ["/bin/sh", "-c", "chown -R 1000:1000 /var/lib/kafka/data"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/kafka/data
       containers:
         - name: kafka
           image: apache/kafka:3.9.1

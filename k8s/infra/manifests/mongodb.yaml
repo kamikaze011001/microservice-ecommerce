@@ -79,6 +79,16 @@ spec:
         runAsGroup: 999
         fsGroup: 999          # makes the data PVC writable by mongod
       initContainers:
+        # minikube-hostpath volumes are root-owned and do not honor fsGroup
+        # consistently. Set ownership explicitly before mongod starts.
+        - name: prepare-data
+          image: mongo:7.0
+          securityContext:
+            runAsUser: 0
+          command: ["/bin/sh", "-c", "chown -R 999:999 /data/db"]
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
         # Copy the keyFile to an emptyDir, owned 999:999 mode 0400. A Secret
         # mount alone can't satisfy "owned by 999 AND not group-readable".
         - name: prepare-keyfile
