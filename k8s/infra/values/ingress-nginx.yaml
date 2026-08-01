@@ -1,21 +1,6 @@
 controller:
-  # The controller reaches the host on :80/:443 via hostPort (below) bound to
-  # the control-plane node, which cluster.yaml maps to the host with
-  # extraPortMappings. The Service itself is therefore just ClusterIP — do NOT
-  # set type: NodePort with ports 80/443: NodePort only allows 30000-32767, so
-  # the chart's server-side apply is rejected ("provided port is not in the
-  # valid range"). hostPort is the mechanism that actually exposes 80/443.
+  # minikube tunnel assigns the LoadBalancer service a host-reachable IP.
+  # Keep the tunnel running while using the ingress hosts.
   service:
-    type: ClusterIP
-  hostPort:
-    enabled: true
-    ports:
-      http: 80
-      https: 443
-  nodeSelector:
-    ingress-ready: "true"
-  tolerations:
-    - key: node-role.kubernetes.io/control-plane
-      operator: Equal
-      effect: NoSchedule
+    type: LoadBalancer
   watchIngressWithoutClass: true
