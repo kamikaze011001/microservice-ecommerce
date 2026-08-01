@@ -1,16 +1,45 @@
 # Base image with all core/* modules installed into the maven local repo.
-# Built once; per-service Dockerfile.jvm uses this as FROM so each service
-# build can resolve common-dto, grpc-common, etc. without rebuilding them.
+# Built once; per-service Dockerfile.jvm uses this as FROM *and* bind-mounts its
+# /root/.m2 as the seed for that service's Maven cache, so each service build
+# resolves common-dto, grpc-common, etc. without rebuilding them.
 #
-# Module install order matches scripts/maven/install-modules.sh (which is
-# canonical for dependency order).
+# One COPY + RUN pair per module, in the dependency order defined by
+# scripts/maven/install-modules.sh (that script is canonical). Editing one
+# module invalidates its layer and the ones after it -- not all ten.
+#
+# NO cache mount here, deliberately. This image must BAKE its artifacts into a
+# layer, because that layer is what Dockerfile.jvm bind-mounts. A cache mount at
+# /root/.m2 would divert them into the cache and leave the bind source empty.
+# See .claude/memory/conventions/buildkit-cache-mount-shadows-baked-m2.md
 FROM maven:3.9-eclipse-temurin-17
-WORKDIR /workspace
-COPY core/ ./core/
-RUN set -eux; \
-    cd core; \
-    for m in common-dto grpc-common core-jwt-util core-redis core-s3 \
-             core-order-cache core-routing-db core-paypal core-email \
-             core-exception-api; do \
-      (cd "$m" && mvn -B -DskipTests install); \
-    done
+WORKDIR /workspace/core
+
+COPY core/common-dto/ ./common-dto/
+RUN cd common-dto && mvn -B -DskipTests install
+
+COPY core/grpc-common/ ./grpc-common/
+RUN cd grpc-common && mvn -B -DskipTests install
+
+COPY core/core-jwt-util/ ./core-jwt-util/
+RUN cd core-jwt-util && mvn -B -DskipTests install
+
+COPY core/core-redis/ ./core-redis/
+RUN cd core-redis && mvn -B -DskipTests install
+
+COPY core/core-s3/ ./core-s3/
+RUN cd core-s3 && mvn -B -DskipTests install
+
+COPY core/core-order-cache/ ./core-order-cache/
+RUN cd core-order-cache && mvn -B -DskipTests install
+
+COPY core/core-routing-db/ ./core-routing-db/
+RUN cd core-routing-db && mvn -B -DskipTests install
+
+COPY core/core-paypal/ ./core-paypal/
+RUN cd core-paypal && mvn -B -DskipTests install
+
+COPY core/core-email/ ./core-email/
+RUN cd core-email && mvn -B -DskipTests install
+
+COPY core/core-exception-api/ ./core-exception-api/
+RUN cd core-exception-api && mvn -B -DskipTests install

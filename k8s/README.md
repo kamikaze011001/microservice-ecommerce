@@ -32,6 +32,7 @@ Keep both halves on one line: macOS sudo caches per-terminal (`tty_tickets`), so
 | Goal | Command |
 |---|---|
 | Re-deploy one service after code change | `make k8s-rebuild svc=order-service` |
+| Reclaim Maven build caches (disk) | `make k8s-build-cache-prune` |
 | Re-apply all manifests | `make k8s-apps` |
 | Status table | `make k8s-status` |
 | Stress test (HPA) | `make k8s-payment-stress` then `make k8s-payment-stress-logs` |
@@ -40,6 +41,21 @@ Keep both halves on one line: macOS sudo caches per-terminal (`tty_tickets`), so
 | Re-seed inventory stock (cart shows "0 available") | `make k8s-seed-inventory` |
 | Tear it ALL down | `make k8s-down` |
 | Resume after stopping | `make k8s-start` |
+
+## Image builds
+
+`k8s/images/build.sh` builds the eight JVM services **in parallel** — `BUILD_JOBS=4`
+by default, override it with `BUILD_JOBS=8 make k8s-build`. This is safe only
+because each service has a private BuildKit cache for its Maven repository
+(`id=m2-<service>` in `Dockerfile.jvm`); Maven's local repository is not safe for
+concurrent writes.
+
+`maven-cores` is a build-only base image and is **not pushed** to the registry —
+`Dockerfile.jvm` resolves it from the local image store. Nothing in the cluster
+pulls it.
+
+The Maven caches cost roughly 150 MB per service. `make k8s-build-cache-prune`
+reclaims them; the next build re-downloads and re-warms.
 
 Dashboards: Grafana at `http://grafana.microecom.local` (admin/admin),
 VictoriaMetrics UI at `http://vm.microecom.local/vmui` (scrape health at

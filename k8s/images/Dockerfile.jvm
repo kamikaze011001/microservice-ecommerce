@@ -2,11 +2,33 @@
 # so the service `mvn package` resolves core/* modules instantly.
 ARG CORES_IMAGE=localhost:5001/maven-cores:dev
 
+# The same image as `builder` below, bind-mounted read-only as the seed source
+# for the Maven cache. Both FROMs resolve to one image: no extra pull, no extra
+# layer, no extra build time.
+FROM ${CORES_IMAGE} AS cores
+
 FROM ${CORES_IMAGE} AS builder
 ARG SERVICE
 WORKDIR /workspace
 COPY ${SERVICE}/ ./${SERVICE}/
-RUN cd ${SERVICE} && mvn -B -DskipTests package
+# Why the bind mount exists: a cache mount SHADOWS the image's own directory at
+# the same path, the way a volume mount does. Dockerfile.cores deliberately
+# BAKES the core/* artifacts into /root/.m2, so a bare
+#   RUN --mount=type=cache,target=/root/.m2 ... mvn package
+# hides them and every service build fails to resolve common-dto, grpc-common,
+# etc. Seeding the cache from the `cores` stage restores them.
+#
+# `cp -r` CLOBBERS on purpose. The cache outlives cores rebuilds, so a core/*
+# artifact already sitting in it must LOSE to the one from the freshly built
+# cores image; `cp -n` would keep the stale copy. Measured cost of the full
+# overwrite: ~0.2s for 190 MB / 3008 files.
+#
+# id=m2-${SERVICE} gives each service a private cache. Maven's local repository
+# is not safe for concurrent writes and build.sh builds services in parallel;
+# a shared cache can leave a truncated jar that poisons every later build.
+RUN --mount=type=cache,target=/root/.m2,id=m2-${SERVICE} \
+    --mount=type=bind,from=cores,source=/root/.m2,target=/cores-m2,ro \
+    cp -r /cores-m2/. /root/.m2/ && cd ${SERVICE} && mvn -B -DskipTests package
 
 FROM eclipse-temurin:17-jre AS runtime
 ARG SERVICE
