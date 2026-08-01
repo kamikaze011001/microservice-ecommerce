@@ -46,5 +46,5 @@ if [ "$TARGET" = "all" ]; then
   echo "✅ pushed ALL services to $REGISTRY (tag: $TAG)"
 else
   REGISTRY="$REGISTRY" TAG="$TAG" SVC="$TARGET" "$ROOT/k8s/images/build.sh"
-  echo "✅ pushed $TARGET (+ maven-cores base) to $REGISTRY (tag: $TAG)"
+  echo "✅ pushed $TARGET to $REGISTRY (tag: $TAG)"
 fi
