@@ -12,6 +12,17 @@ set -euo pipefail
 REGISTRY="${REGISTRY:-localhost:5001}"
 TAG="${TAG:-dev}"
 
+# How many service images to build at once. Safe only because each service has
+# its own Maven cache (id=m2-${SERVICE} in Dockerfile.jvm) -- Maven's local
+# repository is not safe for concurrent writes. 4 is conservative for a 12-core
+# laptop; raise it if the machine is idle during a build.
+BUILD_JOBS="${BUILD_JOBS:-4}"
+
+# Absolute path to this script, resolved BEFORE the cd below. The parallel build
+# re-execs one child per service and callers invoke us both relatively (Makefile)
+# and absolutely (scripts/aws/push-images.sh), so "$0" is not reliable here.
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
 cd "$(git rev-parse --show-toplevel)"
 
 if ! curl -fsS -o /dev/null "http://${REGISTRY}/v2/" 2>/dev/null; then
@@ -38,6 +49,14 @@ reuse_or_build() {  # $1=repo -> exit 0 (caller should skip) if reusing
   return 1
 }
 
+# maven-cores is a BUILD-ONLY base: Dockerfile.jvm consumes it through
+# `FROM ${CORES_IMAGE}`, which resolves from the local image store. No pod ever
+# pulls it, so it is not pushed -- that keeps 764 MB off the registry forward on
+# every build. Its reuse check therefore asks docker, not the registry.
+image_in_local_store() {  # $1=repo:tag -> exit 0 if present locally
+  docker image inspect "$1" >/dev/null 2>&1
+}
+
 SERVICES=(
   authorization-server
   gateway
@@ -50,13 +69,15 @@ SERVICES=(
 )
 
 build_cores() {
-  reuse_or_build "maven-cores" && return 0
+  if [ -n "${REUSE_EXISTING:-}" ] && image_in_local_store "${REGISTRY}/maven-cores:${TAG}"; then
+    echo "==> reusing ${REGISTRY}/maven-cores:${TAG} (already in the local image store)"
+    return 0
+  fi
   echo "==> building cores base image"
   docker build \
     -f k8s/images/Dockerfile.cores \
     -t "${REGISTRY}/maven-cores:${TAG}" \
     .
-  docker push "${REGISTRY}/maven-cores:${TAG}"
 }
 
 build_service() {
@@ -120,9 +141,17 @@ if [ -n "${SVC:-}" ]; then
     build_service "$SVC"
   fi
 else
-  for svc in "${SERVICES[@]}"; do
-    build_service "$svc"
-  done
+  # Build the service images concurrently. Each child re-execs this script with
+  # SVC set, so it runs exactly one build_service; REGISTRY / TAG /
+  # REUSE_EXISTING / VITE_API_BASE_URL are already exported by the caller and
+  # are inherited. xargs exits non-zero if any child failed and `set -e` turns
+  # that into a failed run -- verified on macOS xargs, which returns 1.
+  # BUILDKIT_PROGRESS=plain because concurrent fancy progress renderers fight
+  # over the terminal and produce unreadable output.
+  echo "==> building ${#SERVICES[@]} services, ${BUILD_JOBS} at a time"
+  printf '%s\n' "${SERVICES[@]}" \
+    | BUILDKIT_PROGRESS=plain xargs -P "${BUILD_JOBS}" -I{} \
+        env SVC={} SKIP_CORES=1 "$SELF"
   build_frontend
   build_mock_paypal
 fi
