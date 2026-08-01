@@ -1,7 +1,7 @@
 # Image build optimization — design
 
 Date: 2026-08-01
-Status: approved, not yet implemented
+Status: implemented, verified 2026-08-01
 Scope: `k8s/images/` (Dockerfiles + `build.sh`). Kustomize manifests, Helm work, and the
 `deploy/` refactor are out of scope.
 
@@ -197,7 +197,7 @@ Verification needs a running cluster: the push step requires the registry port-f
 |---|---|---|
 | `order-service` source-only rebuild, wall | 41s | **10.7s** (`time make k8s-rebuild svc=order-service`) |
 | `order-service` source-only rebuild, downloads | 459 | **0** |
-| Full `make k8s-build`, cold cache | n/a (serial) | **424s** (~7m04s), 683 `Downloaded from central` lines |
+| Full `make k8s-build`, cold cache | n/a (serial) | **839s** (~14m; cores 395s serial + 8 services 444s parallel at `BUILD_JOBS=4`), **3962** `Downloaded from central` lines — corrected 2026-08-02, see breakdown below |
 | Full `make k8s-build`, warm cache | n/a (serial) | **9.5s**, 0 downloads |
 | Maven build cache on disk | 0 | **6.95 GB** total BuildKit builder cache after the warm build (`docker builder du`) |
 
@@ -214,15 +214,53 @@ Method notes, for anyone re-running this:
   already warmed that layer cache against this exact unchanged source, so the first "cold" attempt
   (prune + `make k8s-build`) hit full layer-cache reuse on every `RUN` step (`CACHED` in the BuildKit
   output) and finished in 27s with 0 downloads — not a cold build, a false cold reading. Confirmed by
-  inspecting the build log for `CACHED` markers before drawing that conclusion. The real cold number
-  above (424s / 683 downloads) was measured after `docker builder prune -af` (a full builder-cache
-  wipe, not just the exec.cachemount filter), which is the state a genuinely fresh host or CI runner
-  would start from.
-- **683 vs. 459 is not a like-for-like count.** The baseline's 459 downloads were for one service
-  (`order-service`) alone. The cold `make k8s-build` run builds the `maven-cores` base plus all eight
-  services in one pass, each with its own isolated `m2-${SERVICE}` cache per the per-service-cache-id
-  design — so 683 is the total across nine independent Maven resolutions from empty caches, not a
-  regression versus 459.
+  inspecting the build log for `CACHED` markers before drawing that conclusion. A cold number was then
+  measured after `docker builder prune -af` (a full builder-cache wipe, not just the exec.cachemount
+  filter), which is the state a genuinely fresh host or CI runner would start from — but that first
+  attempt (424s / 683 downloads, captured from one merged stdout stream) turned out to itself be
+  wrong; see the correction immediately below for the re-measured, per-service-attributable number.
+- **Correction (2026-08-02): the 424s / 683-download cold-build number above was wrong.**
+  A retained log from an earlier, strictly *warmer* run (the Task 3 parallel-verification build,
+  where only `order-service`'s cache mount was warm and the other seven services were cold) showed
+  **2499** `Downloaded from central` lines and a 460s wall time — more downloads and more time than
+  the "cold" 683/424s reading, which is impossible: a warmer run cannot download less than a colder
+  one. The 683 was a measurement artifact, most likely a partially-captured or interleaved read of
+  one merged stdout stream shared by four concurrent BuildKit children under
+  `BUILDKIT_PROGRESS=plain` — exactly the kind of output that is easy to lose or truncate. It was
+  re-measured from a genuine `docker builder prune -af` (full builder-cache wipe, confirmed empty via
+  `docker builder du` reporting `Total: 0B` immediately after) with **one log file per service**, so
+  every count below is individually attributable and none of them came from a merged/truncated
+  stream:
+
+  | Image | `Downloaded from central` |
+  |---|---|
+  | `maven-cores` | 982 |
+  | authorization-server | 306 |
+  | gateway | 425 |
+  | inventory-service | 432 |
+  | product-service | 318 |
+  | order-service | 459 |
+  | payment-service | 411 |
+  | orchestrator-service | 283 |
+  | bff-service | 346 |
+  | **Total** | **3962** |
+
+  `order-service`'s cold count (459) lands exactly on the single-service baseline measured earlier in
+  this document — strong corroboration that this run, unlike the 683 reading, is genuinely cold and
+  attributable per service. None of the nine per-service logs contain a `CACHED` marker (checked with
+  `grep -c CACHED`), confirming no layer was silently reused. The corrected total (3962) is not
+  directly comparable to the 2499 in the Task 3 log either — that run still had `order-service` warm
+  and (per its own build order) may have reused more of the `maven-cores` layer than this fully-wiped
+  run did — but it is in the same order of magnitude and, unlike 683, does not contradict any other
+  measurement in this document.
+
+  The baseline's 459 downloads were for one service (`order-service`) alone. The cold
+  `make k8s-build` run builds the `maven-cores` base plus all eight services, each with its own
+  isolated `m2-${SERVICE}` cache per the per-service-cache-id design — so 3962 is the total across
+  nine independent Maven resolutions from empty caches, not a regression versus 459. **This does not
+  change the headline result.** A cold build is a one-time cost (new machine, new CI runner, or after
+  a deliberate prune); the optimization targets the warm inner loop, and that number — 10.7s / 0
+  downloads versus the 41s / 459-download baseline — is unaffected by this correction.
 - **Warm full build (9.5s, 0 downloads)** re-ran `make k8s-build` immediately after the cold run with
   no source changes: every layer, including the `mvn package` `RUN` steps, hit BuildKit's layer cache
   directly (not just the `/root/.m2` mount), so this is the best case — nothing rebuilt at all.

@@ -43,7 +43,7 @@ aws ecr get-login-password --region "$REGION" \
 # 2. Build + push via the existing builder. "all" -> leave SVC unset.
 if [ "$TARGET" = "all" ]; then
   REGISTRY="$REGISTRY" TAG="$TAG" "$ROOT/k8s/images/build.sh"
-  echo "✅ pushed ALL services (+ maven-cores) to $REGISTRY (tag: $TAG)"
+  echo "✅ pushed ALL services to $REGISTRY (tag: $TAG)"
 else
   REGISTRY="$REGISTRY" TAG="$TAG" SVC="$TARGET" "$ROOT/k8s/images/build.sh"
   echo "✅ pushed $TARGET (+ maven-cores base) to $REGISTRY (tag: $TAG)"
