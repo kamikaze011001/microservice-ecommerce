@@ -9,6 +9,6 @@ patches:
   - path: patch-volume.yaml
   - path: patch-sa.yaml
 images:
-  - name: localhost:5001/product-service
+  - name: localhost:5000/product-service
     newName: 583178372344.dkr.ecr.ap-southeast-1.amazonaws.com/product-service
     newTag: dev

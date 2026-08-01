@@ -8,6 +8,6 @@ components:
 patches:
   - path: patch-volume.yaml
 images:
-  - name: localhost:5001/inventory-service
+  - name: localhost:5000/inventory-service
     newName: 583178372344.dkr.ecr.ap-southeast-1.amazonaws.com/inventory-service
     newTag: dev

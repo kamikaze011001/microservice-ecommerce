@@ -27,6 +27,6 @@ patches:
           alb.ingress.kubernetes.io/healthcheck-port: "19093"
           alb.ingress.kubernetes.io/healthcheck-path: /actuator/health/readiness
 images:
-  - name: localhost:5001/gateway
+  - name: localhost:5000/gateway
     newName: 583178372344.dkr.ecr.ap-southeast-1.amazonaws.com/gateway
     newTag: dev

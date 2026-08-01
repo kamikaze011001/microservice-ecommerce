@@ -9,7 +9,7 @@ strategic-merge patches.
 
 | Concern | Local pattern | AWS pattern |
 |---|---|---|
-| Image registry | `localhost:5001/<svc>:dev` | ECR registry hostname + immutable tag |
+| Image registry | `localhost:5000/<svc>:dev` | ECR registry hostname + immutable tag |
 | Vault auth | `VAULT_TOKEN=root` env literal | AppRole login; role-id / secret-id from a k8s Secret mounted by an init container |
 | Mail / PayPal creds | Already in Vault via local seed | Already in Vault via ESO from AWS Secrets Manager (`microecom/mail/smtp`, `microecom/payment/paypal`) |
 | Resource requests/limits | Hand-tuned for a single Docker host | Per-node-class limits; HPA targets stay the same |
@@ -24,7 +24,7 @@ strategic-merge patches.
 k8s/apps/overlays/aws/
 ├── README.md                    (this file)
 ├── kustomization.yaml           (lists base + patches below)
-├── image-overrides.yaml         (kustomize images: transformer, swaps localhost:5001 → ECR)
+├── image-overrides.yaml         (kustomize images: transformer, swaps localhost:5000 → ECR)
 ├── vault-approle/
 │   ├── secret.yaml              (ExternalSecret → 'vault-approle' Secret per app)
 │   └── init-container.yaml      (strategic-merge: adds Vault AppRole login init container)

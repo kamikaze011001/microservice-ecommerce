@@ -37,6 +37,6 @@ patches:
           alb.ingress.kubernetes.io/healthcheck-path: /
 
 images:
-  - name: localhost:5001/frontend
+  - name: localhost:5000/frontend
     newName: 583178372344.dkr.ecr.ap-southeast-1.amazonaws.com/frontend
     newTag: dev
