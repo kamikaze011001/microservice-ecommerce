@@ -12,9 +12,17 @@ VictoriaMetrics + Grafana + kube-state-metrics), seeds data + Vault, builds and
 pushes all images to the local registry, applies the 8 service Deployments, and
 seeds the inventory stock tables. Idempotent, safe to re-run.
 
-Start the ingress tunnel in a separate terminal and keep it running:
+The ingress hosts need `minikube tunnel` bound to :80/:443. `make k8s-bootstrap`
+starts it for you **if** a sudo credential is already cached — binding privileged
+ports needs root and a background process cannot answer a password prompt. So
+cache it up front:
 
-    make k8s-tunnel
+    sudo -v && make k8s-bootstrap
+
+If you skipped that, start the tunnel afterwards — it runs in the background, no
+terminal to keep open:
+
+    sudo -v && make k8s-tunnel     # make k8s-tunnel-stop to stop it
 
 ## Daily
 

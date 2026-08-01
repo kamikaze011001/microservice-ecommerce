@@ -15,10 +15,11 @@ source "$ROOT/deploy/scripts/lib/colors.sh"
 
 RUN_DIR="$ROOT/deploy/.run"
 REGISTRY_FORWARD_PIDFILE="$RUN_DIR/registry-forward.pid"
+TUNNEL_PIDFILE="$RUN_DIR/tunnel.pid"
 mkdir -p "$RUN_DIR"
 
 usage() {
-  echo "usage: cluster.sh <up|down|stop|start|tunnel|registry-forward|registry-stop|status>"
+  echo "usage: cluster.sh <up|down|stop|start|tunnel|tunnel-stop|registry-forward|registry-stop|status>"
   exit 1
 }
 
@@ -144,12 +145,16 @@ cmd_up() {
   enable_registry
   start_registry_forward
 
+  # Best-effort: the tunnel only matters for browsing the ingress hosts, so a
+  # missing sudo credential must not fail an otherwise healthy bring-up.
+  start_tunnel || log_info "tunnel not started; run 'sudo -v && make k8s-tunnel' when you need it"
+
   log_ok "minikube profile '$CLUSTER_NAME' is ready"
   log_info "host pushes through localhost:$HOST_REGISTRY_PORT; pods pull through $CLUSTER_REGISTRY"
-  log_info "start ingress in another terminal with: make k8s-tunnel"
 }
 
 cmd_down() {
+  stop_tunnel
   stop_registry_forward
   log_info "deleting minikube profile '$CLUSTER_NAME'"
   minikube delete -p "$CLUSTER_NAME"
@@ -157,6 +162,7 @@ cmd_down() {
 }
 
 cmd_stop() {
+  stop_tunnel
   stop_registry_forward
   log_info "stopping minikube profile '$CLUSTER_NAME'"
   minikube stop -p "$CLUSTER_NAME"
@@ -188,12 +194,93 @@ cmd_start() {
   log_info "restarting applications"
   kubectl -n apps rollout restart deployment
   kubectl -n apps rollout status deployment --timeout=10m
+
+  start_tunnel || log_info "tunnel not started; run 'sudo -v && make k8s-tunnel' when you need it"
+
   log_ok "cluster resumed"
 }
 
+# The ingress-nginx Service is a LoadBalancer, which on the docker driver is
+# only reachable through `minikube tunnel` -- a HOST process that binds
+# 127.0.0.1:80 and :443 and proxies into the cluster. kind did not need this:
+# its extraPortMappings had the (already privileged) Docker daemon publish 80
+# on the node container at creation time. minikube publishes no such port, so
+# the bind happens in userspace and needs root.
+#
+# Run it in the background with a PID file, mirroring start_registry_forward,
+# so the tunnel is not tied to a terminal the user must keep open.
+tunnel_is_listening() {
+  lsof -nP -iTCP:80 -sTCP:LISTEN >/dev/null 2>&1
+}
+
+stop_tunnel() {
+  if [[ -f "$TUNNEL_PIDFILE" ]]; then
+    local pid
+    pid="$(cat "$TUNNEL_PIDFILE" 2>/dev/null || true)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+      log_info "stopped minikube tunnel (pid=$pid)"
+    fi
+    rm -f "$TUNNEL_PIDFILE"
+  fi
+
+  # `minikube tunnel` re-executes itself under sudo to bind the privileged
+  # ports, so killing the PID we launched can leave the root-owned child
+  # holding :80. Clear it explicitly or the next start fails on a used port.
+  if pgrep -f "minikube tunnel -p $CLUSTER_NAME" >/dev/null 2>&1; then
+    sudo -n pkill -f "minikube tunnel -p $CLUSTER_NAME" 2>/dev/null \
+      || pkill -f "minikube tunnel -p $CLUSTER_NAME" 2>/dev/null \
+      || true
+  fi
+}
+
+start_tunnel() {
+  if ! minikube status -p "$CLUSTER_NAME" >/dev/null 2>&1; then
+    log_err "cluster '$CLUSTER_NAME' is not running; run '$0 up' first"
+    return 1
+  fi
+
+  stop_tunnel
+
+  # Binding :80/:443 needs root. Backgrounded there is no TTY to answer a
+  # password prompt, so require a cached credential and say exactly how to get
+  # one rather than launching something that will silently die.
+  if ! sudo -n true 2>/dev/null; then
+    log_err "sudo credentials are not cached; minikube tunnel cannot bind :80/:443"
+    log_err "run this first, then re-run the same command:"
+    log_err "    sudo -v"
+    return 1
+  fi
+
+  log_info "starting minikube tunnel in the background"
+  nohup minikube tunnel -p "$CLUSTER_NAME" >"$RUN_DIR/tunnel.log" 2>&1 &
+  local pid=$!
+  echo "$pid" >"$TUNNEL_PIDFILE"
+
+  local attempt
+  for attempt in $(seq 1 30); do
+    # Check for a real listener, NOT the Service's EXTERNAL-IP: minikube
+    # leaves EXTERNAL-IP 127.0.0.1 on the Service after the tunnel exits, so
+    # that field reports success against a dead tunnel.
+    if tunnel_is_listening; then
+      log_ok "tunnel ready (:80 and :443 bound)"
+      return 0
+    fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+      log_err "tunnel exited; see $RUN_DIR/tunnel.log"
+      rm -f "$TUNNEL_PIDFILE"
+      return 1
+    fi
+    sleep 1
+  done
+
+  log_err "tunnel did not bind :80 in time; see $RUN_DIR/tunnel.log"
+  stop_tunnel
+  return 1
+}
+
 cmd_tunnel() {
-  log_info "starting minikube tunnel; keep this process running"
-  minikube tunnel -p "$CLUSTER_NAME"
+  start_tunnel
 }
 
 cmd_status() {
@@ -212,16 +299,32 @@ cmd_status() {
   fi
 
   local pid
-  pid="$(cat "$REGISTRY_FORWARD_PIDFILE" 2>/dev/null || true)"
-  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-    echo "  running (pid=$pid, localhost:$HOST_REGISTRY_PORT -> service/registry:80)"
-    if curl -fsS -o /dev/null "http://localhost:$HOST_REGISTRY_PORT/v2/" 2>/dev/null; then
-      echo "  health: OK"
-    else
-      echo "  health: unavailable"
-    fi
+  if [[ ! -f "$REGISTRY_FORWARD_PIDFILE" ]]; then
+    echo "  not running"
   else
-    echo "  stale PID file"
+    pid="$(cat "$REGISTRY_FORWARD_PIDFILE" 2>/dev/null || true)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      echo "  running (pid=$pid, localhost:$HOST_REGISTRY_PORT -> service/registry:80)"
+      if curl -fsS -o /dev/null "http://localhost:$HOST_REGISTRY_PORT/v2/" 2>/dev/null; then
+        echo "  health: OK"
+      else
+        echo "  health: unavailable"
+      fi
+    else
+      echo "  stale PID file"
+    fi
+  fi
+
+  echo
+  echo "Ingress tunnel:"
+  # Report the listener, not the Service EXTERNAL-IP -- minikube leaves
+  # EXTERNAL-IP 127.0.0.1 behind after the tunnel dies.
+  if tunnel_is_listening; then
+    echo "  running (:80 bound; http://microecom.local reachable)"
+  elif [[ -f "$TUNNEL_PIDFILE" ]]; then
+    echo "  stale PID file -- :80 is NOT bound; run 'sudo -v && make k8s-tunnel'"
+  else
+    echo "  not running -- run 'sudo -v && make k8s-tunnel'"
   fi
 }
 
@@ -231,6 +334,7 @@ case "${1:-}" in
   stop) cmd_stop ;;
   start) cmd_start ;;
   tunnel) cmd_tunnel ;;
+  tunnel-stop) stop_tunnel ;;
   registry-forward) start_registry_forward ;;
   registry-stop) stop_registry_forward ;;
   status) cmd_status ;;

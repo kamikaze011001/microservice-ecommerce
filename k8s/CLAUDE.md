@@ -509,9 +509,30 @@ Diagnose injected env with a throwaway `kubectl run busybox -- sh -c 'echo $KAFK
 
 ### Local-dev caveat: ingress requires `minikube tunnel`
 
-The ingress-nginx controller uses a **LoadBalancer** Service. Run
-`make k8s-tunnel` in a separate terminal while using the cluster. The tunnel
-must stay alive so the ingress hosts remain reachable from macOS.
+The ingress-nginx controller uses a **LoadBalancer** Service, which on the docker
+driver is only reachable through `minikube tunnel` — a **host** process binding
+127.0.0.1:80 and :443. kind never needed this: its `extraPortMappings` had the
+already-privileged Docker daemon publish :80 on the node container at creation
+time. minikube publishes no such port, so the bind happens in userspace and
+**needs root**.
+
+`cluster.sh` runs it in the background with a PID file (`deploy/.run/tunnel.pid`,
+log in `deploy/.run/tunnel.log`) — same pattern as the registry forward — so
+there is no terminal to keep open. `k8s-cluster-up` / `k8s-start` start it
+best-effort and `k8s-down` / `k8s-stop` kill it. Because it needs root and a
+background process has no TTY to answer a prompt, `start_tunnel` requires a
+**cached** sudo credential (`sudo -n true`) and tells you to run `sudo -v` rather
+than launching something that would silently die. A missing credential is
+non-fatal: the tunnel is a browsing convenience, not a health requirement.
+
+Readiness is checked with `lsof -nP -iTCP:80 -sTCP:LISTEN`, **never** the
+Service's `EXTERNAL-IP` — see
+`.claude/memory/conventions/minikube-tunnel-external-ip-is-sticky.md`.
+
+There is no sudo-free workaround for browsing: the SPA's API base
+(`http://api.microecom.local`) is inlined by Vite at **image build time** with no
+port, so a storefront served from a port-forward still issues its XHR against
+port 80. Port-forwarding the controller is a diagnostic for Ingress *rules* only.
 
 ### Teardown is comprehensive — `make k8s-down` rarely needs touching
 

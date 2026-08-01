@@ -40,7 +40,7 @@ help:
 	@echo "  make k8s-down         — tear down apps + cluster"
 	@echo "  make k8s-nuke         — full wipe (same as down for minikube)"
 	@echo "  make k8s-status       — pods across nodes/infra/bootstrap/apps"
-	@echo "  make k8s-tunnel       — expose ingress :80/:443 (run in a separate terminal)"
+	@echo "  make k8s-tunnel       — expose ingress :80/:443 in the background (needs 'sudo -v' first)"
 	@echo "  make k8s-registry-forward — expose the image registry on localhost:5001"
 	@echo "  make k8s-mysql-status — MySQL 1-primary/2-replica replication health"
 	@echo "  make k8s-apps         — re-apply just the service overlay"
@@ -189,7 +189,7 @@ logs:
 
 K8S_CLUSTER := microecom
 
-.PHONY: k8s-cluster-up k8s-cluster-down k8s-cluster-status k8s-nuke k8s-stop k8s-start k8s-tunnel
+.PHONY: k8s-cluster-up k8s-cluster-down k8s-cluster-status k8s-nuke k8s-stop k8s-start k8s-tunnel k8s-tunnel-stop
 
 k8s-cluster-up:
 	@deploy/scripts/cluster.sh up
@@ -213,9 +213,15 @@ k8s-stop:
 k8s-start:
 	@deploy/scripts/cluster.sh start
 
-# Run in the foreground in a separate terminal while using ingress.
+# Bind :80/:443 so the ingress hosts work in a browser. Runs in the BACKGROUND
+# with a PID file -- no terminal to keep open. k8s-cluster-up starts it too.
+# Binding privileged ports needs root, so cache the credential first:
+#   sudo -v && make k8s-tunnel
 k8s-tunnel:
 	@deploy/scripts/cluster.sh tunnel
+
+k8s-tunnel-stop:
+	@deploy/scripts/cluster.sh tunnel-stop
 
 .PHONY: k8s-build k8s-build-reuse k8s-rebuild k8s-registry-forward k8s-registry-stop
 
@@ -466,11 +472,12 @@ k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build-reuse k8s-seed k8s-seed-images
 	@echo "       127.0.0.1 grafana.microecom.local"
 	@echo "       127.0.0.1 vm.microecom.local"
 	@echo ""
-	@echo "  2. Start the tunnel in a separate terminal:"
-	@echo "       make k8s-tunnel"
+	@echo "  2. Make sure the ingress tunnel is up (k8s-cluster-up starts it when"
+	@echo "     sudo is already cached; otherwise start it by hand):"
+	@echo "       sudo -v && make k8s-tunnel"
 	@echo ""
 	@echo "  3. Verify:"
-	@echo "       curl -i http://api.microecom.local/authorization-server/actuator/health/liveness"
+	@echo "       curl -i http://api.microecom.local/product-service/v1/products"
 	@echo "       open http://microecom.local"
 	@echo "================================================================"
 
