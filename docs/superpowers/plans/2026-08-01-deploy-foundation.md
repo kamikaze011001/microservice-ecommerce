@@ -1077,11 +1077,13 @@ Expected: `k8s/infra/install.sh` runs. Helm installs ingress-nginx (now LoadBala
 
 This step may take 10-15 minutes on a cold start (pulling the Confluent cp-* images).
 
-- [ ] **Step 4: Start the minikube tunnel in a separate terminal**
+- [x] **Step 4: Start the minikube tunnel** — *no longer a separate terminal.* `cluster.sh`
+      now runs it in the background with a PID file (`deploy/.run/tunnel.pid`), started
+      best-effort by `k8s-cluster-up`/`k8s-start` and killed by `k8s-down`/`k8s-stop`.
 
-Open a NEW terminal and run:
+Binding :80/:443 needs root, and macOS sudo caches **per-tty**, so prime it in the same shell:
 ```bash
-make k8s-tunnel
+sudo -v && make k8s-tunnel     # make k8s-tunnel-stop to stop it
 ```
 Expected: `minikube tunnel` starts, prompts for sudo password (it binds :80/:443 on 127.0.0.1), then runs in the foreground. Leave this terminal open.
 
@@ -1332,7 +1334,10 @@ All of the following must be true:
 
 - [x] `deploy/` directory tree exists with README + `scripts/cluster.sh` + `scripts/lib/colors.sh`
 - [x] `make k8s-cluster-up` starts a 4-node minikube cluster + registry addon + port-forward
-- [ ] `make k8s-tunnel` (separate terminal) exposes ingress at 127.0.0.1
+- [x] `make k8s-tunnel` exposes ingress at 127.0.0.1 — verified live on 2026-08-01 through the
+      real :80 path (no port-forward): storefront 200, `product-service/v1/products` 200 with all
+      30 seeded products, `bff-service/v1/products/{id}` 200, `media.microecom.local` image 200,
+      grafana 302. Runs in the **background** now, not a separate terminal.
 - [x] `make k8s-infra` deploys all infra on minikube (ingress-nginx as LoadBalancer)
 - [x] `make k8s-build` builds + pushes all images to the registry addon (`localhost:5000`)
 - [x] `make k8s-apps` deploys all 11 services with `image: localhost:5000/<svc>:dev` + `imagePullPolicy: Always`
@@ -1351,7 +1356,9 @@ All of the following must be true:
 - [x] Product browse (`http://api.microecom.local/product-service/v1/products`) returns product
       JSON — 200 with all 30 seeded products incl. MinIO image URLs.
 - [x] `make k8s-rebuild svc=order-service` rebuilds + pushes + restarts the pod
-- [ ] `make k8s-down` tears down cleanly (stops port-forward + deletes cluster)
+- [ ] `make k8s-down` tears down cleanly (stops port-forward + tunnel + deletes cluster) —
+      **still unexercised**: the cluster is deliberately left running. Rebuilding it costs a
+      full image build + seed cycle, so run this only when you are done with the environment.
 - [x] `k8s/kind/` directory is deleted
 - [x] ~~No `localhost:5001` references remain anywhere in `k8s/` or `deploy/`~~ — **OBSOLETE, do
       not enforce.** Superseded by the implementation deviation at the top of this plan: the host
