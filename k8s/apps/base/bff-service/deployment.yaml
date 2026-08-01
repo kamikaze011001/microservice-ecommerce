@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: bff-service
-          image: localhost:5001/bff-service:dev
+          image: localhost:5000/bff-service:dev
           imagePullPolicy: Always
           ports:
             - { name: http, containerPort: 8087 }

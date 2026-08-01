@@ -18,7 +18,7 @@ spec:
           # build time (Vite inlines env vars). Local/kind bakes
           # http://api.microecom.local; the AWS overlay builds it empty so the SPA
           # issues relative, same-origin calls behind the gateway ALB.
-          image: localhost:5001/frontend:dev
+          image: localhost:5000/frontend:dev
           # Always re-pull: :dev is a MUTABLE tag rebuilt in place. IfNotPresent
           # serves the stale cached bundle on kind nodes so frontend code changes
           # never reach the pod. See k8s/CLAUDE.md.

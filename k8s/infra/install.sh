@@ -92,7 +92,6 @@ kubectl apply \
   -f "$MANIFESTS/minio.yaml" \
   -f "$MANIFESTS/minio-ingress.yaml" \
   -f "$MANIFESTS/kafka.yaml" \
-  -f "$MANIFESTS/kafka-exporter.yaml" \
   -f "$MANIFESTS/mysqld-exporter.yaml"
 
 # Wait for each to be Ready. The mongodb `bootstrap` and minio `setup` sidecars
@@ -105,7 +104,33 @@ kubectl -n infra rollout status statefulset/mongodb       --timeout=5m
 kubectl -n infra rollout status deployment/redis    --timeout=3m
 kubectl -n infra rollout status statefulset/minio   --timeout=5m
 kubectl -n infra rollout status statefulset/kafka   --timeout=5m
+
+# kafka-exporter exits immediately when no broker is reachable. Apply it only
+# after Kafka is Ready, and restart it on reconciles in case a previous cold
+# start exhausted the Deployment progress deadline.
+kubectl apply -f "$MANIFESTS/kafka-exporter.yaml"
+kubectl -n infra rollout restart deployment/kafka-exporter
 kubectl -n infra rollout status deployment/kafka-exporter --timeout=2m
+
+# Create or repair internal topics before Schema Registry and Kafka Connect
+# start. Kafka auto-creation uses cleanup.policy=delete, but these services
+# require compacted topics and refuse to start if an earlier cold boot raced.
+for topic in _schemas connect-configs connect-offsets connect-status; do
+  kubectl -n infra exec kafka-0 -- \
+    /opt/kafka/bin/kafka-topics.sh \
+      --bootstrap-server localhost:9092 \
+      --create --if-not-exists \
+      --topic "$topic" \
+      --partitions 1 \
+      --replication-factor 1
+  kubectl -n infra exec kafka-0 -- \
+    /opt/kafka/bin/kafka-configs.sh \
+      --bootstrap-server localhost:9092 \
+      --alter \
+      --entity-type topics \
+      --entity-name "$topic" \
+      --add-config cleanup.policy=compact
+done
 
 # ── MySQL replication: 1 primary + 2 replicas (GTID auto-position) ────────────
 # Mirrors docker/scripts/init-mysql.sh, idempotent. The repl user is created on

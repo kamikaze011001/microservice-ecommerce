@@ -33,13 +33,15 @@ help:
 	@echo "  make infra-up / infra-down / vault-init / vault-unseal / vault-import"
 	@echo "  make kafka-topics / mongo-connector / seed-data"
 	@echo ""
-	@echo "Kubernetes (local kind cluster):"
+	@echo "Kubernetes (local minikube cluster):"
 	@echo "  make k8s-bootstrap    — one-shot: cluster + infra + images + seed + apps"
 	@echo "  make k8s-stop         — pause cluster (keep data; fast resume, no rebuild)"
 	@echo "  make k8s-start        — resume a stopped cluster (re-seeds Vault, bounces apps)"
-	@echo "  make k8s-down         — tear down apps + cluster (keeps registry/images)"
-	@echo "  make k8s-nuke         — full wipe incl. registry (cold rebuild next time)"
+	@echo "  make k8s-down         — tear down apps + cluster"
+	@echo "  make k8s-nuke         — full wipe (same as down for minikube)"
 	@echo "  make k8s-status       — pods across nodes/infra/bootstrap/apps"
+	@echo "  make k8s-tunnel       — expose ingress :80/:443 in the background (needs 'sudo -v' first)"
+	@echo "  make k8s-registry-forward — expose the image registry on localhost:5001"
 	@echo "  make k8s-mysql-status — MySQL 1-primary/2-replica replication health"
 	@echo "  make k8s-apps         — re-apply just the service overlay"
 	@echo "  make k8s-rebuild svc=NAME — rebuild one image + rollout restart"
@@ -181,76 +183,49 @@ logs:
 	@bash scripts/services/logs.sh $(svc)
 
 # ============================================================================
-# Kubernetes (local kind cluster)
-# See docs/superpowers/specs/2026-05-09-k8s-local-design.md
+# Kubernetes (local minikube cluster)
+# See docs/superpowers/specs/2026-08-01-deploy-refactor-design.md
 # ============================================================================
 
 K8S_CLUSTER := microecom
 
-.PHONY: k8s-cluster-up k8s-cluster-down k8s-cluster-status k8s-nuke k8s-stop k8s-start
+.PHONY: k8s-cluster-up k8s-cluster-down k8s-cluster-status k8s-nuke k8s-stop k8s-start k8s-tunnel k8s-tunnel-stop
 
 k8s-cluster-up:
-	@if ! kind get clusters | grep -q "^$(K8S_CLUSTER)$$"; then \
-	  kind create cluster --config k8s/kind/cluster.yaml; \
-	fi
-	@k8s/kind/registry.sh
-	@k8s/kind/preload-images.sh
-	@kubectl cluster-info --context kind-$(K8S_CLUSTER)
+	@deploy/scripts/cluster.sh up
 
 k8s-cluster-down:
-	-kind delete cluster --name $(K8S_CLUSTER)
-	@echo "==> cluster deleted; kind-registry kept (built images preserved). Use 'make k8s-nuke' to remove it too."
+	@deploy/scripts/cluster.sh down
 
-# Full clean slate: delete the cluster AND the local registry (drops all built
-# images, forcing a cold rebuild + re-pull on the next bootstrap). Use this only
-# when you truly want nothing reused; the normal `make k8s-down` keeps images.
+# The registry addon lives inside minikube, so down and nuke both remove it.
 k8s-nuke: k8s-apps-down
-	-kind delete cluster --name $(K8S_CLUSTER)
-	-docker rm -f kind-registry
-	@echo "==> cluster + registry destroyed (full clean slate)"
+	@deploy/scripts/cluster.sh down
+	@echo "==> cluster destroyed (full clean slate)"
 
 k8s-cluster-status:
-	@kind get clusters
-	@kubectl get nodes -o wide 2>/dev/null || echo "(cluster not running)"
+	@deploy/scripts/cluster.sh status
 
-# Pause the cluster without destroying it. kind nodes are Docker containers, so
-# `docker stop` freezes them; all PVC data (MySQL/Mongo/Kafka/Redis/MinIO) and the
-# built images survive. Resume with `make k8s-start` — far faster than a full
-# bootstrap (no kind create, no image rebuild, no DB reseed).
+# Pause the cluster without destroying it. PVC data and images survive.
 k8s-stop:
-	@nodes=$$(kind get nodes --name $(K8S_CLUSTER) 2>/dev/null); \
-	  if [ -z "$$nodes" ]; then echo "cluster '$(K8S_CLUSTER)' not found — nothing to stop"; exit 0; fi; \
-	  echo "==> stopping kind cluster '$(K8S_CLUSTER)' (data + images preserved)"; \
-	  docker stop $$nodes kind-registry >/dev/null
-	@echo "stopped. Resume with: make k8s-start"
+	@deploy/scripts/cluster.sh stop
 
-# Resume a stopped cluster. Restarts the node + registry containers, waits for the
-# API and infra, then RE-SEEDS Vault (dev mode is in-memory, so its secrets are
-# lost on pod restart) and bounces the apps (which crash-loop on an empty Vault).
-# Everything else (DB data, Kafka topics, MinIO bucket, images) persists.
+# Resume a stopped cluster, re-seed the in-memory Vault, and restart apps.
 k8s-start:
-	@nodes=$$(kind get nodes --name $(K8S_CLUSTER) 2>/dev/null); \
-	  if [ -z "$$nodes" ]; then echo "cluster '$(K8S_CLUSTER)' not found — run 'make k8s-bootstrap' first"; exit 1; fi; \
-	  echo "==> starting kind cluster '$(K8S_CLUSTER)'"; \
-	  docker start $$nodes kind-registry >/dev/null
-	@echo "waiting for API server..."
-	@until kubectl --context kind-$(K8S_CLUSTER) get nodes >/dev/null 2>&1; do sleep 3; done
-	@echo "waiting for Vault + MySQL + Mongo to be ready..."
-	@kubectl -n infra wait --for=condition=ready pod -l app.kubernetes.io/name=vault --timeout=5m
-	@kubectl -n infra rollout status statefulset/mysql         --timeout=5m
-	@kubectl -n infra rollout status statefulset/mysql-replica --timeout=5m
-	@kubectl -n infra rollout status statefulset/mongodb       --timeout=5m
-	@echo "re-seeding Vault (dev mode is in-memory)"
-	@kubectl -n bootstrap delete job vault-seed --ignore-not-found >/dev/null
-	@kubectl apply -k k8s/infra/jobs/03-vault-seed
-	@kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/vault-seed
-	@echo "restarting apps so they re-read Vault"
-	@kubectl -n apps rollout restart deployment
-	@kubectl -n apps rollout status deployment --timeout=10m
-	@echo "cluster resumed. Check: make k8s-status && make k8s-mysql-status"
+	@deploy/scripts/cluster.sh start
 
-.PHONY: k8s-build k8s-build-reuse k8s-rebuild
+# Bind :80/:443 so the ingress hosts work in a browser. Runs in the BACKGROUND
+# with a PID file -- no terminal to keep open. k8s-cluster-up starts it too.
+# Binding privileged ports needs root, so cache the credential first:
+#   sudo -v && make k8s-tunnel
+k8s-tunnel:
+	@deploy/scripts/cluster.sh tunnel
 
+k8s-tunnel-stop:
+	@deploy/scripts/cluster.sh tunnel-stop
+
+.PHONY: k8s-build k8s-build-reuse k8s-rebuild k8s-registry-forward k8s-registry-stop
+
+# Build and push through the registry forward started by k8s-cluster-up.
 k8s-build:
 	@k8s/images/build.sh
 
@@ -263,6 +238,12 @@ k8s-rebuild:
 	@if [ -z "$(svc)" ]; then echo "Usage: make k8s-rebuild svc=NAME"; exit 1; fi
 	@SVC=$(svc) SKIP_CORES=1 k8s/images/build.sh
 	@kubectl -n apps rollout restart deployment/$(svc)
+
+k8s-registry-forward:
+	@deploy/scripts/cluster.sh registry-forward
+
+k8s-registry-stop:
+	@deploy/scripts/cluster.sh registry-stop
 
 .PHONY: k8s-infra k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest k8s-seed-images k8s-app-secrets
 
@@ -458,14 +439,14 @@ k8s-storefront-logs:
 
 # Launch k9s (terminal UI) on a chosen environment, using the repo's committed
 # config (skin + namespace hotkeys). Switch contexts live inside k9s with :ctx.
-#   make k9s            # ENV=local (default) → kind cluster
+#   make k9s            # ENV=local (default) → minikube cluster
 #   make k9s ENV=eks    # EKS (one-time: aws eks update-kubeconfig --alias microecom-eks)
 # NOTE: pass ENV on the make line; a shell-exported ENV (e.g. ENV=staging) is
 # also picked up and will be rejected as unknown — set it explicitly here.
 k9s:
 	@command -v k9s >/dev/null 2>&1 || { echo "k9s not installed — run: brew install k9s (other platforms: https://k9scli.io)"; exit 1; }
 	@case "$(ENV)" in \
-	  ""|local) ctx=kind-microecom ;; \
+	  ""|local) ctx=microecom ;; \
 	  eks)      ctx=microecom-eks ;; \
 	  *) echo "Unknown ENV '$(ENV)' — use ENV=local or ENV=eks"; exit 1 ;; \
 	 esac; \
@@ -476,23 +457,31 @@ k9s:
 
 # One-shot: cluster -> infra -> images -> seed -> apps. Idempotent —
 # safe to re-run after editing manifests or pulling new code. Mirrors
-# the docker-compose `make bootstrap` flow but for the kind cluster.
+# the docker-compose `make bootstrap` flow but for the minikube cluster.
 k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build-reuse k8s-seed k8s-seed-images k8s-apps k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest
 	@echo "==> k8s bootstrap complete"
 	@$(MAKE) k8s-status
 	@echo ""
 	@echo "================================================================"
-	@echo "  Final step: add these lines to /etc/hosts (one-time):"
+	@echo "  Final steps:"
 	@echo ""
-	@echo "    127.0.0.1 microecom.local"
-	@echo "    127.0.0.1 api.microecom.local"
+	@echo "  1. Add these lines to /etc/hosts (one-time):"
+	@echo "       127.0.0.1 microecom.local"
+	@echo "       127.0.0.1 api.microecom.local"
+	@echo "       127.0.0.1 media.microecom.local"
+	@echo "       127.0.0.1 grafana.microecom.local"
+	@echo "       127.0.0.1 vm.microecom.local"
 	@echo ""
-	@echo "  Then verify:"
-	@echo "    curl -i http://api.microecom.local/authorization-server/actuator/health/liveness"
-	@echo "    open http://microecom.local"
+	@echo "  2. Make sure the ingress tunnel is up (k8s-cluster-up starts it when"
+	@echo "     sudo is already cached; otherwise start it by hand):"
+	@echo "       sudo -v && make k8s-tunnel"
+	@echo ""
+	@echo "  3. Verify:"
+	@echo "       curl -i http://api.microecom.local/product-service/v1/products"
+	@echo "       open http://microecom.local"
 	@echo "================================================================"
 
-# Tear it ALL down — apps, infra, and the kind cluster itself.
+# Tear it ALL down — apps, infra, and the minikube cluster itself.
 # Use k8s-apps-down for a softer reset (keeps infra/data).
 k8s-down: k8s-apps-down k8s-cluster-down
 	@echo "==> k8s cluster destroyed"
@@ -545,7 +534,7 @@ k8s-ctx:
 
 k8s-use:
 	@case "$(ENV)" in \
-	""|local) ctx=kind-microecom ;; \
+	""|local) ctx=microecom ;; \
 	eks)      ctx=microecom-eks ;; \
 	*) echo "Unknown ENV '$(ENV)' — use ENV=local or ENV=eks"; exit 1 ;; \
 	esac; \

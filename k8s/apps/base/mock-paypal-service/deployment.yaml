@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: mock-paypal-service
-          image: localhost:5001/mock-paypal-service:dev
+          image: localhost:5000/mock-paypal-service:dev
           imagePullPolicy: Always
           ports:
             - { name: http, containerPort: 8585 }

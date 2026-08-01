@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: order-service
-          image: localhost:5001/order-service:dev
+          image: localhost:5000/order-service:dev
           imagePullPolicy: Always
           ports:
             - { name: http, containerPort: 9696 }

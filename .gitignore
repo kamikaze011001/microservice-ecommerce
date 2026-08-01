@@ -23,3 +23,6 @@ aws/**/*.tfvars
 
 # Superpowers SDD scratch (progress ledger, task briefs) — never commit
 .superpowers/
+
+# Local deploy runtime state
+deploy/.run/

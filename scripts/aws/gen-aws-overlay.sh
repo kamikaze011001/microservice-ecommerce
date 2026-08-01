@@ -81,7 +81,7 @@ components:
 patches:
   - path: patch-volume.yaml
 images:
-  - name: localhost:5001/$svc
+  - name: localhost:5000/$svc
     newName: $ECR/$svc
     newTag: dev
 YAML

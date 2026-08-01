@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: authorization-server
-          image: localhost:5001/authorization-server:dev
+          image: localhost:5000/authorization-server:dev
           # Always re-pull: :dev is a MUTABLE tag rebuilt in place by
           # k8s/images/build.sh. IfNotPresent serves stale cached layers on kind
           # nodes so code changes never reach the pod. See k8s/CLAUDE.md.
@@ -45,7 +45,7 @@ spec:
               value: root
             - name: SPRING_CLOUD_VAULT_URI
               value: http://vault.infra.svc.cluster.local:8200
-            # Memory caps for the kind cluster. -XX:MaxRAMPercentage tells the
+            # Memory caps for the minikube cluster. -XX:MaxRAMPercentage tells the
             # JVM to size heap as a fraction of the cgroup limit (memory.limits
             # below), so heap auto-adapts if we bump the limit.
             - name: JAVA_OPTS
