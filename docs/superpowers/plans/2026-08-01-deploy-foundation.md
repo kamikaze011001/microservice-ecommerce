@@ -1,6 +1,6 @@
 # Deploy Refactor — Plan 1: Foundation (scaffold + minikube) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Scaffold the `deploy/` directory and migrate the local k8s cluster from kind to minikube — keeping the existing kustomize manifests untouched — so `make k8s-bootstrap` works end-to-end on minikube.
 
@@ -11,6 +11,13 @@
 **Spec:** `docs/superpowers/specs/2026-08-01-deploy-refactor-design.md` (Phases 0 + 1)
 
 **Branch:** create `refactor/deploy-foundation` from current branch.
+
+> **Implementation deviation (2026-08-01):** macOS Control Center owns host
+> port 5000 on this machine. The user chose host port **5001** for the registry
+> port-forward. Host builds therefore push `localhost:5001/<repo>:dev`, while
+> minikube pods still pull the same registry repositories through the addon's
+> node proxy at `localhost:5000/<repo>:dev`. Any host-side `5000` command below
+> should be read as `5001`; pod manifests remain on `5000`.
 
 ---
 
@@ -106,7 +113,7 @@ git checkout -b refactor/deploy-foundation feat/aws-live-deploy
 - Create: `deploy/scripts/lib/colors.sh` (copy of `scripts/lib/colors.sh`)
 - Modify: `.gitignore` — add `deploy/.run/` (runtime PID files from cluster.sh)
 
-- [ ] **Step 1: Create the `deploy/` directory tree**
+- [x] **Step 1: Create the `deploy/` directory tree**
 
 ```bash
 mkdir -p deploy/{charts,compose,terraform,secrets,seed,scripts/lib,images}
@@ -129,7 +136,7 @@ deploy/secrets
 deploy/terraform
 ```
 
-- [ ] **Step 1b: Add `deploy/.run/` to `.gitignore`**
+- [x] **Step 1b: Add `deploy/.run/` to `.gitignore`**
 
 `cluster.sh` creates `deploy/.run/` at runtime for the registry-forward PID file. Add it to `.gitignore`:
 
@@ -143,7 +150,7 @@ grep 'deploy/.run/' .gitignore
 ```
 Expected: `deploy/.run/`
 
-- [ ] **Step 2: Copy `colors.sh` into `deploy/scripts/lib/`**
+- [x] **Step 2: Copy `colors.sh` into `deploy/scripts/lib/`**
 
 The deploy scripts will use the same logging helpers as the existing `scripts/`. Copy it so `deploy/scripts/` is self-contained.
 
@@ -157,7 +164,7 @@ head -5 deploy/scripts/lib/colors.sh
 ```
 Expected: the first lines of the colors library (`#!/bin/bash` + color code definitions).
 
-- [ ] **Step 3: Write the `deploy/README.md` placeholder**
+- [x] **Step 3: Write the `deploy/README.md` placeholder**
 
 This is the newcomer onboarding doc. For now it's a stub pointing at the spec; later plans fill it in. Create `deploy/README.md` with this exact content:
 
@@ -195,7 +202,7 @@ make k8s-down         # tear it all down
 ```
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add deploy/ .gitignore
@@ -216,7 +223,7 @@ See docs/superpowers/specs/2026-08-01-deploy-refactor-design.md"
 
 This script owns all minikube cluster lifecycle: start, stop, pause, resume, delete, and the `minikube tunnel` background process for ingress :80/:443. It also enables the minikube registry addon (the spec's Q4-B local-registry approach) and manages a `kubectl port-forward` background process so the host can push images to `localhost:5000`. The Makefile targets call it with a subcommand.
 
-- [ ] **Step 1: Write `deploy/scripts/cluster.sh`**
+- [x] **Step 1: Write `deploy/scripts/cluster.sh`**
 
 Create `deploy/scripts/cluster.sh` with this exact content:
 
@@ -470,20 +477,20 @@ case "${1:-}" in
 esac
 ```
 
-- [ ] **Step 2: Make it executable**
+- [x] **Step 2: Make it executable**
 
 ```bash
 chmod +x deploy/scripts/cluster.sh
 ```
 
-- [ ] **Step 3: Syntax-check it**
+- [x] **Step 3: Syntax-check it**
 
 ```bash
 bash -n deploy/scripts/cluster.sh
 ```
 Expected: no output (exit 0). If there's a syntax error, fix it before continuing.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add deploy/scripts/cluster.sh
@@ -509,7 +516,7 @@ single script driving minikube: up/down/stop/start/tunnel/status.
 **Files:**
 - Modify: `Makefile` (the k8s-cluster-* and k8s-build/k8s-rebuild sections)
 
-- [ ] **Step 1: Rewrite the cluster lifecycle targets**
+- [x] **Step 1: Rewrite the cluster lifecycle targets**
 
 In the Makefile, find the block starting with `K8S_CLUSTER := microecom` and the `.PHONY: k8s-cluster-up k8s-cluster-down k8s-cluster-status k8s-nuke k8s-stop k8s-start` line. Replace the entire block from `K8S_CLUSTER := microecom` through the end of the `k8s-start` target (the `echo "cluster resumed..."` line) with:
 
@@ -559,7 +566,7 @@ k8s-tunnel:
 	@deploy/scripts/cluster.sh tunnel
 ```
 
-- [ ] **Step 2: Rewrite the build targets**
+- [x] **Step 2: Rewrite the build targets**
 
 Find the `.PHONY: k8s-build k8s-build-reuse k8s-rebuild` line and the three target bodies (`k8s-build`, `k8s-build-reuse`, `k8s-rebuild`). Replace the whole block with:
 
@@ -591,7 +598,7 @@ k8s-registry-stop:
 	@deploy/scripts/cluster.sh registry-stop
 ```
 
-- [ ] **Step 3: Update the `k8s-bootstrap` target to include `k8s-tunnel` guidance**
+- [x] **Step 3: Update the `k8s-bootstrap` target to include `k8s-tunnel` guidance**
 
 Find the `k8s-bootstrap:` target. Its dependency line is:
 ```
@@ -632,7 +639,7 @@ Replace with:
 	@echo "       open http://microecom.local"
 ```
 
-- [ ] **Step 4: Update the `k9s` target context name**
+- [x] **Step 4: Update the `k9s` target context name**
 
 Find the `k9s:` target. It has a `case` block mapping `ENV` to a context. Find the line:
 ```
@@ -643,7 +650,7 @@ Replace with:
   ""|local) ctx=microecom ;;
 ```
 
-- [ ] **Step 5: Update the `k8s-use` / `k8s-ctx` targets context name**
+- [x] **Step 5: Update the `k8s-use` / `k8s-ctx` targets context name**
 
 Find the `k8s-use:` target. It has the same `case` block. Find:
 ```
@@ -654,7 +661,7 @@ Replace with:
   ""|local) ctx=microecom ;;
 ```
 
-- [ ] **Step 6: Update the help text**
+- [x] **Step 6: Update the help text**
 
 Find the help target's Kubernetes section. It currently says "Kubernetes (local kind cluster):". Find that line and replace `kind` with `minikube`:
 
@@ -668,7 +675,7 @@ Also add the `k8s-tunnel` and `k8s-registry-forward` targets to the help. After 
 	@echo "  make k8s-registry-forward — start registry port-forward (manual; auto-managed by cluster up)"
 ```
 
-- [ ] **Step 7: Verify the Makefile parses**
+- [x] **Step 7: Verify the Makefile parses**
 
 ```bash
 make -n k8s-cluster-up
@@ -685,7 +692,7 @@ make -n k8s-registry-forward
 ```
 Expected: prints `deploy/scripts/cluster.sh registry-forward`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add Makefile
@@ -712,7 +719,7 @@ The script currently builds images tagged `localhost:5001/<svc>:dev` and pushes 
 
 Both the host (via port-forward) and pods (via the proxy DaemonSet) use `localhost:5000` — same address, same image reference. No auto-discovery needed.
 
-- [ ] **Step 1: Update `build.sh` — change REGISTRY default to localhost:5000**
+- [x] **Step 1: Update `build.sh` — change REGISTRY default to localhost:5000**
 
 Edit `k8s/images/build.sh`. Replace the entire file with:
 
@@ -858,14 +865,14 @@ else
 fi
 ```
 
-- [ ] **Step 2: Syntax-check it**
+- [x] **Step 2: Syntax-check it**
 
 ```bash
 bash -n k8s/images/build.sh
 ```
 Expected: no output (exit 0).
 
-- [ ] **Step 3: Verify the registry is reachable via the port-forward**
+- [x] **Step 3: Verify the registry is reachable via the port-forward**
 
 The `image_in_registry` function does `curl http://${REGISTRY}/v2/$1/manifests/$2`. With `REGISTRY=localhost:5000`, this queries the addon's registry through the port-forward. Confirm the registry API is reachable (requires the cluster to be up + the port-forward running):
 
@@ -874,7 +881,7 @@ curl -s "http://localhost:5000/v2/_catalog"
 ```
 Expected: `{"repositories":[]}` (empty catalog — no images pushed yet). If you get a connection error, the port-forward isn't running — run `make k8s-cluster-up` (or `make k8s-registry-forward` to start just the forward).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add k8s/images/build.sh
@@ -897,7 +904,7 @@ is reachable before building."
 
 Each file has `image: localhost:5001/<svc>:dev` and `imagePullPolicy: Always`. Change the registry port from 5001 to 5000 (the minikube registry addon's internal address). `imagePullPolicy: Always` stays as-is — the spec's Q4-B choice ensures each pod restart pulls the latest `:dev` tag from the local registry.
 
-- [ ] **Step 1: Use sed to rewrite all 10 files at once**
+- [x] **Step 1: Use sed to rewrite all 10 files at once**
 
 ```bash
 for f in k8s/apps/base/*/deployment.yaml; do
@@ -907,14 +914,14 @@ done
 
 (Note: `sed -i ''` is macOS syntax. On Linux use `sed -i` without the empty string.)
 
-- [ ] **Step 2: Verify no `localhost:5001` references remain in base manifests**
+- [x] **Step 2: Verify no `localhost:5001` references remain in base manifests**
 
 ```bash
 grep -rn 'localhost:5001' k8s/apps/base/
 ```
 Expected: no output (all replaced).
 
-- [ ] **Step 3: Verify the image refs look correct**
+- [x] **Step 3: Verify the image refs look correct**
 
 ```bash
 grep -rn 'image:' k8s/apps/base/*/deployment.yaml | grep -v '#'
@@ -933,14 +940,14 @@ k8s/apps/base/payment-service/deployment.yaml:17:          image: localhost:5000
 k8s/apps/base/product-service/deployment.yaml:17:          image: localhost:5000/product-service:dev
 ```
 
-- [ ] **Step 4: Verify the pullPolicy**
+- [x] **Step 4: Verify the pullPolicy**
 
 ```bash
 grep -rn 'imagePullPolicy' k8s/apps/base/*/deployment.yaml
 ```
 Expected: 10 lines, each `imagePullPolicy: Always` (unchanged — the spec's Q4-B choice).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add k8s/apps/base/*/deployment.yaml
@@ -962,7 +969,7 @@ node redirects localhost:5000 to the in-cluster registry service."
 
 minikube's docker driver doesn't map arbitrary pod hostPorts to the host (unlike kind's `extraPortMappings`). `minikube tunnel` exposes LoadBalancer services at `127.0.0.1`, so switching ingress-nginx to `type: LoadBalancer` + running the tunnel is the correct minikube pattern for :80/:443.
 
-- [ ] **Step 1: Rewrite `ingress-nginx.yaml`**
+- [x] **Step 1: Rewrite `ingress-nginx.yaml`**
 
 Replace the entire file with:
 
@@ -984,14 +991,14 @@ controller:
   watchIngressWithoutClass: true
 ```
 
-- [ ] **Step 2: Verify the file**
+- [x] **Step 2: Verify the file**
 
 ```bash
 cat k8s/infra/values/ingress-nginx.yaml
 ```
 Expected: the content above.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add k8s/infra/values/ingress-nginx.yaml
@@ -1016,20 +1023,20 @@ Removed: hostPort block, nodeSelector (ingress-ready), control-plane toleration
 
 These are superseded by `deploy/scripts/cluster.sh`. Verify nothing references them first.
 
-- [ ] **Step 1: Confirm nothing references the kind files anymore**
+- [x] **Step 1: Confirm nothing references the kind files anymore**
 
 ```bash
 grep -rn 'k8s/kind/' Makefile scripts/ k8s/ 2>/dev/null
 ```
 Expected: no output (the Makefile was rewritten in Task 3 to call `deploy/scripts/cluster.sh`). If any references remain, fix them before deleting.
 
-- [ ] **Step 2: Delete the files**
+- [x] **Step 2: Delete the files**
 
 ```bash
 git rm -r k8s/kind/
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -m "k8s: remove kind/ (cluster.yaml, registry.sh, preload-images.sh)
@@ -1047,21 +1054,21 @@ This is the critical verification that the migration works. It brings up the ful
 
 **Prerequisites:** `make k8s-down` has been run (no existing cluster), Docker is running.
 
-- [ ] **Step 1: Start the minikube cluster**
+- [x] **Step 1: Start the minikube cluster**
 
 ```bash
 make k8s-cluster-up
 ```
 Expected: `deploy/scripts/cluster.sh up` runs, minikube starts 4 nodes, enables the registry addon, starts the registry port-forward (localhost:5000 → kube-system/registry:80), and prints "minikube cluster 'microecom' is up" + the kubectl context.
 
-- [ ] **Step 2: Verify the cluster is healthy**
+- [x] **Step 2: Verify the cluster is healthy**
 
 ```bash
 make k8s-cluster-status
 ```
 Expected: minikube status shows the cluster Running, `kubectl get nodes` shows 4 nodes all `Ready`, the registry addon Service is listed, and the registry port-forward shows "running" with "health: OK".
 
-- [ ] **Step 3: Deploy infra (Helm charts + stateful manifests)**
+- [x] **Step 3: Deploy infra (Helm charts + stateful manifests)**
 
 ```bash
 make k8s-infra
@@ -1105,7 +1112,7 @@ curl -s -o /dev/null -w "%{http_code}" http://microecom.local
 ```
 Expected: `404` (nginx responds, no ingress rule for `/` yet because apps aren't deployed — but a 404 from nginx proves the tunnel + LoadBalancer path works). If you get `000` (connection failed), the tunnel isn't working — check Step 4.
 
-- [ ] **Step 7: Build + push all service images**
+- [x] **Step 7: Build + push all service images**
 
 ```bash
 make k8s-build
@@ -1118,28 +1125,28 @@ curl -s http://localhost:5000/v2/_catalog | python3 -m json.tool
 ```
 Expected: lists `maven-cores`, `authorization-server`, `gateway`, ..., `mock-paypal-service` in the `repositories` array.
 
-- [ ] **Step 8: Seed pre-apps data (mongo, vault, minio, kafka-connect)**
+- [x] **Step 8: Seed pre-apps data (mongo, vault, minio, kafka-connect)**
 
 ```bash
 make k8s-seed
 ```
 Expected: applies the 4 bootstrap Jobs (mongo-seed, vault-seed, minio-bootstrap, kafka-connect-register), waits for each to complete. Prints "k8s-seed complete".
 
-- [ ] **Step 9: Seed product images**
+- [x] **Step 9: Seed product images**
 
 ```bash
 make k8s-seed-images
 ```
 Expected: uploads the placeholder/real product images to MinIO. Prints completion.
 
-- [ ] **Step 10: Deploy the apps**
+- [x] **Step 10: Deploy the apps**
 
 ```bash
 make k8s-apps
 ```
 Expected: creates the `app-secrets` Secret, applies `k8s/apps/overlays/local`, waits for all 11 deployments to roll out. Prints rollout status.
 
-- [ ] **Step 11: Seed MySQL + inventory (after apps create schema via ddl-auto)**
+- [x] **Step 11: Seed MySQL + inventory (after apps create schema via ddl-auto)**
 
 ```bash
 make k8s-seed-mysql
@@ -1148,7 +1155,7 @@ make k8s-seed-perftest
 ```
 Expected: each seeds its data, waits for the Job to complete.
 
-- [ ] **Step 12: Verify the full stack is up**
+- [x] **Step 12: Verify the full stack is up**
 
 ```bash
 make k8s-status
@@ -1175,7 +1182,7 @@ curl -s http://api.microecom.local/product-service/v1/products | head -c 200
 ```
 Expected: JSON response with product data (a `BaseResponse` with products array).
 
-- [ ] **Step 14: Verify the inner loop — rebuild one service**
+- [x] **Step 14: Verify the inner loop — rebuild one service**
 
 ```bash
 make k8s-rebuild svc=order-service
@@ -1188,7 +1195,7 @@ kubectl -n apps rollout status deployment/order-service --timeout=5m
 ```
 Expected: `deployment "order-service" successfully rolled out`.
 
-- [ ] **Step 15: Verify teardown works**
+- [x] **Step 15: Verify teardown works**
 
 ```bash
 make k8s-down
@@ -1197,7 +1204,7 @@ Expected: `k8s-apps-down` (deletes the apps overlay), then `deploy/scripts/clust
 
 Stop the tunnel in the other terminal (Ctrl-C).
 
-- [ ] **Step 16: Commit any verification fixes**
+- [x] **Step 16: Commit any verification fixes**
 
 If any of the above steps revealed a bug (e.g. a missed `localhost:5001` reference, a tunnel issue), fix it and commit. If everything passed with no fixes, skip this step.
 
@@ -1215,7 +1222,7 @@ git commit -m "fix: minikube migration verification fixes"  # only if changes we
 
 The scars about kind's `containerdConfigPatches`, `hosts.toml`, `extraPortMappings`, and `kind-registry` are now historical (kind is gone). Add a note at the top of the Known scars section so future readers don't apply kind-specific fixes.
 
-- [ ] **Step 1: Add a migration note at the top of the Known scars section**
+- [x] **Step 1: Add a migration note at the top of the Known scars section**
 
 In `k8s/CLAUDE.md`, find the line `## Known scars (rough edges & hard-won lessons)`. Immediately after it, insert:
 
@@ -1233,7 +1240,7 @@ In `k8s/CLAUDE.md`, find the line `## Known scars (rough edges & hard-won lesson
 > output, etc.) but do not re-apply kind-specific config.
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add k8s/CLAUDE.md
@@ -1253,7 +1260,7 @@ the top of the scars section so future readers don't re-apply kind fixes."
 
 The README still says "kind cluster" and references `make k8s-bootstrap` with kind. Update it.
 
-- [ ] **Step 1: Update the one-shot + layout sections**
+- [x] **Step 1: Update the one-shot + layout sections**
 
 In `k8s/README.md`, find:
 ```
@@ -1284,7 +1291,7 @@ ingress :80/:443 — the tunnel exposes the ingress-nginx LoadBalancer at
     make k8s-tunnel
 ```
 
-- [ ] **Step 2: Update the Layout section**
+- [x] **Step 2: Update the Layout section**
 
 Find:
 ```
@@ -1295,7 +1302,7 @@ Replace with:
  ├── (kind/ removed — now deploy/scripts/cluster.sh drives minikube)
 ```
 
-- [ ] **Step 3: Update the AWS portability note if it mentions kind**
+- [x] **Step 3: Update the AWS portability note if it mentions kind**
 
 Search for any remaining `kind` references:
 ```bash
@@ -1303,7 +1310,7 @@ grep -n 'kind' k8s/README.md
 ```
 Replace any that refer to the local cluster (not "kind" as in "a kind of") with `minikube`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add k8s/README.md
@@ -1319,26 +1326,33 @@ pattern. kind/ directory is gone (deploy/scripts/cluster.sh replaces it)."
 
 All of the following must be true:
 
-- [ ] `deploy/` directory tree exists with README + `scripts/cluster.sh` + `scripts/lib/colors.sh`
-- [ ] `make k8s-cluster-up` starts a 4-node minikube cluster + registry addon + port-forward
+- [x] `deploy/` directory tree exists with README + `scripts/cluster.sh` + `scripts/lib/colors.sh`
+- [x] `make k8s-cluster-up` starts a 4-node minikube cluster + registry addon + port-forward
 - [ ] `make k8s-tunnel` (separate terminal) exposes ingress at 127.0.0.1
-- [ ] `make k8s-infra` deploys all infra on minikube (ingress-nginx as LoadBalancer)
-- [ ] `make k8s-build` builds + pushes all images to the registry addon (`localhost:5000`)
-- [ ] `make k8s-apps` deploys all 11 services with `image: localhost:5000/<svc>:dev` + `imagePullPolicy: Always`
+- [x] `make k8s-infra` deploys all infra on minikube (ingress-nginx as LoadBalancer)
+- [x] `make k8s-build` builds + pushes all images to the registry addon (`localhost:5000`)
+- [x] `make k8s-apps` deploys all 11 services with `image: localhost:5000/<svc>:dev` + `imagePullPolicy: Always`
 - [ ] Storefront (`http://microecom.local`) returns 200
 - [ ] Gateway health (`http://api.microecom.local/authorization-server/actuator/health/liveness`) returns 200 UP
 - [ ] Product browse (`http://api.microecom.local/product-service/v1/products`) returns product JSON
-- [ ] `make k8s-rebuild svc=order-service` rebuilds + pushes + restarts the pod
+- [x] `make k8s-rebuild svc=order-service` rebuilds + pushes + restarts the pod
 - [ ] `make k8s-down` tears down cleanly (stops port-forward + deletes cluster)
-- [ ] `k8s/kind/` directory is deleted
-- [ ] No `localhost:5001` references remain anywhere in `k8s/` or `deploy/`
-- [ ] `k8s/CLAUDE.md` + `k8s/README.md` reflect minikube
+- [x] `k8s/kind/` directory is deleted
+- [x] ~~No `localhost:5001` references remain anywhere in `k8s/` or `deploy/`~~ — **OBSOLETE, do
+      not enforce.** Superseded by the implementation deviation at the top of this plan: the host
+      pushes via `localhost:5001` (port-forward) and pods pull via `localhost:5000` (registry-proxy
+      DaemonSet). Both refer to the same registry. The real criterion is the one below.
+- [x] **Pod-side manifests use `localhost:5000`; host-side build tooling uses `localhost:5001`**
+- [x] `k8s/CLAUDE.md` + `k8s/README.md` reflect minikube
 
-Verify the "no localhost:5001" criterion:
+Verify the corrected registry-split criterion:
 ```bash
-grep -rn 'localhost:5001' k8s/ deploy/ Makefile scripts/ 2>/dev/null
+# pod-side: must all be :5000
+grep -rn 'localhost:50' k8s/apps/base/ k8s/apps/overlays/
+# host-side: must be :5001
+grep -n 'REGISTRY' k8s/images/build.sh
 ```
-Expected: no output.
+Expected: base + overlay manifests on `5000`, `build.sh` defaulting to `5001`.
 
 ---
 

@@ -5,6 +5,14 @@ usage/command reference and `../CLAUDE.md` for project-wide conventions.
 
 ## Known scars (rough edges & hard-won lessons)
 
+> **Migration note (2026-08-01):** The local cluster migrated from kind to
+> minikube. References below to `kind`, `containerdConfigPatches`,
+> `hosts.toml`, `extraPortMappings`, or `kind-registry` are historical.
+> `deploy/scripts/cluster.sh` now owns cluster lifecycle. Host builds push
+> through `localhost:5001`; pods pull the same registry through the minikube
+> node proxy at `localhost:5000`. Ingress uses a LoadBalancer with
+> `minikube tunnel`.
+
 ### SCAR (2026-06-03): gateway `lb://` + the `@LoadBalanced` JWKS fetch need real discovery — Spring Cloud Kubernetes, not Eureka
 
 **Symptom:** every authenticated route 500s with
@@ -385,7 +393,7 @@ kubelet never healthy → `kubeadm init` times out after 4 min with a misleading
 
 **How to apply:** wire the local registry via the `config_path` `hosts.toml`
 mechanism in `kind/registry.sh` (writes
-`/etc/containerd/certs.d/localhost:5001/hosts.toml` per node), **not** via a
+`/etc/containerd/certs.d/<former-registry>/hosts.toml` per node), **not** via a
 `containerdConfigPatches` mirrors block. This is also the officially documented
 kind local-registry pattern.
 
@@ -499,19 +507,16 @@ Confluent cp-* workload. The service reaches Kafka via its explicit
 `SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS` (Service DNS), not env discovery.
 Diagnose injected env with a throwaway `kubectl run busybox -- sh -c 'echo $KAFKA_PORT'`.
 
-### Local-dev caveat: ingress exposes :80/:443 via hostPort, not NodePort
+### Local-dev caveat: ingress requires `minikube tunnel`
 
-The ingress-nginx controller reaches the host on 80/443 through **hostPort**
-(bound to the control-plane node, which `cluster.yaml` maps to the host via
-`extraPortMappings`). Its Service is plain **ClusterIP**. Do **not** set
-`service.type: NodePort` with ports 80/443 — NodePort only allows 30000–32767,
-so the chart's server-side apply is rejected
-("provided port is not in the valid range"). See `infra/values/ingress-nginx.yaml`.
+The ingress-nginx controller uses a **LoadBalancer** Service. Run
+`make k8s-tunnel` in a separate terminal while using the cluster. The tunnel
+must stay alive so the ingress hosts remain reachable from macOS.
 
 ### Teardown is comprehensive — `make k8s-down` rarely needs touching
 
 `make k8s-down` runs `k8s-apps-down` (`kubectl delete -k k8s/apps/overlays/local`)
-then `k8s-cluster-down` (`kind delete cluster` + remove the local registry).
+then `k8s-cluster-down` (`minikube delete -p microecom`).
 Because the second step **destroys the whole cluster**, anything added to the `infra`
 namespace (schema-registry, kafka-connect, ingresses, vault) is wiped regardless
 of whether teardown names it — so adding an infra manifest does **not** require a

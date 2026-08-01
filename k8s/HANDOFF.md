@@ -66,6 +66,6 @@ write-ups for the items below live in `k8s/CLAUDE.md` (the SCARs section).
 - `rm`/`pkill`/some `kubectl exec sh -c` get sandbox-blocked → ask user to run with `! `.
 - vault-0 pod has NO python3; do JSON manipulation on the host.
 - minio mc sidecar has NO tar → `kubectl cp` fails; stream files via `kubectl exec ... cat`.
-- Mutable `:dev` image tag + IfNotPresent serves stale layers; the app deployments now use
-  imagePullPolicy: Always, and rebuilds need node-cache purge:
-  `for n in $(kind get nodes --name microecom); do docker exec $n crictl rmi localhost:5001/<svc>:dev; done`
+- Mutable `:dev` images use `imagePullPolicy: Always`. Push the replacement to
+  the host registry forward at `localhost:5001`, then restart the deployment
+  with `make k8s-rebuild svc=<svc>`. Pods pull through `localhost:5000`.

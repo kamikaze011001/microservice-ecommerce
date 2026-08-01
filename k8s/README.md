@@ -6,11 +6,15 @@ Spec: `docs/superpowers/specs/2026-05-09-k8s-local-design.md`.
 
     make k8s-bootstrap
 
-Brings up the kind cluster, infra (MySQL, Mongo, Redis, Kafka, schema-registry,
+Brings up the minikube cluster, infra (MySQL, Mongo, Redis, Kafka, schema-registry,
 kafka-connect, Vault, MinIO, ingress-nginx, and the observability stack —
 VictoriaMetrics + Grafana + kube-state-metrics), seeds data + Vault, builds and
 pushes all images to the local registry, applies the 8 service Deployments, and
-seeds the inventory stock tables. Idempotent — safe to re-run.
+seeds the inventory stock tables. Idempotent, safe to re-run.
+
+Start the ingress tunnel in a separate terminal and keep it running:
+
+    make k8s-tunnel
 
 ## Daily
 
@@ -24,6 +28,7 @@ seeds the inventory stock tables. Idempotent — safe to re-run.
 | Tail one Pod | `kubectl -n apps logs -f deploy/<svc>` |
 | Re-seed inventory stock (cart shows "0 available") | `make k8s-seed-inventory` |
 | Tear it ALL down | `make k8s-down` |
+| Resume after stopping | `make k8s-start` |
 
 Dashboards: Grafana at `http://grafana.microecom.local` (admin/admin),
 VictoriaMetrics UI at `http://vm.microecom.local/vmui` (scrape health at
@@ -48,14 +53,13 @@ scopes clean and mirror prod (`api.<domain>`). All resolve to the ingress on :80
 
 ```
 k8s/
-├── kind/                  — cluster.yaml + local registry shim
 ├── images/                — Dockerfile.jvm, Dockerfile.cores, build.sh
 ├── infra/                 — Helm charts + bootstrap Jobs
 │   └── jobs/              — idempotent seed Jobs (mysql, mongo, vault, minio, kafka-connect)
 └── apps/
     ├── base/              — per-service manifests (deployment + service + hpa; gateway adds rbac for k8s discovery)
     └── overlays/
-        ├── local/         — kind-targeted kustomization
+        ├── local/         — minikube-targeted kustomization
         └── aws/           — placeholder (LoadBalancer, EBS, IRSA come later)
 ```
 
@@ -66,7 +70,7 @@ launch with a repo-committed config (skin + namespace hotkeys):
 
 ```bash
 brew install k9s          # one-time
-make k9s                  # local kind cluster (ENV=local default)
+make k9s                  # local minikube cluster (ENV=local default)
 make k9s ENV=eks          # EKS context (see below)
 ```
 
