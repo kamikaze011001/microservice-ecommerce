@@ -98,14 +98,17 @@ WORKDIR /workspace
 COPY ${SERVICE}/ ./${SERVICE}/
 RUN --mount=type=cache,target=/root/.m2,id=m2-${SERVICE} \
     --mount=type=bind,from=cores,source=/root/.m2,target=/cores-m2,ro \
-    cp -rn /cores-m2/. /root/.m2/ && cd ${SERVICE} && mvn -B -DskipTests package
+    cp -r /cores-m2/. /root/.m2/ && cd ${SERVICE} && mvn -B -DskipTests package
 ```
 
 Both stages resolve to the same image, so the extra `FROM` costs no pull and no layers.
 
-`cp -rn` (no-clobber) is load-bearing in the other direction: it never overwrites, so a freshly
-rebuilt cores image cannot be masked by a stale copy already sitting in the cache. See
-"Stale cores" under Risks.
+`cp -r` **clobbers**, and that direction is load-bearing. The cache outlives cores rebuilds, so a
+`core/*` artifact already sitting in it must lose to the one from the freshly built cores image.
+`cp -n` (no-clobber) does the opposite — it skips the destination file that already exists, which
+is exactly the stale copy — and was corrected during planning after being verified by poisoning a
+cache with a `STALE` `common-dto-0.0.1.jar`: `-n` kept it, `-r` refreshed it. The overwrite costs
+~0.2s for 190 MB / 3008 files. See "Stale cores" under Risks.
 
 ### Per-service cache id, not a shared repo
 
@@ -161,8 +164,8 @@ caches must not silently repeat that.
 
 **Stale cores.** Already a known hazard — `.claude/memory/` records that `k8s-rebuild` uses
 `SKIP_CORES=1`, so a `core/*` change needs `SVC=cores build.sh` first or services build against
-stale baked JARs. The cache mount does not worsen it: `cp -rn` only fills gaps, and the authoritative
-copy still arrives via `FROM ${CORES_IMAGE}`. It does not fix it either.
+stale baked JARs. The cache mount does not fix it either: `cp -r` copies from whatever
+`FROM ${CORES_IMAGE}` resolves to on that build, stale or fresh, and overwrites the cache to match.
 
 **Cold cache.** First build after a prune, on a new machine, or in CI downloads everything exactly
 as today, then warms. Degradation is graceful, never a failure.

@@ -32,6 +32,7 @@ Keep both halves on one line: macOS sudo caches per-terminal (`tty_tickets`), so
 | Goal | Command |
 |---|---|
 | Re-deploy one service after code change | `make k8s-rebuild svc=order-service` |
+| Reclaim Maven build caches (disk) | `make k8s-build-cache-prune` |
 | Re-apply all manifests | `make k8s-apps` |
 | Status table | `make k8s-status` |
 | Stress test (HPA) | `make k8s-payment-stress` then `make k8s-payment-stress-logs` |

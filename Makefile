@@ -45,6 +45,7 @@ help:
 	@echo "  make k8s-mysql-status — MySQL 1-primary/2-replica replication health"
 	@echo "  make k8s-apps         — re-apply just the service overlay"
 	@echo "  make k8s-rebuild svc=NAME — rebuild one image + rollout restart"
+	@echo "  make k8s-build-cache-prune  — reclaim the per-service Maven build caches"
 	@echo "  make k8s-payment-stress      — fire k6 payment-saga load Job (opt-in)"
 	@echo "  make k8s-payment-stress-logs — tail k6 payment-stress output"
 	@echo "  make k8s-storefront-smoke    — production funnel, 50VU/3m smoke gate"
@@ -223,7 +224,7 @@ k8s-tunnel:
 k8s-tunnel-stop:
 	@deploy/scripts/cluster.sh tunnel-stop
 
-.PHONY: k8s-build k8s-build-reuse k8s-rebuild k8s-registry-forward k8s-registry-stop
+.PHONY: k8s-build k8s-build-reuse k8s-rebuild k8s-build-cache-prune k8s-registry-forward k8s-registry-stop
 
 # Build and push through the registry forward started by k8s-cluster-up.
 k8s-build:
@@ -244,6 +245,15 @@ k8s-registry-forward:
 
 k8s-registry-stop:
 	@deploy/scripts/cluster.sh registry-stop
+
+# Each service keeps its own BuildKit cache mount for /root/.m2 (see
+# Dockerfile.jvm) -- roughly 150 MB apiece, ~1.2 GB across the eight services.
+# Reclaim them when disk gets tight; the next build re-downloads and re-warms,
+# so this costs time, never correctness. Also the fix if a core/* artifact in a
+# cache ever looks stale.
+k8s-build-cache-prune:
+	@docker builder prune --filter type=exec.cachemount -f
+	@docker builder du | tail -3
 
 .PHONY: k8s-infra k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest k8s-seed-images k8s-app-secrets
 
