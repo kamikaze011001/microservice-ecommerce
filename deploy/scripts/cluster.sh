@@ -245,10 +245,20 @@ start_tunnel() {
   # Binding :80/:443 needs root. Backgrounded there is no TTY to answer a
   # password prompt, so require a cached credential and say exactly how to get
   # one rather than launching something that will silently die.
+  #
+  # macOS sudo defaults to tty_tickets: the cached credential is scoped to the
+  # terminal that created it. `sudo -v` in another window does not count, and a
+  # caller with no TTY at all (an agent shell, CI, a cron job) can never satisfy
+  # this check -- such a caller must bind :80 some other way.
   if ! sudo -n true 2>/dev/null; then
     log_err "sudo credentials are not cached; minikube tunnel cannot bind :80/:443"
-    log_err "run this first, then re-run the same command:"
-    log_err "    sudo -v"
+    if ! tty -s; then
+      log_err "this shell has no TTY, so sudo cannot be primed from here at all."
+      log_err "run this from an interactive terminal:"
+    else
+      log_err "run this first, in THIS terminal (sudo caches per-tty on macOS):"
+    fi
+    log_err "    sudo -v && make k8s-tunnel"
     return 1
   fi
 

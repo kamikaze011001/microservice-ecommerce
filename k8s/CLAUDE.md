@@ -525,6 +525,13 @@ background process has no TTY to answer a prompt, `start_tunnel` requires a
 than launching something that would silently die. A missing credential is
 non-fatal: the tunnel is a browsing convenience, not a health requirement.
 
+macOS sudo defaults to **`tty_tickets`**, so that credential is scoped to the
+terminal that created it — `sudo -v` in another window does not count. Run
+`sudo -v && make k8s-tunnel` as one command in one terminal. A caller with no TTY
+at all (an agent shell, CI, cron) can never satisfy the check; `start_tunnel`
+detects that case with `tty -s` and says so instead of repeating advice that
+cannot work there.
+
 Readiness is checked with `lsof -nP -iTCP:80 -sTCP:LISTEN`, **never** the
 Service's `EXTERNAL-IP` — see
 `.claude/memory/conventions/minikube-tunnel-external-ip-is-sticky.md`.

@@ -24,6 +24,9 @@ terminal to keep open:
 
     sudo -v && make k8s-tunnel     # make k8s-tunnel-stop to stop it
 
+Keep both halves on one line: macOS sudo caches per-terminal (`tty_tickets`), so
+`sudo -v` in a different window will not help.
+
 ## Daily
 
 | Goal | Command |
