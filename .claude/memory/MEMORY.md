@@ -19,6 +19,7 @@
 - [kafka-internal-topics-need-explicit-compaction](conventions/kafka-internal-topics-need-explicit-compaction.md) — auto-created `_schemas`/`connect-*` get cleanup.policy=delete and Schema Registry/Connect then refuse to start
 - [kafka-exporter-applies-after-kafka-ready](conventions/kafka-exporter-applies-after-kafka-ready.md) — it hard-exits with no broker; apply after Kafka's rollout + restart it so a wedged reconcile recovers
 - [minikube-node-resources-only-apply-at-creation](conventions/minikube-node-resources-only-apply-at-creation.md) — `--cpus/--memory` ignored on resume; cluster.sh re-applies via `docker update` (and is over-subscribed here)
+- [minikube-tunnel-external-ip-is-sticky](conventions/minikube-tunnel-external-ip-is-sticky.md) — `EXTERNAL-IP 127.0.0.1` persists after the tunnel dies; check the process/listener, and port-forward the controller to test ingress rules independently
 
 ## Current
 - [HANDOFF](HANDOFF.md) — latest WIP state (overwritten each session)

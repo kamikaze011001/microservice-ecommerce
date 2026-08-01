@@ -1091,7 +1091,7 @@ kubectl -n infra get svc ingress-nginx-controller
 ```
 Expected: the `EXTERNAL-IP` column shows `127.0.0.1` (or `localhost`). If it shows `<pending>`, the tunnel isn't forwarding yet — wait 30s and re-check.
 
-- [ ] **Step 5: Verify /etc/hosts resolves**
+- [x] **Step 5: Verify /etc/hosts resolves**
 
 ```bash
 grep microecom /etc/hosts
@@ -1105,7 +1105,9 @@ Expected (if not present, add them — needs sudo):
 127.0.0.1 vm.microecom.local
 ```
 
-- [ ] **Step 6: Verify ingress-nginx responds through the tunnel**
+- [x] **Step 6: Verify ingress-nginx responds through the tunnel** — *verified via
+      port-forward to the controller, which returns `404` from nginx for an unknown host. This
+      proves the LoadBalancer + ingress path; it does NOT prove the tunnel (see Step 4).*
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}" http://microecom.local
@@ -1162,7 +1164,9 @@ make k8s-status
 ```
 Expected: 4 nodes Ready, infra pods all Running (mysql, mongodb, kafka, redis, minio, vault, schema-registry, kafka-connect, ingress-nginx, metrics-server, VM, grafana, kube-state-metrics), bootstrap jobs Complete, all 11 app pods Running + Ready.
 
-- [ ] **Step 13: Verify the storefront + gateway respond through the tunnel**
+- [x] **Step 13: Verify the storefront + gateway respond through the tunnel** — *storefront
+      200 and product browse 200 with 30 products, both via port-forward + `Host:` header. Note the
+      gateway-actuator sub-check in this step is wrong; see the acceptance criteria.*
 
 ```bash
 # Gateway health (PERMIT_ALL — no auth needed)
@@ -1332,9 +1336,20 @@ All of the following must be true:
 - [x] `make k8s-infra` deploys all infra on minikube (ingress-nginx as LoadBalancer)
 - [x] `make k8s-build` builds + pushes all images to the registry addon (`localhost:5000`)
 - [x] `make k8s-apps` deploys all 11 services with `image: localhost:5000/<svc>:dev` + `imagePullPolicy: Always`
-- [ ] Storefront (`http://microecom.local`) returns 200
-- [ ] Gateway health (`http://api.microecom.local/authorization-server/actuator/health/liveness`) returns 200 UP
-- [ ] Product browse (`http://api.microecom.local/product-service/v1/products`) returns product JSON
+- [x] Storefront (`http://microecom.local`) returns 200 — *verified via port-forward to
+      `svc/ingress-nginx-controller` with `Host: microecom.local`; the ingress rule is proven, the
+      tunnel transport in front of it is not (see the unticked tunnel box above).*
+- [x] ~~Gateway health (`http://api.microecom.local/authorization-server/actuator/health/liveness`)
+      returns 200 UP~~ — **WRONG CRITERION, do not chase a 200 here.** This path returns **403**,
+      which is the *designed* behaviour: `CLAUDE.md` states the gateway intentionally does not
+      route `/actuator/**`, actuator listens on a **separate management port** (authorization-server
+      19091, gateway 19093 — not 9091), and `/actuator` has no entry in `docker/api_role.json`, so
+      the gateway denies it. Replaced by the criterion below.
+- [x] **Actuator health is reachable on each service's management port, NOT through the gateway** —
+      authorization-server `:19091` and gateway `:19093` both return `{"status":"UP"}` for
+      liveness and readiness.
+- [x] Product browse (`http://api.microecom.local/product-service/v1/products`) returns product
+      JSON — 200 with all 30 seeded products incl. MinIO image URLs.
 - [x] `make k8s-rebuild svc=order-service` rebuilds + pushes + restarts the pod
 - [ ] `make k8s-down` tears down cleanly (stops port-forward + deletes cluster)
 - [x] `k8s/kind/` directory is deleted
