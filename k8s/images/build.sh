@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build images for the local kind cluster and push to the local registry.
+# Build images for the local minikube cluster and push to its registry addon.
 #
 # Usage:
 #   k8s/images/build.sh                 # build cores + all services
@@ -7,10 +7,18 @@
 #   SVC=cores k8s/images/build.sh           # rebuild cores only
 set -euo pipefail
 
+# Host builds push through the port-forward on 5001. Pods pull the same
+# repositories through the registry addon's node proxy on localhost:5000.
 REGISTRY="${REGISTRY:-localhost:5001}"
 TAG="${TAG:-dev}"
 
 cd "$(git rev-parse --show-toplevel)"
+
+if ! curl -fsS -o /dev/null "http://${REGISTRY}/v2/" 2>/dev/null; then
+  echo "ERROR: registry at ${REGISTRY} is not reachable." >&2
+  echo "Run 'make k8s-cluster-up' or 'make k8s-registry-forward' first." >&2
+  exit 1
+fi
 
 # When REUSE_EXISTING is set, skip building an image whose tag is already in the
 # local registry. Used by `make k8s-build-reuse` (the bootstrap path) so a
@@ -79,7 +87,7 @@ build_frontend() {
   reuse_or_build "frontend" && return 0
   echo "==> building frontend"
   # VITE_API_BASE_URL is inlined at build time (Vite compiles env vars in).
-  #   - local/kind (var UNSET): defaults to http://api.microecom.local (nginx host).
+  #   - local/minikube (var UNSET): defaults to http://api.microecom.local.
   #   - AWS (var set to ""): kept empty → the SPA issues RELATIVE calls
   #     (fetch('/bff-service/v1/…')) and is served same-origin behind the ALB.
   # The dash (no colon) is load-bearing: ${VAR-default} only falls back when the
