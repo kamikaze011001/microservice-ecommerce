@@ -154,7 +154,9 @@ cmd_up() {
 }
 
 cmd_down() {
-  stop_tunnel
+  # Non-fatal: minikube delete removes the cluster regardless, and a tunnel we
+  # could not signal must not block teardown.
+  stop_tunnel || true
   stop_registry_forward
   log_info "deleting minikube profile '$CLUSTER_NAME'"
   minikube delete -p "$CLUSTER_NAME"
@@ -162,7 +164,7 @@ cmd_down() {
 }
 
 cmd_stop() {
-  stop_tunnel
+  stop_tunnel || true
   stop_registry_forward
   log_info "stopping minikube profile '$CLUSTER_NAME'"
   minikube stop -p "$CLUSTER_NAME"
@@ -209,8 +211,15 @@ cmd_start() {
 #
 # Run it in the background with a PID file, mirroring start_registry_forward,
 # so the tunnel is not tied to a terminal the user must keep open.
+# Probe with a TCP connect, NOT `lsof`. The tunnel re-execs under sudo, so the
+# listening socket is owned by root -- and an unprivileged `lsof -iTCP:80` does
+# not list other users' sockets at all. It reports "nothing on :80" against a
+# perfectly healthy tunnel, which then trips the timeout below and tears down a
+# working tunnel. A connect test is ownership-blind, so it sees what a browser
+# would see. /dev/tcp keeps this dependency-free (no nc/lsof/curl needed) -- it
+# is a bash builtin, which the shebang guarantees; it does NOT work under zsh.
 tunnel_is_listening() {
-  lsof -nP -iTCP:80 -sTCP:LISTEN >/dev/null 2>&1
+  (exec 3<>/dev/tcp/127.0.0.1/80) >/dev/null 2>&1
 }
 
 stop_tunnel() {
@@ -227,11 +236,26 @@ stop_tunnel() {
   # `minikube tunnel` re-executes itself under sudo to bind the privileged
   # ports, so killing the PID we launched can leave the root-owned child
   # holding :80. Clear it explicitly or the next start fails on a used port.
-  if pgrep -f "minikube tunnel -p $CLUSTER_NAME" >/dev/null 2>&1; then
-    sudo -n pkill -f "minikube tunnel -p $CLUSTER_NAME" 2>/dev/null \
-      || pkill -f "minikube tunnel -p $CLUSTER_NAME" 2>/dev/null \
+  # An unprivileged `pkill` cannot signal that child at all, so try sudo first
+  # and only fall back for the case where the process is still ours.
+  if pgrep -f "minikube tunnel" >/dev/null 2>&1; then
+    sudo -n pkill -f "minikube tunnel" 2>/dev/null \
+      || pkill -f "minikube tunnel" 2>/dev/null \
       || true
   fi
+
+  # Verify rather than assume: without a cached sudo credential the kill above
+  # is a no-op on the root-owned process and :80 stays bound. Say so, with the
+  # command that actually works, instead of reporting a stop that did not happen.
+  local attempt
+  for attempt in 1 2 3; do
+    tunnel_is_listening || return 0
+    sleep 1
+  done
+  log_err ":80 is still bound -- the root-owned tunnel outlived the kill."
+  log_err "clear it with:"
+  log_err "    sudo pkill -f 'minikube tunnel'"
+  return 1
 }
 
 start_tunnel() {
@@ -285,7 +309,7 @@ start_tunnel() {
   done
 
   log_err "tunnel did not bind :80 in time; see $RUN_DIR/tunnel.log"
-  stop_tunnel
+  stop_tunnel || true
   return 1
 }
 
