@@ -1356,9 +1356,10 @@ All of the following must be true:
 - [x] Product browse (`http://api.microecom.local/product-service/v1/products`) returns product
       JSON — 200 with all 30 seeded products incl. MinIO image URLs.
 - [x] `make k8s-rebuild svc=order-service` rebuilds + pushes + restarts the pod
-- [ ] `make k8s-down` tears down cleanly (stops port-forward + tunnel + deletes cluster) —
-      **still unexercised**: the cluster is deliberately left running. Rebuilding it costs a
-      full image build + seed cycle, so run this only when you are done with the environment.
+- [x] `make k8s-down` tears down cleanly (stops port-forward + tunnel + deletes cluster) —
+      exercised 2026-08-01. All 30 app resources deleted, all 4 node containers removed, 0
+      minikube profiles remain, both PID files cleared (only the `.log` files survive in
+      `deploy/.run/`), `:80` free, no orphaned tunnel or port-forward process.
 - [x] `k8s/kind/` directory is deleted
 - [x] ~~No `localhost:5001` references remain anywhere in `k8s/` or `deploy/`~~ — **OBSOLETE, do
       not enforce.** Superseded by the implementation deviation at the top of this plan: the host
