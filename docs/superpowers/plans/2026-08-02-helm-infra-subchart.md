@@ -1263,9 +1263,14 @@ metadata:
   name: mysql-replication
   namespace: {{ $ns }}
   annotations:
-    "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "5"
-    "helm.sh/hook-delete-policy": before-hook-creation
+    # Keys unquoted, matching the rest of the chart (mongodb.yaml's
+    # `helm.sh/resource-policy: keep`). Quoting the KEY is semantically
+    # identical YAML but changes the rendered text, which the Step 1
+    # assertions match against. The `"5"` value must stay quoted — hook
+    # weights are strings.
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "5"
+    helm.sh/hook-delete-policy: before-hook-creation
 spec:
   backoffLimit: 3
   template:
