@@ -22,7 +22,7 @@ infra:
   enabled: true
 
   mysql:          { enabled: true, storage: 4Gi }
-  mysqlReplica:   { enabled: true, replicas: 2, storage: 4Gi }
+  mysqlReplica:   { enabled: true, replicas: 2, storage: 4Gi, waitTimeout: 300 }
   mongodb:        { enabled: true, storage: 4Gi }
   redis:          { enabled: true }
   kafka:          { enabled: true, storage: 10Gi }

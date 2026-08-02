@@ -2,6 +2,10 @@
 {{- $ns := .Values.global.namespaces.infra -}}
 {{- $primary := include "microecom.fqdn" (dict "name" "mysql" "namespace" $ns) -}}
 {{- $headless := include "microecom.fqdn" (dict "name" "mysql-replica-headless" "namespace" $ns) -}}
+{{- $waitTimeout := int .Values.mysqlReplica.waitTimeout -}}
+{{- $hostCount := add1 (int .Values.mysqlReplica.replicas) -}}
+{{- $postWaitSlack := 60 -}}
+{{- $deadline := add (mul $hostCount $waitTimeout) $postWaitSlack -}}
 ---
 # MySQL replication: 1 primary + N replicas (GTID auto-position).
 #
@@ -28,12 +32,27 @@ metadata:
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
   backoffLimit: 3
-  # activeDeadlineSeconds is the outer backstop: WAIT_TIMEOUT below gives a
-  # readable "host X unreachable after Ns" error, but only wait_for() honors
-  # it. If the container is OOM-killed mid-mysql-client-call, wedged in an
-  # image pull, or otherwise never reaches the timeout check, this is what
-  # actually stops a hung pod from pinning `helm install --wait` open forever.
-  activeDeadlineSeconds: 600
+  # activeDeadlineSeconds is derived from the same numbers wait_for() uses,
+  # not hardcoded, so it can never be smaller than one complete graceful
+  # attempt. wait_for() runs sequentially over every host (1 primary + N
+  # replicas), each allowed its own full WAIT_TIMEOUT before it reports a
+  # readable "host X unreachable after Ns" error — so the deadline must cover
+  # at least hostCount * WAIT_TIMEOUT, plus a flat slack for the steps after
+  # wait_for() that WAIT_TIMEOUT doesn't bound (repl-user setup, the
+  # per-replica idempotence check, CHANGE REPLICATION SOURCE, and the final
+  # sleep 5 + SHOW REPLICA STATUS verification loop — all quick per host).
+  # With the default mysqlReplica.replicas=2 and waitTimeout=300 this renders
+  # to 960s ((1 + 2 hosts) * 300s + 60s slack).
+  #
+  # This intentionally sizes ONE attempt, not all backoffLimit retries
+  # combined. activeDeadlineSeconds is measured from the Job's startTime
+  # across every retry, but the graceful, readable-error path is
+  # WAIT_TIMEOUT's job, not this backstop's — once a full honest attempt has
+  # burned through its whole budget without success, cutting the remaining
+  # retries short is the intended behaviour. This deadline exists only to
+  # catch a genuinely hung pod (OOM mid mysql-client-call, a wedged image
+  # pull) that never reaches wait_for()'s own timeout check.
+  activeDeadlineSeconds: {{ $deadline }}
   template:
     metadata:
       name: mysql-replication
@@ -51,6 +70,8 @@ spec:
               value: {{ $primary | quote }}
             - name: REPLICA_HOSTS
               value: {{ range $i := until (int .Values.mysqlReplica.replicas) }}mysql-replica-{{ $i }}.{{ $headless }} {{ end }}
+            - name: WAIT_TIMEOUT
+              value: {{ $waitTimeout | quote }}
           resources:
             requests: { cpu: 50m, memory: 128Mi }
             limits:   { cpu: 500m, memory: 512Mi }
@@ -64,8 +85,11 @@ spec:
               # `kubectl rollout status --timeout=5m`, failing fast on a bad
               # Secret or crashloop. This Job has no such gate, so wait_for()
               # must own its own timeout or an unreachable host stalls
-              # `helm install --wait` indefinitely. Overridable via env for
-              # slower environments.
+              # `helm install --wait` indefinitely. The container's WAIT_TIMEOUT
+              # env var (set above from .Values.mysqlReplica.waitTimeout, default
+              # 300) is what actually overrides this for slower environments;
+              # the ${WAIT_TIMEOUT:-300} fallback here only matters if that env
+              # var is somehow absent, keeping the same default in sync.
               WAIT_TIMEOUT="${WAIT_TIMEOUT:-300}"
 
               wait_for() {
