@@ -888,18 +888,35 @@ The first of the three ordering rewrites. `kafka-exporter` hard-exits when no br
 section "kafka"
 
 out="$(render)"
-assert_has   "kafka Service exists"                             '^  name: kafka$' "$out"
-assert_has   "kafka client port"                                'name: client' "$out"
-assert_has   "kafka storage is 10Gi"                            'storage: 10Gi' "$out"
-assert_has   "kafka-exporter has a wait-for-kafka initContainer" 'name: wait-for-kafka' "$out"
-assert_has   "wait-for-kafka reuses the kafka image"            'image: apache/kafka:3\.9\.1' "$out"
-assert_has   "wait targets the kafka FQDN"                      'kafka\.infra\.svc\.cluster\.local:9092' "$out"
+sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet)"
+svc="$(printf '%s\n' "$out" | docs_of_kind Service)"
+kafka_sts="$(printf '%s\n' "$sts" | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: kafka(\n|$)/')"
+exporter="$(printf '%s\n' "$out" | docs_of_kind Deployment \
+            | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: kafka-exporter(\n|$)/')"
+assert_has   "kafka Service exists"                             '^  name: kafka$' "$svc"
+assert_has   "kafka StatefulSet exists"                         '^  name: kafka$' "$sts"
+assert_has   "kafka client port"                                'name: client' "$kafka_sts"
+# Scoped and override-proved below: minio's default storage is also 10Gi.
+assert_has   "kafka storage is 10Gi (default, kafka's own STS)" 'storage: 10Gi' "$kafka_sts"
+# The next three are scoped to the exporter's own Deployment. Task 5 gives
+# schema-registry and kafka-connect the same `wait-for-kafka` initContainer,
+# the same image and the same bootstrap address, so unscoped these would all
+# stay green with kafka-exporter deleted outright.
+assert_has   "kafka-exporter has a wait-for-kafka initContainer" 'name: wait-for-kafka' "$exporter"
+assert_has   "wait-for-kafka reuses the kafka image"            'image: apache/kafka:3\.9\.1' "$exporter"
+assert_has   "wait targets the kafka FQDN"                      'kafka\.infra\.svc\.cluster\.local:9092' "$exporter"
+
+out="$(render --set infra.kafka.storage=11Gi)"
+kafka_sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet \
+             | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: kafka(\n|$)/')"
+assert_has   "infra.kafka.storage reaches kafka's own PVC"      'storage: 11Gi' "$kafka_sts"
 
 out="$(render --set infra.kafka.enabled=false --set infra.kafkaExporter.enabled=false)"
 # NOT `apache/kafka` — schema-registry and kafka-connect are still enabled here
 # and their wait/compact initContainers reuse that image (Task 5).
-assert_lacks "kafka StatefulSet gated off"                      '^  name: kafka$' "$out"
-assert_lacks "kafka-exporter gated off"                         'danielqsj/kafka-exporter' "$out"
+assert_lacks "kafka StatefulSet gated off"                      '^  name: kafka$' \
+                                                                "$(printf '%s\n' "$out" | docs_of_kind StatefulSet)"
+assert_lacks "kafka-exporter gated off"                         'image: danielqsj/kafka-exporter:v1\.8\.0' "$out"
 ```
 
 - [ ] **Step 2: Run — expect failure**
@@ -1017,15 +1034,24 @@ The second ordering rewrite, and the largest behaviour change. `install.sh` comp
 section "schema-registry / kafka-connect"
 
 out="$(render)"
-assert_has   "schema-registry Service exists"                   '^  name: schema-registry$' "$out"
-assert_has   "kafka-connect Service exists"                     '^  name: kafka-connect$' "$out"
-assert_has   "schema-registry compacts _schemas"                'TOPICS.*_schemas' "$out"
-assert_has   "kafka-connect compacts connect-configs"           'connect-configs connect-offsets connect-status' "$out"
-assert_has   "both have an ensure-compacted initContainer"      'name: ensure-compacted' "$out"
-assert_has   "kafka-connect waits for schema-registry"          'name: wait-for-schema-registry' "$out"
-assert_has   "kafka-connect keeps its install-plugins step"     'name: install-plugins' "$out"
-assert_has   "cleanup.policy=compact is applied"                'cleanup\.policy=compact' "$out"
-assert_has   "confluent pods disable service links"             'enableServiceLinks: false' "$out"
+svc="$(printf '%s\n' "$out" | docs_of_kind Service)"
+dep="$(printf '%s\n' "$out" | docs_of_kind Deployment)"
+sr="$(printf '%s\n' "$dep" | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: schema-registry(\n|$)/')"
+kc="$(printf '%s\n' "$dep" | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: kafka-connect(\n|$)/')"
+assert_has   "schema-registry Service exists"                   '^  name: schema-registry$' "$svc"
+assert_has   "kafka-connect Service exists"                     '^  name: kafka-connect$' "$svc"
+# Both workloads get `ensure-compacted`, `cleanup.policy=compact` and
+# `enableServiceLinks: false` from the same helper, so an unscoped assertion is
+# satisfied by whichever pod still has it — each is asserted per workload.
+assert_has   "schema-registry compacts _schemas"                'TOPICS.*_schemas' "$sr"
+assert_has   "schema-registry has ensure-compacted"             'name: ensure-compacted' "$sr"
+assert_has   "schema-registry applies cleanup.policy=compact"   'cleanup\.policy=compact' "$sr"
+assert_has   "schema-registry disables service links"           'enableServiceLinks: false' "$sr"
+assert_has   "kafka-connect compacts its three internal topics" 'connect-configs connect-offsets connect-status' "$kc"
+assert_has   "kafka-connect has ensure-compacted"               'name: ensure-compacted' "$kc"
+assert_has   "kafka-connect waits for schema-registry"          'name: wait-for-schema-registry' "$kc"
+assert_has   "kafka-connect keeps its install-plugins step"     'name: install-plugins' "$kc"
+assert_has   "kafka-connect disables service links"             'enableServiceLinks: false' "$kc"
 
 out="$(render --set infra.schemaRegistry.enabled=false --set infra.kafkaConnect.enabled=false)"
 assert_lacks "confluent workloads gated off"                    'confluentinc/cp-' "$out"
@@ -1167,15 +1193,21 @@ The one step that stays imperative. The conversion is a real simplification: tod
 section "mysql replication hook"
 
 out="$(render)"
-assert_has   "replication Job is a post-install/post-upgrade hook" 'helm\.sh/hook: post-install,post-upgrade' "$out"
-assert_has   "hook weight is 5"                                 'helm\.sh/hook-weight: "5"' "$out"
-assert_has   "hook deletes before re-creation"                  'hook-delete-policy: before-hook-creation' "$out"
-assert_has   "job uses the pinned mysql image"                  'image: mysql:8\.0\.40' "$out"
-assert_has   "credentials come from the Secret, not literals"   'secretRef' "$out"
-assert_lacks "no hardcoded replication password"                'replica_ecommerce' "$out"
-assert_has   "job enumerates replica-0"                         'mysql-replica-0\.mysql-replica-headless' "$out"
-assert_has   "job enumerates replica-1"                         'mysql-replica-1\.mysql-replica-headless' "$out"
-assert_has   "idempotence check on replication_connection_status" 'replication_connection_status' "$out"
+# Every assertion here is scoped to the Job. Unscoped, all of them are
+# unsound: the mysql StatefulSet carries the same image, mysqld-exporter
+# (Task 2) already targets both replica FQDNs, and — worst — the
+# `mysql-credentials` Secret legitimately contains `replica_ecommerce`, so
+# `assert_lacks` against the full render can never pass.
+job="$(printf '%s\n' "$out" | docs_of_kind Job)"
+assert_has   "replication Job is a post-install/post-upgrade hook" 'helm\.sh/hook: post-install,post-upgrade' "$job"
+assert_has   "hook weight is 5"                                 'helm\.sh/hook-weight: "5"' "$job"
+assert_has   "hook deletes before re-creation"                  'hook-delete-policy: before-hook-creation' "$job"
+assert_has   "job uses the pinned mysql image"                  'image: mysql:8\.0\.40' "$job"
+assert_has   "credentials come from the Secret, not literals"   'secretRef' "$job"
+assert_lacks "no hardcoded replication password in the Job"     'replica_ecommerce' "$job"
+assert_has   "job enumerates replica-0"                         'mysql-replica-0\.mysql-replica-headless' "$job"
+assert_has   "job enumerates replica-1"                         'mysql-replica-1\.mysql-replica-headless' "$job"
+assert_has   "idempotence check on replication_connection_status" 'replication_connection_status' "$job"
 
 out="$(render --set infra.mysqlReplica.enabled=false)"
 assert_lacks "hook gated off with the replicas"                 'mysql-replication' "$out"
@@ -1366,24 +1398,37 @@ Expected: 3 JSON files.
 section "dashboards / aws-gated"
 
 out="$(render)"
-assert_has   "dashboards ConfigMap is named for grafana's dashboardsConfigMaps" 'name: grafana-custom-dashboards' "$out"
-assert_has   "dashboards land in the monitoring namespace"      'namespace: monitoring' "$out"
+# Scoped to the ConfigMap itself: `grafana-custom-dashboards` is also the value
+# of grafana.dashboardsConfigMaps.custom in charts/infra/values.yaml, so the
+# string appears in grafana's own rendered objects whether or not this
+# ConfigMap exists — and `namespace: monitoring` is on dozens of objects.
+cm="$(printf '%s\n' "$out" | docs_of_kind ConfigMap \
+      | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: grafana-custom-dashboards(\n|$)/')"
+assert_has   "dashboards ConfigMap exists"                      '^  name: grafana-custom-dashboards$' "$cm"
+assert_has   "dashboards land in the monitoring namespace"      '^  namespace: monitoring$' "$cm"
 assert_lacks "gp3 StorageClass is off by default"               'kind: StorageClass' "$out"
 assert_lacks "external-secrets is off by default"               'kind: SecretStore' "$out"
 
 out="$(render --set infra.storageClassGp3.enabled=true)"
-assert_has   "gp3 StorageClass renders when enabled"            'kind: StorageClass' "$out"
-assert_has   "gp3 uses xfs (ext4 lost+found breaks kafka log.dir)" 'xfs' "$out"
+sc="$(printf '%s\n' "$out" | docs_of_kind StorageClass)"
+assert_has   "gp3 StorageClass renders when enabled"            '^  name: gp3$' "$sc"
+# NOT a bare `xfs` — the source manifest carries a long comment explaining why
+# xfs, which the render preserves, so `xfs` stays green with the parameter
+# dropped. Assert the parameter key itself.
+assert_has   "gp3 uses xfs (ext4 lost+found breaks kafka log.dir)" 'csi\.storage\.k8s\.io/fstype: xfs' "$sc"
 
 out="$(render -f "$CHART_DIR/envs/aws.yaml")"
 assert_ok    "envs/aws.yaml renders"                            "$out"
+# Each keys on the workload's image, not its name: `redis-master` and
+# `mysql-replica` are hostnames in app config and in victoriaMetrics' scrape
+# targets, which stay enabled on AWS.
 assert_lacks "aws: mysql is replaced by RDS"                    'image: mysql:8\.0\.40' "$out"
-assert_lacks "aws: redis is replaced by ElastiCache"            'redis-master' "$out"
-assert_lacks "aws: minio is replaced by S3"                     'minio/minio' "$out"
-assert_lacks "aws: vault is replaced by ExternalSecrets"        'app.kubernetes.io/name: vault' "$out"
+assert_lacks "aws: redis is replaced by ElastiCache"            'image: redis:7\.4-alpine' "$out"
+assert_lacks "aws: minio is replaced by S3"                     'image: minio/minio' "$out"
+assert_lacks "aws: vault is replaced by ExternalSecrets"        'app\.kubernetes\.io/name: vault' "$out"
 assert_has   "aws: gp3 StorageClass is on"                      'kind: StorageClass' "$out"
 assert_has   "aws: external-secrets is on"                      'kind: SecretStore' "$out"
-assert_has   "aws: kafka still runs in-cluster"                 'apache/kafka:3\.9\.1' "$out"
+assert_has   "aws: kafka still runs in-cluster"                 'image: apache/kafka:3\.9\.1' "$out"
 ```
 
 - [ ] **Step 3: Run — expect failure**
