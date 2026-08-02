@@ -276,5 +276,28 @@ assert_has   "kafka-connect disables service links"             'enableServiceLi
 out="$(render --set infra.schemaRegistry.enabled=false --set infra.kafkaConnect.enabled=false)"
 assert_lacks "confluent workloads gated off"                    'confluentinc/cp-' "$out"
 
+# ── Task 6: replication hook ────────────────────────────────────────────────
+section "mysql replication hook"
+
+out="$(render)"
+# Every assertion here is scoped to the Job. Unscoped, all of them are
+# unsound: the mysql StatefulSet carries the same image, mysqld-exporter
+# (Task 2) already targets both replica FQDNs, and — worst — the
+# `mysql-credentials` Secret legitimately contains `replica_ecommerce`, so
+# `assert_lacks` against the full render can never pass.
+job="$(printf '%s\n' "$out" | docs_of_kind Job)"
+assert_has   "replication Job is a post-install/post-upgrade hook" 'helm\.sh/hook: post-install,post-upgrade' "$job"
+assert_has   "hook weight is 5"                                 'helm\.sh/hook-weight: "5"' "$job"
+assert_has   "hook deletes before re-creation"                  'hook-delete-policy: before-hook-creation' "$job"
+assert_has   "job uses the pinned mysql image"                  'image: mysql:8\.0\.40' "$job"
+assert_has   "credentials come from the Secret, not literals"   'secretRef' "$job"
+assert_lacks "no hardcoded replication password in the Job"     'replica_ecommerce' "$job"
+assert_has   "job enumerates replica-0"                         'mysql-replica-0\.mysql-replica-headless' "$job"
+assert_has   "job enumerates replica-1"                         'mysql-replica-1\.mysql-replica-headless' "$job"
+assert_has   "idempotence check on replication_connection_status" 'replication_connection_status' "$job"
+
+out="$(render --set infra.mysqlReplica.enabled=false)"
+assert_lacks "hook gated off with the replicas"                 'mysql-replication' "$out"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
