@@ -1059,7 +1059,11 @@ assert_has   "kafka-connect Service exists"                     '^  name: kafka-
 # Both workloads get `ensure-compacted`, `cleanup.policy=compact` and
 # `enableServiceLinks: false` from the same helper, so an unscoped assertion is
 # satisfied by whichever pod still has it — each is asserted per workload.
-assert_has   "schema-registry compacts _schemas"                'TOPICS.*_schemas' "$sr"
+# NOT 'TOPICS.*_schemas' — `.` never matches a newline under `grep -E`, and the
+# ensureCompacted helper always renders `- name: TOPICS` and `value: "…"` on
+# separate lines, so that regex can never match whatever the template does.
+assert_has   "schema-registry ensure-compacted carries a TOPICS env var" 'name: TOPICS' "$sr"
+assert_has   "schema-registry compacts _schemas"                'value: "_schemas"' "$sr"
 assert_has   "schema-registry has ensure-compacted"             'name: ensure-compacted' "$sr"
 assert_has   "schema-registry applies cleanup.policy=compact"   'cleanup\.policy=compact' "$sr"
 assert_has   "schema-registry disables service links"           'enableServiceLinks: false' "$sr"
