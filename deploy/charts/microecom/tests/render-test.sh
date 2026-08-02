@@ -170,7 +170,11 @@ assert_has   "minio Service exists"                             '^  name: minio$
 # `secretName: mongodb-keyfile`, so an unscoped grep stays green with the
 # Secret itself deleted — it could never fail.
 assert_has   "mongodb-keyfile Secret is rendered"               '^  name: mongodb-keyfile$' "$sec"
-assert_has   "keyfile carries resource-policy keep"             'helm\.sh/resource-policy: keep' "$sec"
+# Scoped to the mongodb-keyfile Secret doc specifically: an unscoped grep
+# against $sec goes silently vacuous the moment any other Secret carries this
+# annotation.
+keyfile_sec="$(printf '%s' "$sec" | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: mongodb-keyfile(\n|$)/')"
+assert_has   "keyfile carries resource-policy keep"             'helm\.sh/resource-policy: keep' "$keyfile_sec"
 # Scoped to the minio-named Ingress doc: grafana and vmsingle also render
 # ingressClassName: nginx (charts/infra/values.yaml, hardcoded not templated
 # from global.ingress.className), so an unscoped grep against $ing passes even

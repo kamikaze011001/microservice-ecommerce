@@ -51,7 +51,7 @@ Two hazards, both real:
 */}}
 {{- $existing := lookup "v1" "Secret" $ns "mongodb-keyfile" -}}
 {{- $keyfile := "" -}}
-{{- if $existing -}}
+{{- if and $existing $existing.data -}}
   {{- $keyfile = index $existing.data "keyfile" | default "" -}}
 {{- end -}}
 {{- if not $keyfile -}}
