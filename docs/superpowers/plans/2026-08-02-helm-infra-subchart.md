@@ -1655,16 +1655,16 @@ The chart is complete; this makes it runnable alongside the old path. Nothing he
 - Consumes: the chart from Tasks 1–7.
 - Produces: `make k8s-platform` and `make k8s-infra-helm`.
 
-- [ ] **Step 1: Determine this Helm's `--wait` flag form**
-
-Helm 4 changed `--wait` from a boolean to a mode flag on some subcommands. Settle it once rather than discovering it during a 15-minute install:
+- [ ] **Step 1: Confirm the Helm version (the `--wait` form is already settled)**
 
 ```bash
-helm version --short
-helm upgrade --help | grep -E -A3 '^\s+--wait'
+helm version --short          # expect v4.2.0+g0646808 or later
 ```
 
-Use whichever form this binary documents (`--wait` or `--wait=watcher`) consistently in `platform.sh` and the Makefile.
+**Answered — do not re-derive.** In Helm 4 `--wait` takes a `WaitStrategy`
+(`watcher | hookOnly | legacy`). Bare `--wait` means `watcher`; the default when
+the flag is **omitted** is `hookOnly`, so hooks are awaited even without it. Use
+bare `--wait` consistently in `platform.sh` and the Makefile.
 
 - [ ] **Step 2: Write `platform.sh`**
 
@@ -1696,15 +1696,15 @@ helm repo update
 
 # `helm dependency update` does NOT recurse into subcharts — it must run against
 # charts/infra directly. `build` (not `update`) so Chart.lock stays authoritative.
-info "vendoring infra subchart dependencies"
+log_info "vendoring infra subchart dependencies"
 helm dependency build "$CHART/charts/infra"
 
 if [ "$ENV" = "aws" ]; then
-  warn "aws platform charts (ALB controller, EKS addons) are Phase 7 — skipping"
+  log_warn "aws platform charts (ALB controller, EKS addons) are Phase 7 — skipping"
   exit 0
 fi
 
-info "installing ingress-nginx"
+log_info "installing ingress-nginx"
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace infra --create-namespace \
   --version 4.10.0 \
@@ -1714,16 +1714,18 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
 # --kubelet-insecure-tls: minikube kubelet serving certs are self-signed.
 # InternalIP avoids inter-node hostname resolution issues. Upstream chart uses
 # an `args` list, NOT bitnami's extraArgs/apiService.create keys.
-info "installing metrics-server"
+log_info "installing metrics-server"
 helm upgrade --install metrics-server metrics-server/metrics-server \
   --namespace infra \
   --set 'args={--kubelet-insecure-tls,--kubelet-preferred-address-types=InternalIP}' \
   --wait --timeout 3m
 
-ok "platform ready"
+log_ok "platform ready"
 ```
 
-Check the function names in `deploy/scripts/lib/colors.sh` first and use whatever it actually exports; if it has no `info`/`warn`/`ok`, use plain `echo`.
+`deploy/scripts/lib/colors.sh` exports `log_info`, `log_ok`, `log_warn`, `log_err` — **not**
+`info`/`warn`/`ok`. All four write to **stderr** deliberately, so command output stays clean on
+stdout. Use the `log_*` names above; do not add shim functions and do not edit `colors.sh`.
 
 - [ ] **Step 3: Add the Makefile targets**
 
@@ -1736,12 +1738,21 @@ k8s-platform:
 
 ## k8s-infra-helm: bring up infra via the Helm umbrella chart (Phase 2 path)
 ##   Runs ALONGSIDE `make k8s-infra` — the kubectl path is still the default.
-##   15m timeout: the Confluent images are ~1.8GB and a cold pull alone is ~5.5m.
+##   20m timeout, for two reasons that compound. The Confluent images are ~1.8GB
+##   and a cold pull alone is ~5.5m. More subtly, `--timeout` also bounds Helm's
+##   wait on HOOK JOBS, and the mysql-replication post-install hook carries its own
+##   derived `activeDeadlineSeconds` = (mysqlReplica.replicas + 1) * waitTimeout + 60,
+##   which is 960s at the defaults (replicas 2, waitTimeout 300). A 15m (900s)
+##   Helm timeout is TIGHTER than that, so Helm would abandon the hook ~60s before
+##   the Job could emit its readable "ERROR: <host> unreachable after 300s" and you
+##   would get a generic Helm timeout instead of the diagnostic. The inner, more
+##   specific bound must fire first; Helm's timeout is only the outer backstop.
+##   If you raise mysqlReplica.replicas or waitTimeout, re-check this number.
 k8s-infra-helm: k8s-platform
 	@helm upgrade --install microecom deploy/charts/microecom \
 	  --namespace infra --create-namespace \
 	  -f deploy/charts/microecom/envs/$(or $(ENV),local-k8s).yaml \
-	  --wait --timeout 15m
+	  --wait --timeout 20m
 ```
 
 - [ ] **Step 4: Verify the targets resolve without running them**
@@ -1762,7 +1773,10 @@ Append a section covering, at minimum:
 - **The `--dry-run` keyfile hazard, stated as a rule:** `lookup` returns empty during `helm template` and `helm --dry-run`, so a dry run renders a *fresh* `mongodb-keyfile`. Rendering to read is fine; `helm template … | kubectl apply -f -` against a live cluster rotates the keyfile and breaks the initialized replica set.
 - That `helm dependency update` does not recurse into subcharts, so it must target `deploy/charts/microecom/charts/infra` — `platform.sh` does this, which is why `k8s-infra-helm` depends on `k8s-platform`.
 - That `charts/infra/charts/*.tgz` is gitignored and rebuilt from `Chart.lock`.
-- That `--wait` timeouts must stay ≥ 15m because of the ~1.8 GB Confluent images.
+- That `--wait` timeouts must stay ≥ 20m: the ~1.8 GB Confluent images need ~5.5m for a cold
+  pull, AND `--timeout` bounds Helm's wait on hook Jobs, so it must exceed the mysql-replication
+  hook's derived `activeDeadlineSeconds` (960s at defaults) or the Job's readable error is
+  pre-empted by a generic Helm timeout.
 - That `deploy/charts/microecom/tests/render-test.sh` is the fast check and needs no cluster.
 
 - [ ] **Step 6: Commit**
