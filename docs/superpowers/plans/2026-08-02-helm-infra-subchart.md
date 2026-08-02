@@ -1273,6 +1273,14 @@ metadata:
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
   backoffLimit: 3
+  # activeDeadlineSeconds is the outer backstop: WAIT_TIMEOUT below gives a
+  # readable "host X unreachable after Ns" error, but only wait_for() honors
+  # it. If the container is OOM-killed mid-mysql-client-call, wedged in an
+  # image pull, or otherwise never reaches the timeout check, this is what
+  # actually stops a hung pod from pinning `helm install --wait` open forever.
+  # backoffLimit alone does not cover this: it counts pod *failures*, not a
+  # pod that hangs.
+  activeDeadlineSeconds: 600
   template:
     metadata:
       name: mysql-replication
@@ -1299,11 +1307,26 @@ spec:
             - |
               set -euo pipefail
               ROOT="-uroot -p${MYSQL_ROOT_PASSWORD}"
+              # Bounded poll: install.sh's imperative version was gated behind
+              # `kubectl rollout status --timeout=5m`, failing fast on a bad
+              # Secret or crashloop. This Job has no such gate, so wait_for()
+              # must own its own timeout or an unreachable host stalls
+              # `helm install --wait` indefinitely. Overridable via env for
+              # slower environments.
+              WAIT_TIMEOUT="${WAIT_TIMEOUT:-300}"
 
               wait_for() {
                 local host=$1
+                local waited=0
                 echo "waiting for ${host}"
-                until mysql -h "$host" $ROOT -e 'SELECT 1' >/dev/null 2>&1; do sleep 3; done
+                until mysql -h "$host" $ROOT -e 'SELECT 1' >/dev/null 2>&1; do
+                  sleep 3
+                  waited=$((waited + 3))
+                  if [ "$waited" -ge "$WAIT_TIMEOUT" ]; then
+                    echo "ERROR: ${host} unreachable after ${WAIT_TIMEOUT}s"
+                    exit 1
+                  fi
+                done
                 echo "${host} is up"
               }
 
@@ -1453,7 +1476,14 @@ assert_lacks "aws: minio is replaced by S3"                     'image: minio/mi
 assert_lacks "aws: vault is replaced by ExternalSecrets"        'app\.kubernetes\.io/name: vault' "$out"
 assert_has   "aws: gp3 StorageClass is on"                      'kind: StorageClass' "$out"
 assert_has   "aws: external-secrets is on"                      'kind: SecretStore' "$out"
-assert_has   "aws: kafka still runs in-cluster"                 'image: apache/kafka:3\.9\.1' "$out"
+# Scoped to the kafka StatefulSet. `apache/kafka:3.9.1` is ALSO the image of the
+# wait-for-kafka (x3) and ensure-compacted (x2) initContainers, and those hang off
+# kafkaExporter / schemaRegistry / kafkaConnect, all of which stay enabled on AWS.
+# Verified: rendering with `--set infra.kafka.enabled=false` still yields 5 hits for
+# that image, so the unscoped form passes with the broker gone.
+kafka_sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet \
+             | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: kafka(\n|$)/')"
+assert_has   "aws: kafka still runs in-cluster"                 'image: apache/kafka:3\.9\.1' "$kafka_sts"
 ```
 
 - [ ] **Step 3: Run — expect failure**
