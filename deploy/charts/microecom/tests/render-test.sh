@@ -324,6 +324,35 @@ assert_lacks "gp3 StorageClass is off by default"               'kind: StorageCl
 # instead assert on the real kind so a regression is actually catchable.
 assert_lacks "external-secrets is off by default"               'kind: ClusterSecretStore' "$out"
 
+# mysqld-exporter scrape job must use endpoint discovery, not a static target
+# list: envs/aws.yaml disables mysqldExporter (RDS replaces it) but leaves
+# victoriaMetrics enabled, and the exporter's own instance list already varies
+# with mysqlReplica.replicas, so a hardcoded target is wrong in both dimensions.
+# Each `mysqld-exporter-<instance>.infra.svc.cluster.local:9104` FQDN appears
+# ONLY inside a static_configs target list (see mysqld-exporter.yaml's Service/
+# Deployment, which never render the FQDN form) — a precise, non-vacuous probe.
+assert_lacks "no hardcoded mysqld-exporter primary target (default render)" \
+                                                                'mysqld-exporter-primary\.infra\.svc\.cluster\.local:9104' "$out"
+assert_lacks "no hardcoded mysqld-exporter replica-0 target (default render)" \
+                                                                'mysqld-exporter-replica-0\.infra\.svc\.cluster\.local:9104' "$out"
+assert_lacks "no hardcoded mysqld-exporter replica-1 target (default render)" \
+                                                                'mysqld-exporter-replica-1\.infra\.svc\.cluster\.local:9104' "$out"
+# Scoped to the mysqld-exporter job's own stanza inside the embedded
+# scrape_configs YAML text — `kubernetes_sd_configs` and `role: endpoints` are
+# also used by spring-actuator/kubelet-cadvisor/kube-state-metrics, so an
+# unscoped assert_has would pass regardless of what THIS job does.
+mysqld_job="$(printf '%s\n' "$out" | awk '
+  /^    - job_name: mysqld-exporter$/ { flag=1; print; next }
+  flag && (/^    - job_name:/ || /^---$/ || /^$/) { flag=0; next }
+  flag { print }
+')"
+assert_has   "mysqld-exporter scrape job still exists"          'job_name: mysqld-exporter' "$mysqld_job"
+assert_has   "mysqld-exporter job discovers endpoints, not static_configs" 'kubernetes_sd_configs' "$mysqld_job"
+assert_has   "mysqld-exporter job discovery role is endpoints"  'role: endpoints' "$mysqld_job"
+assert_lacks "mysqld-exporter job no longer uses static_configs" 'static_configs' "$mysqld_job"
+assert_has   "mysqld-exporter relabels the pod's mysql-instance label into instance" \
+                                                                '__meta_kubernetes_pod_label_mysql_instance' "$mysqld_job"
+
 out="$(render --set infra.storageClassGp3.enabled=true)"
 sc="$(printf '%s\n' "$out" | docs_of_kind StorageClass)"
 assert_has   "gp3 StorageClass renders when enabled"            '^  name: gp3$' "$sc"
@@ -353,6 +382,15 @@ assert_has   "aws: external-secrets is on"                      'kind: ClusterSe
 kafka_sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet \
              | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: kafka(\n|$)/')"
 assert_has   "aws: kafka still runs in-cluster"                 'image: apache/kafka:3\.9\.1' "$kafka_sts"
+
+# envs/aws.yaml sets mysqldExporter.enabled=false (RDS Enhanced Monitoring
+# replaces it) but leaves victoriaMetrics enabled — before the fix, VM's
+# scrape config still hardcoded these three now-nonexistent targets, so it
+# would scrape nothing forever and the mysql.json dashboard would be blank.
+# Endpoint discovery self-gates: no exporter Services on AWS → no targets.
+assert_lacks "aws: no hardcoded mysqld-exporter primary target"   'mysqld-exporter-primary\.infra\.svc\.cluster\.local:9104' "$out"
+assert_lacks "aws: no hardcoded mysqld-exporter replica-0 target" 'mysqld-exporter-replica-0\.infra\.svc\.cluster\.local:9104' "$out"
+assert_lacks "aws: no hardcoded mysqld-exporter replica-1 target" 'mysqld-exporter-replica-1\.infra\.svc\.cluster\.local:9104' "$out"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
