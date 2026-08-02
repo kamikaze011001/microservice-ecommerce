@@ -26,3 +26,6 @@ aws/**/*.tfvars
 
 # Local deploy runtime state
 deploy/.run/
+
+# Helm vendored subchart tarballs — rebuilt from Chart.lock by `helm dependency build`
+deploy/charts/microecom/charts/infra/charts/

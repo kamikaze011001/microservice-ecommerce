@@ -1,0 +1,15 @@
+dependencies:
+- name: vault
+  repository: https://helm.releases.hashicorp.com
+  version: 0.27.0
+- name: victoria-metrics-single
+  repository: https://victoriametrics.github.io/helm-charts/
+  version: 0.39.0
+- name: grafana
+  repository: https://grafana.github.io/helm-charts
+  version: 10.5.15
+- name: kube-state-metrics
+  repository: https://prometheus-community.github.io/helm-charts
+  version: 8.1.0
+digest: sha256:aafa6b0cbcb4cf83d58ddfce938aafadfaa6507e0607e0a055aef3ec955f2e24
+generated: "2026-08-02T16:26:07.775594+07:00"

@@ -1,0 +1,47 @@
+# Base values = the minikube (local-k8s) case. envs/aws.yaml overrides for EKS.
+global:
+  namespaces:
+    infra: infra
+    apps: apps
+    monitoring: monitoring
+    bootstrap: bootstrap
+  image:
+    registry: localhost:5000
+    tag: dev
+    pullPolicy: Always
+  secret:
+    backend: vault          # vault | externalSecrets
+  ingress:
+    className: nginx
+    hosts:
+      storefront: microecom.local
+      api: api.microecom.local
+      media: media.microecom.local
+
+infra:
+  enabled: true
+
+  mysql:          { enabled: true, storage: 4Gi }
+  mysqlReplica:   { enabled: true, replicas: 2, storage: 4Gi }
+  mongodb:        { enabled: true, storage: 4Gi }
+  redis:          { enabled: true }
+  kafka:          { enabled: true, storage: 10Gi }
+  minio:          { enabled: true, storage: 10Gi }
+  schemaRegistry: { enabled: true }
+  kafkaConnect:   { enabled: true }
+  kafkaExporter:  { enabled: true }
+  mysqldExporter: { enabled: true }
+
+  # EKS only — Phase 7 exercises these.
+  storageClassGp3: { enabled: false }
+  externalSecrets: { enabled: false, roleArn: "", region: ap-southeast-1 }
+
+  # Upstream chart dependencies. `enabled` is the Helm condition gate and is
+  # ignored by the charts themselves; every other key under these is the
+  # upstream chart's own values namespace.
+  vault:            { enabled: true }
+  victoriaMetrics:  { enabled: true }
+  grafana:          { enabled: true }
+  kubeStateMetrics: { enabled: true }
+
+apps: {}   # stub — Phase 3 populates this

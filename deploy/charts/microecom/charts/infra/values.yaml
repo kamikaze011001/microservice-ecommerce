@@ -1,0 +1,262 @@
+# Subchart defaults. These are the fallbacks; the umbrella's `infra:` block wins.
+#
+# fullnameOverride on every dependency: today each of these is its own release
+# (`helm install vault …`), so the chart names its Service `vault`. Folded into a
+# release named `microecom` the same chart would produce `microecom-vault`, and
+# every app hardcodes vault.infra.svc.cluster.local:8200. These pins keep the
+# rendered names byte-identical to today.
+vault:
+  enabled: true
+  fullnameOverride: vault
+  server:
+    # LOCAL-DEV ONLY. Dev mode keeps Vault unsealed with an in-memory
+    # backend and a hardcoded root token — perfect for kind, fatal for
+    # anywhere reachable. AWS overlay disables dev mode and configures:
+    #   - HA storage (DynamoDB or integrated Raft)
+    #   - auto-unseal via AWS KMS
+    #   - AppRole auth (no root token in prod)
+    # See k8s/infra/overlays/aws/README.md before deploying.
+    dev:
+      enabled: true
+      devRootToken: "root"
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits:   { cpu: 200m, memory: 256Mi }
+  # Agent injector DISABLED. This stack's services read Vault directly via Spring
+  # Cloud Vault (SPRING_CLOUD_VAULT_URI + TOKEN auth — see apps/base/_template/
+  # deployment.yaml); nothing uses sidecar secret-injection (no
+  # vault.hashicorp.com/agent-inject annotations anywhere). Leaving the injector
+  # on also broke `make k8s-infra` idempotency: the injector self-injects its CA
+  # into its MutatingWebhookConfiguration (field manager "vault-k8s"), so a second
+  # `helm upgrade` hits a server-side-apply caBundle ownership conflict and fails.
+  # Disabling it removes that webhook entirely. AWS overlay can re-enable + use
+  # proper auth if agent injection is ever wanted.
+  injector:
+    enabled: false
+
+victoriaMetrics:
+  enabled: true
+  namespaceOverride: monitoring
+  # VictoriaMetrics single-node — scraper + TSDB + remote-write receiver.
+  # Replaces Prometheus AND the Prometheus Operator from kube-prometheus-stack.
+  # Chart: vm/victoria-metrics-single 0.39.0 (appVersion v1.144.0).
+  rbac:
+    create: true          # Role/RoleBinding for kubernetes_sd_configs discovery
+  serviceAccount:
+    create: true
+
+  server:
+    # Stable, short DNS name → service becomes `vmsingle.monitoring.svc:8428`.
+    fullnameOverride: vmsingle
+
+    # Local dev: short retention. k6 runs are minutes; a week of history is plenty.
+    retentionPeriod: 7d
+
+    resources:
+      requests: { cpu: 100m, memory: 200Mi }
+      limits:   { cpu: 500m, memory: 400Mi }
+
+    service:
+      # Chart deploys a StatefulSet → this Service renders headless (clusterIP: None).
+      # Fine: headless still serves HTTP to the single replica; DNS resolves to the pod.
+      type: ClusterIP
+      servicePort: 8428
+
+    # Browser access via ingress-nginx. VM UI at http://vm.microecom.local/vmui,
+    # scrape health at /targets. Add `127.0.0.1 vm.microecom.local` to /etc/hosts.
+    ingress:
+      enabled: true
+      ingressClassName: nginx
+      pathType: Prefix
+      hosts:
+        - name: vm.microecom.local
+          path:
+            - /
+          port: http
+
+    # Built-in scraper — replaces the per-service Prometheus-Operator ServiceMonitors.
+    scrape:
+      enabled: true
+      config:
+        global:
+          scrape_interval: 15s
+        scrape_configs:
+          # 1. Spring Boot Micrometer — discover endpoints in `apps` whose port
+          #    is NAMED `management` (number varies per service: 17777, 19091, …).
+          - job_name: spring-actuator
+            metrics_path: /actuator/prometheus
+            kubernetes_sd_configs:
+              - role: endpoints
+                namespaces:
+                  names: [apps]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_endpoint_port_name]
+                action: keep
+                regex: management
+              - source_labels: [__meta_kubernetes_pod_label_app]
+                target_label: app
+              - source_labels: [__meta_kubernetes_namespace]
+                target_label: namespace
+              - source_labels: [__meta_kubernetes_pod_name]
+                target_label: pod
+
+          # 2. Kubelet cAdvisor — per-pod and per-node CPU/mem. No node-exporter.
+          - job_name: kubelet-cadvisor
+            scheme: https
+            metrics_path: /metrics/cadvisor
+            tls_config:
+              ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              insecure_skip_verify: true     # kind kubelet serving certs are self-signed
+            bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+            kubernetes_sd_configs:
+              - role: node
+            relabel_configs:
+              - action: labelmap
+                regex: __meta_kubernetes_node_label_(.+)
+              - target_label: __address__
+                replacement: kubernetes.default.svc:443
+              - source_labels: [__meta_kubernetes_node_name]
+                regex: (.+)
+                target_label: __metrics_path__
+                # $1 = node name captured by the regex above (Prometheus backreference).
+                replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+
+          # 3. kube-state-metrics — pod restarts, OOMKills, object state.
+          - job_name: kube-state-metrics
+            kubernetes_sd_configs:
+              - role: endpoints
+                namespaces:
+                  names: [monitoring]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
+                action: keep
+                regex: kube-state-metrics
+
+          # 4. kafka-exporter — topic offsets + consumer-group lag (infra ns).
+          - job_name: kafka-exporter
+            static_configs:
+              - targets: [kafka-exporter.infra.svc.cluster.local:9308]
+
+          # 5. mysqld-exporter — one target per DB instance; relabel to a friendly
+          #    `instance` (primary / replica-0 / replica-1) for the dashboard var.
+          - job_name: mysqld-exporter
+            static_configs:
+              - targets: [mysqld-exporter-primary.infra.svc.cluster.local:9104]
+                labels: { instance: primary }
+              - targets: [mysqld-exporter-replica-0.infra.svc.cluster.local:9104]
+                labels: { instance: replica-0 }
+              - targets: [mysqld-exporter-replica-1.infra.svc.cluster.local:9104]
+                labels: { instance: replica-1 }
+
+  # The chart's ClusterRole grants nodes + nodes/metrics but NOT nodes/proxy. The
+  # kubelet-cadvisor job scrapes /metrics/cadvisor THROUGH the API server proxy
+  # (/api/v1/nodes/<node>/proxy/...), which requires `get` on the nodes/proxy
+  # subresource — without it every cadvisor scrape 403s and no pod/node CPU/mem is
+  # collected. Grant it via a supplementary ClusterRole bound to the chart's SA.
+  extraObjects:
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: vmsingle-nodes-proxy
+      rules:
+        - apiGroups: [""]
+          resources: [nodes/proxy]
+          verbs: [get]
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: vmsingle-nodes-proxy
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: vmsingle-nodes-proxy
+      subjects:
+        - kind: ServiceAccount
+          name: vmsingle
+          namespace: monitoring
+
+grafana:
+  enabled: true
+  namespaceOverride: monitoring
+  fullnameOverride: grafana
+  # Standalone Grafana. Reads VictoriaMetrics as a Prometheus-type datasource
+  # (MetricsQL is a PromQL superset, so the stock Prometheus datasource works).
+  # Chart: grafana/grafana 10.5.15.
+
+  # LOCAL-DEV ONLY. AWS overlay replaces with admin.existingSecret backed by
+  # ExternalSecrets + AWS Secrets Manager.
+  adminPassword: admin
+
+  service:
+    type: ClusterIP
+
+  # Browser access via ingress-nginx (maps host :80 → cluster). Mirrors the
+  # existing host split: microecom.local (SPA) / api.microecom.local (gateway) /
+  # media.microecom.local (minio). Add `127.0.0.1 grafana.microecom.local` to
+  # /etc/hosts. Dedicated host (root path) → no grafana.ini sub-path config needed.
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    path: /
+    pathType: Prefix
+    hosts:
+      - grafana.microecom.local
+
+  persistence:
+    enabled: false        # dashboards are provisioned from code; no PVC needed locally
+
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 200m, memory: 256Mi }
+
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: VictoriaMetrics
+          type: prometheus
+          access: proxy
+          url: http://vmsingle.monitoring.svc.cluster.local:8428
+          isDefault: true
+
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: default
+          orgId: 1
+          folder: ""
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+        - name: custom
+          orgId: 1
+          folder: "Custom"
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/custom
+
+  dashboards:
+    default:
+      k6:
+        gnetId: 19665           # k6 Prometheus
+        revision: 3
+        datasource: VictoriaMetrics
+
+  dashboardsConfigMaps:
+    custom: grafana-custom-dashboards
+
+kubeStateMetrics:
+  enabled: true
+  namespaceOverride: monitoring
+  fullnameOverride: kube-state-metrics
+  # nameOverride too, not just fullnameOverride: `alias: kubeStateMetrics`
+  # replaces .Chart.Name, which feeds `app.kubernetes.io/name`. VM's scrape job
+  # keeps targets by `regex: kube-state-metrics` on that exact label
+  # (k8s/infra/values/victoria-metrics.yaml, job_name: kube-state-metrics), so
+  # without this the metrics disappear with no error anywhere.
+  nameOverride: kube-state-metrics
