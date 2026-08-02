@@ -255,10 +255,30 @@ k8s-build-cache-prune:
 	@docker builder prune --filter type=exec.cachemount -f
 	@docker builder du | tail -3
 
-.PHONY: k8s-infra k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest k8s-seed-images k8s-app-secrets
+.PHONY: k8s-infra k8s-platform k8s-infra-helm k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest k8s-seed-images k8s-app-secrets
 
 k8s-infra:
 	@k8s/infra/install.sh
+
+## k8s-platform: install cluster-wide platform charts + vendor Helm deps
+k8s-platform:
+	@./deploy/scripts/platform.sh $(or $(ENV),local-k8s)
+
+## k8s-infra-helm: bring up infra via the Helm umbrella chart (Phase 2 path)
+##   Runs ALONGSIDE `make k8s-infra` — the kubectl path is still the default.
+##   --timeout 20m is the OUTER backstop, not the primary bound: the chart's
+##   mysql-replication post-install hook Job carries its own derived
+##   activeDeadlineSeconds -- (mysqlReplica.replicas + 1) * waitTimeout + 60,
+##   960s at the defaults (replicas=2, waitTimeout=300) -- which fires FIRST and
+##   produces the readable "ERROR: <host> unreachable after 300s" diagnostic.
+##   20m (1200s) must stay above that inner deadline, or Helm abandons the wait
+##   ~60s before the Job can ever emit its own error. Also: the Confluent images
+##   are ~1.8GB and a cold pull alone is ~5.5m.
+k8s-infra-helm: k8s-platform
+	@helm upgrade --install microecom deploy/charts/microecom \
+	  --namespace infra --create-namespace \
+	  -f deploy/charts/microecom/envs/$(or $(ENV),local-k8s).yaml \
+	  --wait --timeout 20m
 
 # k8s-seed: run the PRE-APPS bootstrap Jobs in fixed dependency order. Each Job
 # is idempotent (see seed.sh in each dir) so re-running is safe.
