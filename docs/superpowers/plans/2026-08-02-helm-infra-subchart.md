@@ -338,13 +338,21 @@ ok()  { printf '  \033[32mok\033[0m   %s\n' "$1"; pass=$((pass + 1)); }
 bad() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail + 1)); }
 
 # assert_has <description> <extended-regex> <text>
+#
+# Here-strings, NOT `printf | grep -q`. With `set -o pipefail`, a `grep -q` match
+# early in a large `$text` closes the pipe and exits; its upstream `printf` — still
+# mid-write — dies of SIGPIPE (141); pipefail reports 141 rather than grep's 0.
+# `assert_has` then turns a true match into FAIL, and `assert_lacks` turns a
+# genuine violation into a silent `ok`. It is size-dependent, so it stays dormant
+# on small renders and appears once a task adds enough templates (Task 3, ~80KB).
+# A here-string has no second process and no pipe, so nothing can be signalled.
 assert_has() {
-  if printf '%s\n' "$3" | grep -qE -- "$2"; then ok "$1"; else bad "$1"; fi
+  if grep -qE -- "$2" <<<"$3"; then ok "$1"; else bad "$1"; fi
 }
 
 # assert_lacks <description> <extended-regex> <text>
 assert_lacks() {
-  if printf '%s\n' "$3" | grep -qE -- "$2"; then bad "$1"; else ok "$1"; fi
+  if grep -qE -- "$2" <<<"$3"; then bad "$1"; else ok "$1"; fi
 }
 
 # assert_ok <description> <text>  — text is a render result; fail if it looks like an error
@@ -748,7 +756,10 @@ assert_has   "minio Service exists"                             '^  name: minio$
 # `secretName: mongodb-keyfile`, so an unscoped grep stays green with the
 # Secret itself deleted — it could never fail.
 assert_has   "mongodb-keyfile Secret is rendered"               '^  name: mongodb-keyfile$' "$sec"
-assert_has   "keyfile carries resource-policy keep"             'helm\.sh/resource-policy: keep' "$sec"
+# Scoped to the mongodb-keyfile Secret itself, not to Secret docs generally:
+# any other Secret carrying the annotation would satisfy the kind-scoped form.
+keyfile_sec="$(printf '%s\n' "$sec" | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: mongodb-keyfile(\n|$)/')"
+assert_has   "keyfile carries resource-policy keep"             'helm\.sh/resource-policy: keep' "$keyfile_sec"
 assert_has   "minio ingress uses the media host from values"    'host: media\.microecom\.local' "$ing"
 assert_has   "minio ingress uses the ingress class from values" 'ingressClassName: nginx' "$ing"
 # Scoped, and backed by the override below: kafka's default storage is also
@@ -802,7 +813,12 @@ MongoDB needs an internal keyFile (auth + replica set together). Rotating it
 breaks an already-initialized replica set, so the value is read back from the
 live cluster and only generated when genuinely absent.
 
-Two hazards, both real:
+The `$existing.data` guard is load-bearing, not defensive noise: `v1.Secret.Data`
+is `json:",omitempty"`, so a Secret that exists with no keys comes back with no
+`data` field at all — and `index` on that untyped nil is a hard error that fails
+`helm template`, `install` and `upgrade` alike.
+
+Two further hazards, both real:
   - `lookup` returns empty during `helm template` and `helm --dry-run`. A dry
     run therefore renders a FRESH keyfile. Rendering to read is harmless; piping
     that output into `kubectl apply` rotates the keyfile and breaks the replica
@@ -812,7 +828,7 @@ Two hazards, both real:
 */}}
 {{- $existing := lookup "v1" "Secret" $ns "mongodb-keyfile" -}}
 {{- $keyfile := "" -}}
-{{- if $existing -}}
+{{- if and $existing $existing.data -}}
   {{- $keyfile = index $existing.data "keyfile" | default "" -}}
 {{- end -}}
 {{- if not $keyfile -}}
