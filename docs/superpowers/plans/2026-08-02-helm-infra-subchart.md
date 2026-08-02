@@ -23,6 +23,7 @@
 - `--wait` timeouts must be **≥ 15m**: the Confluent images are ~1.8 GB and a cold pull alone takes ~5.5m.
 - Commit `Chart.lock`; **do not** commit `charts/infra/charts/*.tgz` (add to `.gitignore`).
 - **Local Helm is v4.2.0. `helm template` does not error on a missing vendored dependency** — verified in Task 1: with `charts/infra/charts/` empty it exits 0 and silently omits every object the four upstream charts would have produced, nothing on stdout or stderr. Do not treat a clean `helm template` as proof the dependencies resolved; the harness's per-object `assert_has` calls are the only signal. The same silence hides an over-broad `.helmignore` (see Task 1 Step 7).
+- **`helm template` output is one flat text stream, so an unscoped assertion in `tests/render-test.sh` asks "does this string appear *anywhere* in the release?"** Six assertions on this branch have passed for the wrong reason — matching a scrape-config job name, a ClusterRoleBinding subject, a comment, or a same-named object of a different kind. Before adding any assertion, ask: *would this fail if the object it names were deleted?* If not, scope it — `render | docs_of_kind StatefulSet` (helper added in Task 2) or `--show-only <template>` — and prefer a value no sibling shares (three components default to `storage: 4Gi`, so `storage: 4Gi` proves nothing about any one of them).
 - **Inside `charts/infra/templates/*`, `.Values` is already scoped to the subchart.** Write `.Values.mysql.enabled`, **not** `.Values.infra.mysql.enabled` — the latter renders `nil pointer evaluating interface {}.<key>` (verified in Task 2). The four other places that mention the same setting are *not* affected and stay fully qualified: a `condition:` on a dependency in `charts/infra/Chart.yaml` is evaluated against the parent's values, so `condition: infra.vault.enabled` is correct (verified in Task 1); `--set infra.X.enabled=false` in the harness is correct because it goes through the umbrella; keys in the umbrella's `values.yaml` / `envs/*.yaml` nest under `infra:`; and `.Values.global.*` propagates to subcharts unprefixed. The asymmetry is real — do not "fix" one form to match another.
 - `git push` is blocked from the agent shell by a pre-push hook. Never bypass it — hand pushes to the user with the `! ` prefix.
 
@@ -325,6 +326,14 @@ render() {
   helm template microecom "$CHART_DIR" --namespace infra "$@" 2>&1
 }
 
+# Filters a render down to the documents of one `kind`. `helm template` emits one
+# flat stream, so an unscoped grep asks "does this string appear anywhere in the
+# release?" — which has repeatedly passed for the wrong reason. Scope first.
+#   usage: out="$(render | docs_of_kind StatefulSet)"
+docs_of_kind() {
+  awk -v k="kind: $1" 'BEGIN { RS = "\n---\n" } $0 ~ ("(^|\n)" k "([ \t]*$|\n)") { print; print "---" }'
+}
+
 ok()  { printf '  \033[32mok\033[0m   %s\n' "$1"; pass=$((pass + 1)); }
 bad() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail + 1)); }
 
@@ -471,14 +480,37 @@ Append to `deploy/charts/microecom/tests/render-test.sh`, immediately before the
 section "mysql family"
 
 out="$(render)"
-assert_has   "mysql StatefulSet name is exactly 'mysql'"        '^  name: mysql$' "$out"
-assert_has   "mysql-replica-headless Service exists"            'name: mysql-replica-headless' "$out"
-assert_has   "mysql-replica Service exists"                     '^  name: mysql-replica$' "$out"
-assert_has   "mysql storage is 4Gi"                             'storage: 4Gi' "$out"
+# Names are unique per (kind, namespace), not per namespace, so every
+# name-keyed assertion below is scoped to one kind first — `mysql` and
+# `mysql-replica` each name both a Service and a StatefulSet, and an unscoped
+# grep stays green when either one is deleted.
+sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet)"
+svc="$(printf '%s\n' "$out" | docs_of_kind Service)"
+assert_has   "mysql StatefulSet name is exactly 'mysql'"        '^  name: mysql$' "$sts"
+assert_has   "mysql-replica-headless Service exists"            '^  name: mysql-replica-headless$' "$svc"
+# Guards the one risky operation in this task — the merge of
+# mysql-replica-service.yaml into mysql-replica.yaml.
+assert_has   "mysql-replica Service exists"                     '^  name: mysql-replica$' "$svc"
+# mysqlReplica.storage and mongodb.storage are also 4Gi, so this is scoped to
+# the StatefulSet docs and backed by the override check below. Unscoped it
+# would go permanently vacuous the moment Task 3 templates mongodb.
+assert_has   "mysql storage is 4Gi (default, StatefulSet only)" 'storage: 4Gi' "$sts"
 assert_has   "mysql-credentials carries the repl user"          'MYSQL_REPL_USER' "$out"
 assert_has   "primary exporter targets the mysql FQDN"          'host=mysql\.infra\.svc\.cluster\.local' "$out"
 assert_has   "replica-0 exporter targets pod-0 via headless"    'host=mysql-replica-0\.mysql-replica-headless\.infra\.svc\.cluster\.local' "$out"
 assert_has   "replica-1 exporter targets pod-1 via headless"    'host=mysql-replica-1\.mysql-replica-headless\.infra\.svc\.cluster\.local' "$out"
+
+# Wiring check backing the 4Gi assertion: prove the override reaches mysql's own
+# volumeClaimTemplate rather than being satisfied by a sibling's identical
+# default. Both halves — mysql moves, mysql-replica doesn't — must hold.
+out="$(render --set infra.mysql.storage=7Gi)"
+sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet)"
+mysql_sts="$(printf '%s' "$sts"         | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: mysql(\n|$)/')"
+mysql_replica_sts="$(printf '%s' "$sts" | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: mysql-replica(\n|$)/')"
+mysql_storage="$(printf '%s\n' "$mysql_sts"                 | grep -oE 'storage: [A-Za-z0-9]+' | head -1)"
+mysql_replica_storage="$(printf '%s\n' "$mysql_replica_sts" | grep -oE 'storage: [A-Za-z0-9]+' | head -1)"
+wiring="mysql:${mysql_storage#storage: } mysql-replica:${mysql_replica_storage#storage: }"
+assert_has   "infra.mysql.storage=7Gi lands only on mysql's PVC"  '^mysql:7Gi mysql-replica:4Gi$' "$wiring"
 
 out="$(render --set infra.mysqlReplica.replicas=3)"
 assert_has   "replicas=3 generates a third exporter"            'name: mysqld-exporter-replica-2' "$out"
