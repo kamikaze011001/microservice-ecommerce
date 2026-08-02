@@ -28,6 +28,12 @@ metadata:
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
   backoffLimit: 3
+  # activeDeadlineSeconds is the outer backstop: WAIT_TIMEOUT below gives a
+  # readable "host X unreachable after Ns" error, but only wait_for() honors
+  # it. If the container is OOM-killed mid-mysql-client-call, wedged in an
+  # image pull, or otherwise never reaches the timeout check, this is what
+  # actually stops a hung pod from pinning `helm install --wait` open forever.
+  activeDeadlineSeconds: 600
   template:
     metadata:
       name: mysql-replication
@@ -54,11 +60,26 @@ spec:
             - |
               set -euo pipefail
               ROOT="-uroot -p${MYSQL_ROOT_PASSWORD}"
+              # Bounded poll: install.sh's imperative version was gated behind
+              # `kubectl rollout status --timeout=5m`, failing fast on a bad
+              # Secret or crashloop. This Job has no such gate, so wait_for()
+              # must own its own timeout or an unreachable host stalls
+              # `helm install --wait` indefinitely. Overridable via env for
+              # slower environments.
+              WAIT_TIMEOUT="${WAIT_TIMEOUT:-300}"
 
               wait_for() {
                 local host=$1
+                local waited=0
                 echo "waiting for ${host}"
-                until mysql -h "$host" $ROOT -e 'SELECT 1' >/dev/null 2>&1; do sleep 3; done
+                until mysql -h "$host" $ROOT -e 'SELECT 1' >/dev/null 2>&1; do
+                  sleep 3
+                  waited=$((waited + 3))
+                  if [ "$waited" -ge "$WAIT_TIMEOUT" ]; then
+                    echo "ERROR: ${host} unreachable after ${WAIT_TIMEOUT}s"
+                    exit 1
+                  fi
+                done
                 echo "${host} is up"
               }
 

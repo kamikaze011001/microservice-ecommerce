@@ -295,6 +295,9 @@ assert_lacks "no hardcoded replication password in the Job"     'replica_ecommer
 assert_has   "job enumerates replica-0"                         'mysql-replica-0\.mysql-replica-headless' "$job"
 assert_has   "job enumerates replica-1"                         'mysql-replica-1\.mysql-replica-headless' "$job"
 assert_has   "idempotence check on replication_connection_status" 'replication_connection_status' "$job"
+assert_has   "Job has an activeDeadlineSeconds backstop"        'activeDeadlineSeconds: 600' "$job"
+assert_has   "wait_for has a bounded WAIT_TIMEOUT default"      'WAIT_TIMEOUT="\$\{WAIT_TIMEOUT:-300\}"' "$job"
+assert_has   "wait_for hard-exits once WAIT_TIMEOUT is reached" '^[[:space:]]+exit 1$' "$job"
 
 out="$(render --set infra.mysqlReplica.enabled=false)"
 assert_lacks "hook gated off with the replicas"                 'mysql-replication' "$out"
