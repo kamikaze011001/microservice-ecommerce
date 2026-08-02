@@ -16,6 +16,14 @@ render() {
   helm template microecom "$CHART_DIR" --namespace infra "$@" 2>&1
 }
 
+# Filters a render down to the documents of one `kind`. `helm template` emits one
+# flat stream, so an unscoped grep asks "does this string appear anywhere in the
+# release?" — which has repeatedly passed for the wrong reason. Scope first.
+#   usage: out="$(render | docs_of_kind StatefulSet)"
+docs_of_kind() {
+  awk -v k="kind: $1" 'BEGIN { RS = "\n---\n" } $0 ~ ("(^|\n)" k "([ \t]*$|\n)") { print; print "---" }'
+}
+
 ok()  { printf '  \033[32mok\033[0m   %s\n' "$1"; pass=$((pass + 1)); }
 bad() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail + 1)); }
 
@@ -84,14 +92,40 @@ assert_has   "grafana lands in the monitoring namespace"        'namespace: moni
 section "mysql family"
 
 out="$(render)"
-assert_has   "mysql StatefulSet name is exactly 'mysql'"        '^  name: mysql$' "$out"
-assert_has   "mysql-replica-headless Service exists"            'name: mysql-replica-headless' "$out"
-assert_has   "mysql-replica Service exists"                     '^  name: mysql-replica$' "$out"
-assert_has   "mysql storage is 4Gi"                             'storage: 4Gi' "$out"
+sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet)"
+svc="$(printf '%s\n' "$out" | docs_of_kind Service)"
+# Scoped to StatefulSet docs: the bare name `mysql` also names the mysql
+# Service, so an unscoped grep stays green even if the StatefulSet is deleted.
+assert_has   "mysql StatefulSet name is exactly 'mysql'"        '^  name: mysql$' "$sts"
+# Scoped to Service docs: the bare name `mysql-replica-headless` is unique
+# today, but anchor + scope it so it matches its neighbours below.
+assert_has   "mysql-replica-headless Service exists"            '^  name: mysql-replica-headless$' "$svc"
+# Scoped to Service docs: the bare name `mysql-replica` also names the
+# mysql-replica StatefulSet, so an unscoped grep can't detect this Service
+# (the risky Task 2 merge of k8s/infra/manifests/mysql-replica-service.yaml
+# into charts/infra/templates/mysql-replica.yaml) going missing.
+assert_has   "mysql-replica Service exists"                     '^  name: mysql-replica$' "$svc"
+# Scoped to StatefulSet docs so this can't be satisfied by mysqlReplica.storage
+# or mongodb.storage (both also 4Gi in values.yaml) once mongodb is templated.
+assert_has   "mysql storage is 4Gi (default, StatefulSet only)" 'storage: 4Gi' "$sts"
 assert_has   "mysql-credentials carries the repl user"          'MYSQL_REPL_USER' "$out"
 assert_has   "primary exporter targets the mysql FQDN"          'host=mysql\.infra\.svc\.cluster\.local' "$out"
 assert_has   "replica-0 exporter targets pod-0 via headless"    'host=mysql-replica-0\.mysql-replica-headless\.infra\.svc\.cluster\.local' "$out"
 assert_has   "replica-1 exporter targets pod-1 via headless"    'host=mysql-replica-1\.mysql-replica-headless\.infra\.svc\.cluster\.local' "$out"
+
+# Wiring check for the "mysql storage is 4Gi" assertion above: prove the
+# override is a values change reaching mysql's own volumeClaimTemplate, not a
+# coincidence of two subcharts sharing a default. Both halves — mysql moves,
+# mysql-replica doesn't — must hold for this to pass.
+out="$(render --set infra.mysql.storage=7Gi)"
+sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet)"
+mysql_sts="$(printf '%s' "$sts"         | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: mysql(\n|$)/')"
+mysql_replica_sts="$(printf '%s' "$sts" | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: mysql-replica(\n|$)/')"
+mysql_storage="$(printf '%s\n' "$mysql_sts"         | grep -oE 'storage: [A-Za-z0-9]+' | head -1)"
+mysql_replica_storage="$(printf '%s\n' "$mysql_replica_sts" | grep -oE 'storage: [A-Za-z0-9]+' | head -1)"
+wiring="mysql:${mysql_storage#storage: } mysql-replica:${mysql_replica_storage#storage: }"
+assert_has   "infra.mysql.storage=7Gi lands only on mysql's PVC (mysql-replica stays 4Gi)" \
+                                                                  '^mysql:7Gi mysql-replica:4Gi$' "$wiring"
 
 out="$(render --set infra.mysqlReplica.replicas=3)"
 assert_has   "replicas=3 generates a third exporter"            'name: mysqld-exporter-replica-2' "$out"
