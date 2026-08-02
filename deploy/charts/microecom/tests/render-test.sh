@@ -303,5 +303,56 @@ assert_has   "wait_for reports a readable error when WAIT_TIMEOUT is reached" 'E
 out="$(render --set infra.mysqlReplica.enabled=false)"
 assert_lacks "hook gated off with the replicas"                 'mysql-replication' "$out"
 
+# ── Task 7: dashboards + AWS-gated resources ────────────────────────────────
+section "dashboards / aws-gated"
+
+out="$(render)"
+# Scoped to the ConfigMap itself: `grafana-custom-dashboards` is also the value
+# of grafana.dashboardsConfigMaps.custom in charts/infra/values.yaml, so the
+# string appears in grafana's own rendered objects whether or not this
+# ConfigMap exists — and `namespace: monitoring` is on dozens of objects.
+cm="$(printf '%s\n' "$out" | docs_of_kind ConfigMap \
+      | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: grafana-custom-dashboards(\n|$)/')"
+assert_has   "dashboards ConfigMap exists"                      '^  name: grafana-custom-dashboards$' "$cm"
+assert_has   "dashboards land in the monitoring namespace"      '^  namespace: monitoring$' "$cm"
+assert_lacks "gp3 StorageClass is off by default"               'kind: StorageClass' "$out"
+# NOT 'kind: SecretStore' — the ESO resource is ClusterSecretStore (cluster-
+# scoped, shared across every service namespace; see external-secrets.yaml's
+# own comment on why). 'kind: SecretStore' is a substring that can never match
+# 'kind: ClusterSecretStore' (the text right after "kind: " is "Cluster", not
+# "Secret"), which would make this assert_lacks vacuously true forever —
+# instead assert on the real kind so a regression is actually catchable.
+assert_lacks "external-secrets is off by default"               'kind: ClusterSecretStore' "$out"
+
+out="$(render --set infra.storageClassGp3.enabled=true)"
+sc="$(printf '%s\n' "$out" | docs_of_kind StorageClass)"
+assert_has   "gp3 StorageClass renders when enabled"            '^  name: gp3$' "$sc"
+# NOT a bare `xfs` — the source manifest carries a long comment explaining why
+# xfs, which the render preserves, so `xfs` stays green with the parameter
+# dropped. Assert the parameter key itself.
+assert_has   "gp3 uses xfs (ext4 lost+found breaks kafka log.dir)" 'csi\.storage\.k8s\.io/fstype: xfs' "$sc"
+
+out="$(render -f "$CHART_DIR/envs/aws.yaml")"
+assert_ok    "envs/aws.yaml renders"                            "$out"
+# Each keys on the workload's image, not its name: `redis-master` and
+# `mysql-replica` are hostnames in app config and in victoriaMetrics' scrape
+# targets, which stay enabled on AWS.
+assert_lacks "aws: mysql is replaced by RDS"                    'image: mysql:8\.0\.40' "$out"
+assert_lacks "aws: redis is replaced by ElastiCache"            'image: redis:7\.4-alpine' "$out"
+assert_lacks "aws: minio is replaced by S3"                     'image: minio/minio' "$out"
+assert_lacks "aws: vault is replaced by ExternalSecrets"        'app\.kubernetes\.io/name: vault' "$out"
+assert_has   "aws: gp3 StorageClass is on"                      'kind: StorageClass' "$out"
+# See the "external-secrets is off by default" note above: the real kind is
+# ClusterSecretStore, not SecretStore.
+assert_has   "aws: external-secrets is on"                      'kind: ClusterSecretStore' "$out"
+# Scoped to the kafka StatefulSet. `apache/kafka:3.9.1` is ALSO the image of the
+# wait-for-kafka (x3) and ensure-compacted (x2) initContainers, and those hang off
+# kafkaExporter / schemaRegistry / kafkaConnect, all of which stay enabled on AWS.
+# Verified: rendering with `--set infra.kafka.enabled=false` still yields 5 hits for
+# that image, so the unscoped form passes with the broker gone.
+kafka_sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet \
+             | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: kafka(\n|$)/')"
+assert_has   "aws: kafka still runs in-cluster"                 'image: apache/kafka:3\.9\.1' "$kafka_sts"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
