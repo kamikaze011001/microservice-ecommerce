@@ -28,20 +28,31 @@ ok()  { printf '  \033[32mok\033[0m   %s\n' "$1"; pass=$((pass + 1)); }
 bad() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail + 1)); }
 
 # assert_has <description> <extended-regex> <text>
+#
+# Uses a here-string, NOT `printf | grep -q`. With `set -o pipefail`, a `grep -q`
+# match early in a large `$text` closes the pipe and reads as done, so its
+# upstream `printf` — still mid-write — dies of SIGPIPE (exit 141); pipefail then
+# reports the pipeline's status as 141, not grep's real 0, and a true match
+# reads as FAIL. Surfaced by Task 3: the mongodb keyfile plus three new
+# templates pushed a single render past the point where an early match (e.g.
+# `kind: Namespace` on line 4) leaves enough trailing output to overrun the
+# pipe buffer before `printf` finishes. A here-string has no second process and
+# no pipe, so there is nothing for grep to SIGPIPE.
 assert_has() {
-  if printf '%s\n' "$3" | grep -qE -- "$2"; then ok "$1"; else bad "$1"; fi
+  if grep -qE -- "$2" <<<"$3"; then ok "$1"; else bad "$1"; fi
 }
 
 # assert_lacks <description> <extended-regex> <text>
 assert_lacks() {
-  if printf '%s\n' "$3" | grep -qE -- "$2"; then bad "$1"; else ok "$1"; fi
+  if grep -qE -- "$2" <<<"$3"; then bad "$1"; else ok "$1"; fi
 }
 
 # assert_ok <description> <text>  — text is a render result; fail if it looks like an error
+# Here-string for the same reason as assert_has/assert_lacks above.
 assert_ok() {
-  if printf '%s\n' "$2" | grep -qiE '^Error:|template:.*(error|not defined)'; then
+  if grep -qiE '^Error:|template:.*(error|not defined)' <<<"$2"; then
     bad "$1"
-    printf '%s\n' "$2" | head -20 | sed 's/^/       /'
+    head -20 <<<"$2" | sed 's/^/       /'
   else
     ok "$1"
   fi
@@ -142,6 +153,55 @@ assert_lacks "mysqld-exporter gated off"                        'image: prom/mys
 
 out="$(render --set global.namespaces.infra=data)"
 assert_has   "namespace is a values change, not a literal"      'host=mysql\.data\.svc\.cluster\.local' "$out"
+
+# ── Task 3: mongodb, redis, minio ───────────────────────────────────────────
+section "mongodb / redis / minio"
+
+out="$(render)"
+sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet)"
+svc="$(printf '%s\n' "$out" | docs_of_kind Service)"
+sec="$(printf '%s\n' "$out" | docs_of_kind Secret)"
+ing="$(printf '%s\n' "$out" | docs_of_kind Ingress)"
+assert_has   "redis Service is named redis-master (vault-seed contract)" '^  name: redis-master$' "$svc"
+assert_has   "mongodb Service exists"                           '^  name: mongodb$' "$svc"
+assert_has   "mongodb StatefulSet exists"                       '^  name: mongodb$' "$sts"
+assert_has   "minio Service exists"                             '^  name: minio$' "$svc"
+# Scoped to Secret docs: the mongodb StatefulSet's keyfile volume references
+# `secretName: mongodb-keyfile`, so an unscoped grep stays green with the
+# Secret itself deleted — it could never fail.
+assert_has   "mongodb-keyfile Secret is rendered"               '^  name: mongodb-keyfile$' "$sec"
+assert_has   "keyfile carries resource-policy keep"             'helm\.sh/resource-policy: keep' "$sec"
+# Scoped to the minio-named Ingress doc: grafana and vmsingle also render
+# ingressClassName: nginx (charts/infra/values.yaml, hardcoded not templated
+# from global.ingress.className), so an unscoped grep against $ing passes even
+# with minio-ingress.yaml's logic missing entirely.
+minio_ing="$(printf '%s' "$ing" | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: minio(\n|$)/')"
+assert_has   "minio ingress uses the media host from values"    'host: media\.microecom\.local' "$minio_ing"
+assert_has   "minio ingress uses the ingress class from values" 'ingressClassName: nginx' "$minio_ing"
+# Scoped, and backed by the override below: kafka's default storage is also
+# 10Gi, so an unscoped check goes vacuous the moment Task 4 lands.
+assert_has   "minio storage is 10Gi (default, StatefulSet only)" 'storage: 10Gi' "$sts"
+
+out="$(render --set infra.minio.storage=11Gi)"
+minio_sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet \
+             | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: minio(\n|$)/')"
+assert_has   "infra.minio.storage reaches minio's own PVC"      'storage: 11Gi' "$minio_sts"
+
+out="$(render --set global.ingress.hosts.media=media.example.com --set global.ingress.className=alb)"
+ing="$(printf '%s\n' "$out" | docs_of_kind Ingress)"
+assert_has   "media host is a values change"                    'host: media\.example\.com' "$ing"
+assert_has   "ingress class is a values change"                 'ingressClassName: alb' "$ing"
+
+out="$(render --set infra.redis.enabled=false)"
+# NOT the bare string `redis-master` — it is a hostname in app config and in
+# victoriaMetrics' scrape targets, both of which stay enabled here.
+assert_lacks "redis gated off"                                  'image: redis:7\.4-alpine' "$out"
+assert_lacks "redis Service gated off"                          '^  name: redis-master$' \
+                                                                "$(printf '%s\n' "$out" | docs_of_kind Service)"
+
+out="$(render --set infra.minio.enabled=false)"
+assert_lacks "minio gated off"                                  'image: minio/minio' "$out"
+assert_lacks "minio ingress goes with it"                       'media\.microecom\.local' "$out"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

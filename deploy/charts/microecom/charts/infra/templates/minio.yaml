@@ -1,0 +1,200 @@
+{{- if .Values.minio.enabled }}
+{{- $ns := .Values.global.namespaces.infra -}}
+# MinIO — vendor image (minio/minio), S3-compatible object storage.
+# Replaces the Bitnami chart (docker.io/bitnami/minio deleted 2025-09-29).
+# (MinIO has no Docker Library "official" image; minio/minio is the vendor's
+# own image — the same intent as the other Docker-official migrations.)
+#
+# core-s3 reads endpoint/bucket/creds from Vault (seeded by 03-vault-seed):
+#   endpoint  http://minio.infra.svc.cluster.local:9000   (Service name MUST be `minio`)
+#   bucket    ecommerce-media
+#   creds     minioadmin / minioadmin
+#   path-style true
+#
+# A `setup` sidecar (minio/mc) creates the bucket and grants anonymous-read on
+# the products/ and avatars/ prefixes so stored URLs are directly fetchable
+# (see CLAUDE.md "Image storage"). Sidecar over Job: a Job's pod spec is
+# immutable, so re-applying a changed Job errors; the sidecar re-runs cleanly
+# on every rollout and mc mb/anonymous are idempotent.
+#
+# Objects must survive restarts (product images, avatars) → StatefulSet + PVC.
+#
+# LOCAL-DEV ONLY: plaintext creds. AWS overlay points core-s3 at real S3
+# (endpoint/path-style/creds via Vault) — a Vault-only change, no app change.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-credentials
+  namespace: {{ $ns }}
+type: Opaque
+stringData:
+  MINIO_ROOT_USER: minioadmin
+  MINIO_ROOT_PASSWORD: minioadmin
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: minio
+spec:
+  selector:
+    app.kubernetes.io/name: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+    - name: console
+      port: 9001
+      targetPort: console
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: minio
+spec:
+  serviceName: minio
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+          args:
+            - server
+            - /data
+            - --console-address
+            - ":9001"
+          envFrom:
+            - secretRef:
+                name: minio-credentials
+          ports:
+            - name: api
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 1, memory: 1Gi }
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+        # Setup sidecar: create the bucket + grant anonymous-read on the two
+        # public prefixes. Idempotent — re-runs harmlessly on every restart.
+        #   kubectl -n infra logs minio-0 -c setup
+        - name: setup
+          image: minio/mc:RELEASE.2025-07-21T05-28-08Z
+          envFrom:
+            - secretRef:
+                name: minio-credentials
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -u
+              echo "(setup) waiting for minio on 127.0.0.1:9000 ..."
+              until mc alias set local http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; do
+                sleep 2
+              done
+
+              echo "(setup) ensuring bucket ecommerce-media ..."
+              mc mb --ignore-existing local/ecommerce-media
+
+              # Anonymous-read on the prefixes whose URLs clients fetch directly.
+              # Prefix-scoped (NOT the whole bucket) so other keys stay private.
+              echo "(setup) granting anonymous download on products/ and avatars/ ..."
+              mc anonymous set download local/ecommerce-media/products
+              mc anonymous set download local/ecommerce-media/avatars
+
+              echo "(setup) done. idling."
+              touch /tmp/setup-done   # sentinel: gates pod readiness below
+              sleep infinity
+          # Pod readiness waits on bucket+policy creation so `kubectl rollout
+          # status` doesn't return before the bucket exists (the seed/app would
+          # otherwise race ahead and fail to write objects).
+          readinessProbe:
+            exec:
+              command: ["cat", "/tmp/setup-done"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits:   { cpu: 100m, memory: 128Mi }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.minio.storage }}
+---
+# Exposes MinIO's S3 API to the BROWSER on media.microecom.local.
+#
+# Why this exists: product/avatar image URLs are fetched directly by the browser
+# (the JVM never proxies the bytes — see root CLAUDE.md "Image storage"). The
+# stored URL must therefore be reachable FROM THE HOST. The minio Service is
+# ClusterIP :9000 (not host-mapped), and cluster-internal DNS
+# (minio.infra.svc.cluster.local) is unresolvable from a browser. Only :80/:443
+# reach the host (via ingress extraPortMappings), so media must go through nginx.
+#
+# Mirrors the existing host split: microecom.local (SPA) / api.microecom.local
+# (gateway) / media.microecom.local (object storage). Add to /etc/hosts:
+#   127.0.0.1 media.microecom.local
+#
+# s3.public-base-url (Vault secret/core-s3) is set to
+# http://media.microecom.local/ecommerce-media so newly-uploaded objects store a
+# browser-reachable URL. The seeded products (docker/product.json) hardcode
+# localhost:9000 for the docker-compose path; the k8s mongo-seed rewrites that
+# host to media.microecom.local after import.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minio
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: minio
+  annotations:
+    # Image objects can exceed the nginx default 1m body cap on upload via the
+    # presigned PUT (5MB content-length-range in core-s3). Allow up to 8m.
+    nginx.ingress.kubernetes.io/proxy-body-size: "8m"
+spec:
+  ingressClassName: {{ .Values.global.ingress.className }}
+  rules:
+    - host: {{ .Values.global.ingress.hosts.media }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio
+                port:
+                  name: api
+{{- end }}
