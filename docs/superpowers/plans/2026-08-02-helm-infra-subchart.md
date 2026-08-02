@@ -23,6 +23,7 @@
 - `--wait` timeouts must be **≥ 15m**: the Confluent images are ~1.8 GB and a cold pull alone takes ~5.5m.
 - Commit `Chart.lock`; **do not** commit `charts/infra/charts/*.tgz` (add to `.gitignore`).
 - **Local Helm is v4.2.0. `helm template` does not error on a missing vendored dependency** — verified in Task 1: with `charts/infra/charts/` empty it exits 0 and silently omits every object the four upstream charts would have produced, nothing on stdout or stderr. Do not treat a clean `helm template` as proof the dependencies resolved; the harness's per-object `assert_has` calls are the only signal. The same silence hides an over-broad `.helmignore` (see Task 1 Step 7).
+- **Inside `charts/infra/templates/*`, `.Values` is already scoped to the subchart.** Write `.Values.mysql.enabled`, **not** `.Values.infra.mysql.enabled` — the latter renders `nil pointer evaluating interface {}.<key>` (verified in Task 2). The four other places that mention the same setting are *not* affected and stay fully qualified: a `condition:` on a dependency in `charts/infra/Chart.yaml` is evaluated against the parent's values, so `condition: infra.vault.enabled` is correct (verified in Task 1); `--set infra.X.enabled=false` in the harness is correct because it goes through the umbrella; keys in the umbrella's `values.yaml` / `envs/*.yaml` nest under `infra:`; and `.Values.global.*` propagates to subcharts unprefixed. The asymmetry is real — do not "fix" one form to match another.
 - `git push` is blocked from the agent shell by a pre-push hook. Never bypass it — hand pushes to the user with the `! ` prefix.
 
 ---
@@ -79,7 +80,7 @@ The chart's whole shape rests on two unverified assumptions: that `condition:` o
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `.Values.global.namespaces.{infra,apps,monitoring,bootstrap}` (strings), `.Values.global.image.{registry,tag,pullPolicy}`, `.Values.global.ingress.{className,hosts.{storefront,api,media}}`, `.Values.infra.<component>.enabled` (bool) for each of `mysql mysqlReplica mongodb redis kafka minio schemaRegistry kafkaConnect kafkaExporter mysqldExporter storageClassGp3 externalSecrets vault victoriaMetrics grafana kubeStateMetrics`, plus `.Values.infra.mysql.storage`, `.Values.infra.mysqlReplica.{replicas,storage}`, `.Values.infra.mongodb.storage`, `.Values.infra.kafka.storage`, `.Values.infra.minio.storage`. The test harness exposes shell functions `render`, `assert_has`, `assert_lacks`, `assert_ok`.
+- Produces: `.Values.global.namespaces.{infra,apps,monitoring,bootstrap}` (strings), `.Values.global.image.{registry,tag,pullPolicy}`, `.Values.global.ingress.{className,hosts.{storefront,api,media}}`, `.Values.<component>.enabled` (bool) for each of `mysql mysqlReplica mongodb redis kafka minio schemaRegistry kafkaConnect kafkaExporter mysqldExporter storageClassGp3 externalSecrets vault victoriaMetrics grafana kubeStateMetrics`, plus `.Values.mysql.storage`, `.Values.mysqlReplica.{replicas,storage}`, `.Values.mongodb.storage`, `.Values.kafka.storage`, `.Values.minio.storage`. The test harness exposes shell functions `render`, `assert_has`, `assert_lacks`, `assert_ok`.
 
 - [ ] **Step 1: Read the currently-pinned kube-state-metrics version**
 
@@ -458,7 +459,7 @@ Four manifests (`mysql.yaml`, `mysql-replica-service.yaml`, `mysql-replica.yaml`
 - Read-only source: `k8s/infra/manifests/{mysql,mysql-replica,mysql-replica-service,mysqld-exporter}.yaml`
 
 **Interfaces:**
-- Consumes: `.Values.global.namespaces.infra`, `.Values.infra.mysql.{enabled,storage}`, `.Values.infra.mysqlReplica.{enabled,replicas,storage}`, `.Values.infra.mysqldExporter.enabled` (Task 1).
+- Consumes: `.Values.global.namespaces.infra`, `.Values.mysql.{enabled,storage}`, `.Values.mysqlReplica.{enabled,replicas,storage}`, `.Values.mysqldExporter.enabled` (Task 1).
 - Produces: the named template `microecom.fqdn`, taking `(dict "name" <string> "namespace" <string>)` and returning `<name>.<namespace>.svc.cluster.local`. Every later task calls it for cross-service addressing. Also produces the Secret `mysql-credentials` in the `infra` namespace with keys `MYSQL_ROOT_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_REPL_USER`, `MYSQL_REPL_PASSWORD` — Task 6's hook Job consumes it via `envFrom`.
 
 - [ ] **Step 1: Append the failing tests**
@@ -486,7 +487,9 @@ out="$(render --set infra.mysql.enabled=false --set infra.mysqlReplica.enabled=f
 # NOT `kind: StatefulSet` — mongodb, kafka and minio are StatefulSets too and are
 # still enabled here, so that assertion would fail for the wrong reason.
 assert_lacks "mysql gated off"                                  'image: mysql:8\.0\.40' "$out"
-assert_lacks "mysqld-exporter gated off"                        'mysqld-exporter' "$out"
+# NOT the bare string `mysqld-exporter` — VictoriaMetrics' own values carry a
+# `job_name: mysqld-exporter` scrape config, so that assertion can never pass.
+assert_lacks "mysqld-exporter gated off"                        'image: prom/mysqld-exporter:v0\.16\.0' "$out"
 
 out="$(render --set global.namespaces.infra=data)"
 assert_has   "namespace is a values change, not a literal"      'host=mysql\.data\.svc\.cluster\.local' "$out"
@@ -525,12 +528,12 @@ Apply this recipe to each source manifest. It is the same recipe for every mecha
 
 1. Copy the source file — **including every comment**; the comments encode the scars and are the reason the manifests are readable.
 2. Wrap the whole file in the enabled gate:
-   `{{- if .Values.infra.<component>.enabled }}` … `{{- end }}`
+   `{{- if .Values.<component>.enabled }}` … `{{- end }}`
 3. Add `{{- $ns := .Values.global.namespaces.infra -}}` at the top and replace every `namespace: infra` with `namespace: {{ $ns }}`.
 4. Replace every hardcoded `<svc>.infra.svc.cluster.local` with
    `{{ include "microecom.fqdn" (dict "name" "<svc>" "namespace" $ns) }}`.
-5. Replace PVC `storage:` values with `{{ .Values.infra.<component>.storage }}`.
-6. Replace the replica StatefulSet's `replicas:` with `{{ .Values.infra.mysqlReplica.replicas }}`.
+5. Replace PVC `storage:` values with `{{ .Values.<component>.storage }}`.
+6. Replace the replica StatefulSet's `replicas:` with `{{ .Values.mysqlReplica.replicas }}`.
 7. **Leave every other literal alone** — image tags, ports, probe timings, resource limits, `metadata.name`. Names are the DNS contract; changing one breaks the Vault seed.
 
 `mysql-replica-service.yaml` (17 lines) merges into `mysql-replica.yaml`; that is the only file boundary that changes.
@@ -540,7 +543,7 @@ Apply this recipe to each source manifest. It is the same recipe for every mecha
 The three blocks differ only in a name and a host. Build the instance list, then render once per instance:
 
 ```yaml
-{{- if .Values.infra.mysqldExporter.enabled }}
+{{- if .Values.mysqldExporter.enabled }}
 {{- $ns := .Values.global.namespaces.infra -}}
 {{/*
 mysqld-exporter — one process per MySQL instance (primary + N replicas) so each
@@ -550,13 +553,13 @@ only). VM scrapes each Service; the scrape job relabels `instance` to a friendly
 name.
 */}}
 {{- $instances := list -}}
-{{- if .Values.infra.mysql.enabled -}}
+{{- if .Values.mysql.enabled -}}
   {{- $instances = append $instances (dict
         "name" "primary"
         "host" (include "microecom.fqdn" (dict "name" "mysql" "namespace" $ns))) -}}
 {{- end -}}
-{{- if .Values.infra.mysqlReplica.enabled -}}
-  {{- range $i := until (int .Values.infra.mysqlReplica.replicas) -}}
+{{- if .Values.mysqlReplica.enabled -}}
+  {{- range $i := until (int .Values.mysqlReplica.replicas) -}}
     {{- $instances = append $instances (dict
           "name" (printf "replica-%d" $i)
           "host" (printf "mysql-replica-%d.%s" $i
@@ -662,7 +665,7 @@ helm template microecom deploy/charts/microecom --namespace infra \
 grep -cE '^(---|kind:)' /tmp/rendered-mysql.yaml
 ```
 
-Expected: the same object count as the sources — 2 Services + 2 StatefulSets + 1 credentials Secret + 3×(Secret+Deployment+Service) = **14 objects**. Read `/tmp/rendered-mysql.yaml` and confirm images, ports, probes and resource blocks match the originals exactly.
+Expected: the same object count as the sources — 3 Services (`mysql`, `mysql-replica`, `mysql-replica-headless`) + 2 StatefulSets + 1 credentials Secret + 3×(Secret+Deployment+Service) = **15 objects**. Read `/tmp/rendered-mysql.yaml` and confirm images, ports, probes and resource blocks match the originals exactly.
 
 - [ ] **Step 8: Commit**
 
@@ -691,7 +694,7 @@ Mechanical conversion for Redis and MinIO; MongoDB carries the `lookup` keyfile,
 - Read-only source: `k8s/infra/manifests/{mongodb,redis,minio,minio-ingress}.yaml`
 
 **Interfaces:**
-- Consumes: `microecom.fqdn` (Task 2), `.Values.global.namespaces.infra`, `.Values.global.ingress.{className,hosts.media}`, `.Values.infra.{mongodb,redis,minio}.*` (Task 1).
+- Consumes: `microecom.fqdn` (Task 2), `.Values.global.namespaces.infra`, `.Values.global.ingress.{className,hosts.media}`, `.Values.{mongodb,redis,minio}.*` (Task 1).
 - Produces: Services `mongodb`, `redis-master` (port 6379), `minio` (port 9000) in the `infra` namespace, and the Secret `mongodb-keyfile` with key `keyfile`.
 
 - [ ] **Step 1: Append the failing tests**
@@ -727,7 +730,7 @@ Expected: the 8 positive assertions FAIL.
 
 - [ ] **Step 3: Convert `redis.yaml` and `minio.yaml`**
 
-Apply the Task 2 Step 4 recipe. `minio-ingress.yaml` (42 lines) merges into `minio.yaml` under the same `{{- if .Values.infra.minio.enabled }}` gate — an ingress to a service that does not exist is dead weight. Its host becomes `{{ .Values.global.ingress.hosts.media }}` and its class `{{ .Values.global.ingress.className }}`.
+Apply the Task 2 Step 4 recipe. `minio-ingress.yaml` (42 lines) merges into `minio.yaml` under the same `{{- if .Values.minio.enabled }}` gate — an ingress to a service that does not exist is dead weight. Its host becomes `{{ .Values.global.ingress.hosts.media }}` and its class `{{ .Values.global.ingress.className }}`.
 
 Keep `redis-master` as the Service name. The comment in the source explains why; carry the comment.
 
@@ -738,7 +741,7 @@ Convert the source with the same recipe, then replace the keyfile Secret. The so
 The design spec sketched this with `ternary`, which does not work — Sprig's `ternary` requires a `bool` condition and `lookup` returns a map or nil, so it errors at render. Use explicit `if`:
 
 ```
-{{- if .Values.infra.mongodb.enabled }}
+{{- if .Values.mongodb.enabled }}
 {{- $ns := .Values.global.namespaces.infra -}}
 {{/*
 MongoDB needs an internal keyFile (auth + replica set together). Rotating it
@@ -821,7 +824,7 @@ The first of the three ordering rewrites. `kafka-exporter` hard-exits when no br
 - Read-only source: `k8s/infra/manifests/{kafka,kafka-exporter}.yaml`
 
 **Interfaces:**
-- Consumes: `microecom.fqdn` (Task 2), `.Values.infra.kafka.{enabled,storage}`, `.Values.infra.kafkaExporter.enabled`.
+- Consumes: `microecom.fqdn` (Task 2), `.Values.kafka.{enabled,storage}`, `.Values.kafkaExporter.enabled`.
 - Produces: Service `kafka` in `infra` with port `9092` named `client`. Tasks 5 and 6 address it as `kafka.<ns>.svc.cluster.local:9092`. Also produces `microecom.waitForKafka`, a named template taking `dict "kafka" <host:port>` and rendering one initContainer list item — Task 5 uses it twice.
 
 - [ ] **Step 1: Append the failing tests**
@@ -889,7 +892,7 @@ carries the CLI. No new image, no new pull.
 - [ ] **Step 5: Write `kafka-exporter.yaml`**
 
 ```yaml
-{{- if .Values.infra.kafkaExporter.enabled }}
+{{- if .Values.kafkaExporter.enabled }}
 {{- $ns := .Values.global.namespaces.infra -}}
 {{- $kafka := printf "%s:9092" (include "microecom.fqdn" (dict "name" "kafka" "namespace" $ns)) -}}
 ---
@@ -950,7 +953,7 @@ The second ordering rewrite, and the largest behaviour change. `install.sh` comp
 - Read-only source: `k8s/infra/manifests/{schema-registry,kafka-connect}.yaml`
 
 **Interfaces:**
-- Consumes: `microecom.fqdn` (Task 2), `microecom.waitForKafka` (Task 4), Service `kafka` (Task 4), `.Values.infra.{schemaRegistry,kafkaConnect}.enabled`.
+- Consumes: `microecom.fqdn` (Task 2), `microecom.waitForKafka` (Task 4), Service `kafka` (Task 4), `.Values.{schemaRegistry,kafkaConnect}.enabled`.
 - Produces: Services `schema-registry` (port 8081) and `kafka-connect` (port 8083) in `infra`.
 
 - [ ] **Step 1: Append the failing tests**
@@ -1020,7 +1023,7 @@ self-heals after a Kafka rebuild.
 - [ ] **Step 4: Write `schema-registry.yaml`**
 
 ```yaml
-{{- if .Values.infra.schemaRegistry.enabled }}
+{{- if .Values.schemaRegistry.enabled }}
 {{- $ns := .Values.global.namespaces.infra -}}
 {{- $kafka := printf "%s:9092" (include "microecom.fqdn" (dict "name" "kafka" "namespace" $ns)) -}}
 ```
@@ -1100,7 +1103,7 @@ The one step that stays imperative. The conversion is a real simplification: tod
 - Read-only source: `k8s/infra/install.sh:135-182`
 
 **Interfaces:**
-- Consumes: `microecom.fqdn` (Task 2), Secret `mysql-credentials` and Service `mysql-replica-headless` (Task 2), `.Values.infra.mysqlReplica.{enabled,replicas}`.
+- Consumes: `microecom.fqdn` (Task 2), Secret `mysql-credentials` and Service `mysql-replica-headless` (Task 2), `.Values.mysqlReplica.{enabled,replicas}`.
 - Produces: nothing consumed by later tasks.
 
 - [ ] **Step 1: Append the failing tests**
@@ -1129,7 +1132,7 @@ assert_lacks "hook gated off with the replicas"                 'mysql-replicati
 - [ ] **Step 3: Write the hook Job**
 
 ```yaml
-{{- if and .Values.infra.mysql.enabled .Values.infra.mysqlReplica.enabled }}
+{{- if and .Values.mysql.enabled .Values.mysqlReplica.enabled }}
 {{- $ns := .Values.global.namespaces.infra -}}
 {{- $primary := include "microecom.fqdn" (dict "name" "mysql" "namespace" $ns) -}}
 {{- $headless := include "microecom.fqdn" (dict "name" "mysql-replica-headless" "namespace" $ns) -}}
@@ -1175,7 +1178,7 @@ spec:
             - name: PRIMARY_HOST
               value: {{ $primary | quote }}
             - name: REPLICA_HOSTS
-              value: {{ range $i := until (int .Values.infra.mysqlReplica.replicas) }}mysql-replica-{{ $i }}.{{ $headless }} {{ end }}
+              value: {{ range $i := until (int .Values.mysqlReplica.replicas) }}mysql-replica-{{ $i }}.{{ $headless }} {{ end }}
           resources:
             requests: { cpu: 50m, memory: 128Mi }
             limits:   { cpu: 500m, memory: 512Mi }
@@ -1287,7 +1290,7 @@ Closes the remaining ordering constraints — the dashboards ConfigMap and the g
 - Read-only source: `k8s/infra/dashboards/*.json`, `k8s/infra/overlays/aws/storageclass-gp3.yaml`, `k8s/infra/manifests/external-secrets-{sa,store}.yaml`
 
 **Interfaces:**
-- Consumes: `.Values.global.namespaces.monitoring`, `.Values.infra.{storageClassGp3,externalSecrets}.*`.
+- Consumes: `.Values.global.namespaces.monitoring`, `.Values.{storageClassGp3,externalSecrets}.*`.
 - Produces: ConfigMap `grafana-custom-dashboards` in `monitoring` with one key per dashboard JSON — the name `charts/infra/values.yaml` already points `grafana.dashboardsConfigMaps.custom` at.
 
 - [ ] **Step 1: Copy the dashboards**
@@ -1336,7 +1339,7 @@ assert_has   "aws: kafka still runs in-cluster"                 'apache/kafka:3\
 `.Files` is scoped to the chart containing the template, so this glob reads `charts/infra/dashboards/`.
 
 ```yaml
-{{- if .Values.infra.grafana.enabled }}
+{{- if .Values.grafana.enabled }}
 {{/*
 Custom dashboards (JVM/Kafka/MySQL) -> ConfigMap mounted by Grafana's `custom`
 provider. install.sh built this imperatively from `find | --from-file` because
@@ -1367,7 +1370,7 @@ data:
 Copy `k8s/infra/overlays/aws/storageclass-gp3.yaml` and the two `external-secrets-*.yaml` manifests, wrapping each in its gate:
 
 ```yaml
-{{- if .Values.infra.storageClassGp3.enabled }}
+{{- if .Values.storageClassGp3.enabled }}
 {{/*
 A fresh EKS cluster defaults to gp2 and the gp3 StorageClass must exist before
 any PVC or the infra bring-up stalls
@@ -1383,7 +1386,7 @@ directory breaks Kafka's log.dir
 {{- end }}
 ```
 
-`external-secrets.yaml` gets `{{- if .Values.infra.externalSecrets.enabled }}`, with the IRSA role ARN from `{{ .Values.infra.externalSecrets.roleArn }}` and the region from `{{ .Values.infra.externalSecrets.region }}`. Phase 4 wires the actual values.
+`external-secrets.yaml` gets `{{- if .Values.externalSecrets.enabled }}`, with the IRSA role ARN from `{{ .Values.externalSecrets.roleArn }}` and the region from `{{ .Values.externalSecrets.region }}`. Phase 4 wires the actual values.
 
 - [ ] **Step 6: Write `envs/aws.yaml`**
 
