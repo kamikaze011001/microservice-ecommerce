@@ -22,6 +22,7 @@
 - Kafka internal topics that must exist **and** be `cleanup.policy=compact`: `_schemas` (schema-registry), `connect-configs`, `connect-offsets`, `connect-status` (kafka-connect).
 - `--wait` timeouts must be **≥ 15m**: the Confluent images are ~1.8 GB and a cold pull alone takes ~5.5m.
 - Commit `Chart.lock`; **do not** commit `charts/infra/charts/*.tgz` (add to `.gitignore`).
+- **Local Helm is v4.2.0. `helm template` does not error on a missing vendored dependency** — verified in Task 1: with `charts/infra/charts/` empty it exits 0 and silently omits every object the four upstream charts would have produced, nothing on stdout or stderr. Do not treat a clean `helm template` as proof the dependencies resolved; the harness's per-object `assert_has` calls are the only signal. The same silence hides an over-broad `.helmignore` (see Task 1 Step 7).
 - `git push` is blocked from the agent shell by a pre-push hook. Never bypass it — hand pushes to the user with the `! ` prefix.
 
 ---
@@ -275,8 +276,10 @@ metadata:
 ```
 .git/
 tests/
-*.tgz
+/*.tgz
 ```
+
+`/*.tgz`, anchored — **not** `*.tgz`. Helm matches ignore patterns unanchored, exactly like `.gitignore`, so a bare `*.tgz` at the umbrella root also excludes `charts/infra/charts/*.tgz` — the dependency tarballs `helm dependency update` vendors in Step 11. Helm then loads the subchart with zero dependencies and renders none of the four upstream charts, silently, with no error. The anchored form matches only a packaged chart at the chart root (e.g. from `helm package .`), which is the pattern's actual intent.
 
 `deploy/charts/microecom/envs/local-k8s.yaml`:
 
@@ -362,7 +365,12 @@ assert_lacks "no release-name prefix leaked onto vault"         'name: microecom
 assert_has   "grafana keeps its name"                           '^  name: grafana$' "$out"
 assert_has   "vmsingle keeps its name (grafana datasource)"     'name: vmsingle' "$out"
 assert_has   "kube-state-metrics keeps its scrape label"        'app\.kubernetes\.io/name: kube-state-metrics' "$out"
-assert_lacks "alias did not leak into the KSM name label"       'kubeStateMetrics' "$out"
+assert_lacks "alias did not leak into the KSM name label"       'app\.kubernetes\.io/name: kubeStateMetrics' "$out"
+# Anchored to the name label on purpose. A bare `kubeStateMetrics` can never
+# pass: `alias:` also rewrites `.Chart.Name`, which the upstream chart bakes
+# into its cosmetic `helm.sh/chart` label, and Helm names the in-memory
+# subchart directory after the alias so it appears in `# Source:` comments too.
+# Neither is addressable by any override, and neither is what VM scrapes on.
 
 out="$(render --set infra.vault.enabled=false)"
 assert_ok    "vault disabled renders"                           "$out"
