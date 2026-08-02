@@ -88,6 +88,38 @@ backstop. Separately, the Confluent (Kafka/Schema Registry/Connect) images
 are ~1.8 GB combined and a cold image pull alone takes ~5.5 minutes, which
 also has to fit inside the window.
 
+### `global:` keys collide with upstream charts
+
+Helm merges the umbrella's `global:` block into **every** subchart, vendored
+upstream dependencies included. Several `global.*` paths are de-facto upstream
+conventions, so picking one for our own use silently rewrites a third-party
+chart's behaviour.
+
+Our app-image registry therefore lives at **`global.appImage.registry`**, not
+`global.image.registry`. victoria-metrics-common's `vm.internal.image` falls
+back to `global.image.registry` whenever the per-app `image.registry` is empty,
+so under the natural name `vmsingle` rendered as
+`localhost:5000/victoriametrics/victoria-metrics:v1.144.0` and sat in
+`ImagePullBackOff`. Because `helm --wait` waits for **every** resource to be
+Ready before running post-install hooks, that one unpullable pod meant the
+`mysql-replication` hook Job was never created and the release hung at
+`pending-install` until the timeout — a failure mode with no obvious link to
+its cause.
+
+Known reserved spellings to avoid: `global.image.*` (victoria-metrics family),
+`global.imageRegistry` and `global.imagePullSecrets` (grafana, bitnami),
+`global.storageClass` (bitnami). When adding a `global.*` key, grep the
+vendored charts for it first:
+
+```bash
+for t in deploy/charts/microecom/charts/infra/charts/*.tgz; do
+  tar -xzOf "$t" --wildcards '*/templates/*' '*/values.yaml' | grep -o 'global\.[A-Za-z.]*'
+done | sort -u
+```
+
+`render-test.sh` asserts no infra image carries the local registry, which is
+what locks this in.
+
 ### Fast check — no cluster required
 
 `deploy/charts/microecom/tests/render-test.sh` renders the chart with `helm

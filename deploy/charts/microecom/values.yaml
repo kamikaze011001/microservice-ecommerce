@@ -5,7 +5,25 @@ global:
     apps: apps
     monitoring: monitoring
     bootstrap: bootstrap
-  image:
+  # Where OUR OWN service images come from. Consumed by the apps subchart
+  # (Phase 3); nothing in the infra subchart reads it — every infra workload
+  # pins an upstream image tag explicitly.
+  #
+  # Deliberately NOT named `global.image.registry`. Helm propagates `global:`
+  # into EVERY subchart, including vendored upstream ones, and
+  # `global.image.registry` is an upstream CONVENTION, not a free name: the
+  # victoria-metrics chart family reads it (charts/victoria-metrics-common
+  # `vm.internal.image` falls back to it whenever the per-app
+  # `image.registry` is empty). Under the old name, vmsingle rendered as
+  # `localhost:5000/victoriametrics/victoria-metrics:...` and sat in
+  # ImagePullBackOff — which, because `helm --wait` waits for every resource
+  # before post-install hooks run, meant the mysql-replication hook Job was
+  # never created and the whole release hung at `pending-install`.
+  # Renaming is the fix rather than pinning that one chart's registry: the
+  # collision is with the convention, so the next upstream chart that adopts
+  # it would break the same way. Grafana uses `global.imageRegistry` — also
+  # avoid that spelling. See tests/render-test.sh for the assertion.
+  appImage:
     registry: localhost:5000
     tag: dev
     pullPolicy: Always

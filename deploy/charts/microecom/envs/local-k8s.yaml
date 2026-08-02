@@ -1,6 +1,6 @@
 # minikube is the base case — values.yaml already encodes it. This file exists so
 # every environment is selected the same way: -f envs/<env>.yaml
 global:
-  image:
+  appImage:
     registry: localhost:5000
     tag: dev

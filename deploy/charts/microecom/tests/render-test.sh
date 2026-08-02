@@ -83,6 +83,23 @@ assert_lacks "alias did not leak into the KSM name label"       'app\.kubernetes
 # subchart directory after the alias so it appears in `# Source:` comments too.
 # Neither is addressable by any override, and neither is what VM scrapes on.
 
+# Our app-registry global is `global.appImage.registry`, NOT `global.image.registry`.
+# Helm propagates `global:` into EVERY subchart, vendored upstream ones included,
+# and `global.image.registry` is an upstream convention: victoria-metrics-common's
+# `vm.internal.image` falls back to it whenever the per-app `image.registry` is
+# empty. Under the old key vmsingle rendered as
+# `localhost:5000/victoriametrics/victoria-metrics:...` → ImagePullBackOff → and
+# because `helm --wait` waits for every resource before post-install hooks run,
+# the mysql-replication hook Job was never created and the release hung at
+# `pending-install`. 109 render assertions missed it because none looked at an
+# image registry. No infra workload should ever carry the local registry — each
+# pins its upstream image explicitly.
+#
+# PHASE 3: the apps subchart's images legitimately ARE localhost:5000/... —
+# scope this assertion to the infra documents then, do not delete it.
+assert_lacks "no infra image is rewritten to the local registry"  'image: .*localhost:5000/' "$out"
+assert_has   "vmsingle keeps its upstream image registry"         'image: victoriametrics/victoria-metrics:' "$out"
+
 out="$(render --set infra.vault.enabled=false)"
 assert_ok    "vault disabled renders"                           "$out"
 assert_lacks "infra.vault.enabled=false gates the vault dependency" \
