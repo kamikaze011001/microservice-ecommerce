@@ -55,7 +55,7 @@ assert_lacks "infra namespace is NOT templated (--create-namespace owns it)" \
 assert_has   "vault Service keeps its name (apps hardcode vault.infra.svc)" '^  name: vault$' "$out"
 assert_lacks "no release-name prefix leaked onto vault"         'name: microecom-vault' "$out"
 assert_has   "grafana keeps its name"                           '^  name: grafana$' "$out"
-assert_has   "vmsingle keeps its name (grafana datasource)"     'name: vmsingle' "$out"
+assert_has   "vmsingle keeps its name (grafana datasource)"     '^  name: vmsingle$' "$out"
 assert_has   "kube-state-metrics keeps its scrape label"        'app\.kubernetes\.io/name: kube-state-metrics' "$out"
 assert_lacks "alias did not leak into the KSM name label"       'app\.kubernetes\.io/name: kubeStateMetrics' "$out"
 # Anchored to the name label on purpose. A bare `kubeStateMetrics` can never
