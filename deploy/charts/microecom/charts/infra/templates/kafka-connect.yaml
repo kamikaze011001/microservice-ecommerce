@@ -25,21 +25,32 @@ data:
     confluent-hub install --no-prompt mongodb/kafka-connect-mongodb:1.13.0
 ---
 apiVersion: apps/v1
+#
+# Labels use `app.kubernetes.io/name`, matching every other workload in this
+# subchart. This was `app:` until an E2E run caught it: the plan's own Check 1
+# command (`-l 'app.kubernetes.io/name in (schema-registry,kafka-connect,
+# kafka-exporter)'`) silently returned two pods instead of three. The Service
+# selector matched the pod template either way, so nothing broke — a
+# cross-cutting selector just skips this one workload, quietly.
+#
+# Changing it is NOT upgrade-safe: `spec.selector` is immutable on a Deployment,
+# so `helm upgrade` over a release that predates this fix fails with a
+# field-immutable error. Delete the Deployment first, or reinstall.
 kind: Deployment
 metadata:
   name: kafka-connect
   namespace: {{ $ns }}
   labels:
-    app: kafka-connect
+    app.kubernetes.io/name: kafka-connect
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: kafka-connect
+      app.kubernetes.io/name: kafka-connect
   template:
     metadata:
       labels:
-        app: kafka-connect
+        app.kubernetes.io/name: kafka-connect
     spec:
       # Same reasoning as schema-registry: the Confluent cp image's configure
       # scripts choke on k8s's injected KAFKA_*/tcp:// service-link env vars.
@@ -143,7 +154,7 @@ metadata:
   namespace: {{ $ns }}
 spec:
   selector:
-    app: kafka-connect
+    app.kubernetes.io/name: kafka-connect
   ports:
     - name: rest
       port: 8083

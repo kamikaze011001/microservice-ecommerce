@@ -268,6 +268,16 @@ sr="$(printf '%s\n' "$dep" | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: schema-reg
 kc="$(printf '%s\n' "$dep" | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: kafka-connect(\n|$)/')"
 assert_has   "schema-registry Service exists"                   '^  name: schema-registry$' "$svc"
 assert_has   "kafka-connect Service exists"                     '^  name: kafka-connect$' "$svc"
+# kafka-connect carried a bare `app:` label until an E2E run caught it — the
+# plan's own Check 1 selector
+# (`-l 'app.kubernetes.io/name in (schema-registry,kafka-connect,kafka-exporter)'`)
+# returned two pods instead of three. Its Service selector matched the pod
+# template either way, so nothing broke; a cross-cutting selector just skipped
+# this one workload silently. Scoped to the kafka-connect Deployment document,
+# since `app:` is a perfectly normal label in the vendored upstream charts.
+assert_has   "kafka-connect uses the chart's standard name label" \
+                                                                'app\.kubernetes\.io/name: kafka-connect' "$kc"
+assert_lacks "kafka-connect has no bare app: label"             '^ *app: kafka-connect$' "$kc"
 # Both workloads get `ensure-compacted`, `cleanup.policy=compact` and
 # `enableServiceLinks: false` from the same helper, so an unscoped assertion is
 # satisfied by whichever pod still has it — each is asserted per workload.
