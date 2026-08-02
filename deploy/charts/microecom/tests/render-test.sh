@@ -57,7 +57,12 @@ assert_lacks "no release-name prefix leaked onto vault"         'name: microecom
 assert_has   "grafana keeps its name"                           '^  name: grafana$' "$out"
 assert_has   "vmsingle keeps its name (grafana datasource)"     'name: vmsingle' "$out"
 assert_has   "kube-state-metrics keeps its scrape label"        'app\.kubernetes\.io/name: kube-state-metrics' "$out"
-assert_lacks "alias did not leak into the KSM name label"       'kubeStateMetrics' "$out"
+assert_lacks "alias did not leak into the KSM name label"       'app\.kubernetes\.io/name: kubeStateMetrics' "$out"
+# Anchored to the name label on purpose. A bare `kubeStateMetrics` can never
+# pass: `alias:` also rewrites `.Chart.Name`, which the upstream chart bakes
+# into its cosmetic `helm.sh/chart` label, and Helm names the in-memory
+# subchart directory after the alias so it appears in `# Source:` comments too.
+# Neither is addressable by any override, and neither is what VM scrapes on.
 
 out="$(render --set infra.vault.enabled=false)"
 assert_ok    "vault disabled renders"                           "$out"
