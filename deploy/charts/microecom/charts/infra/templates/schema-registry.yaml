@@ -1,0 +1,96 @@
+{{- if .Values.schemaRegistry.enabled }}
+{{- $ns := .Values.global.namespaces.infra -}}
+{{- $kafka := printf "%s:9092" (include "microecom.fqdn" (dict "name" "kafka" "namespace" $ns)) -}}
+# Confluent Schema Registry — confluentinc/cp-schema-registry.
+# The JPA services use Avro (de)serializers
+# (io.confluent.kafka.serializers.KafkaAvro{Serializer,Deserializer}) which
+# REQUIRE spring.kafka.properties.schema.registry.url. Without a registry the
+# Kafka consumer/producer factory fails to construct and the service crashes:
+#   ConfigException: Missing required configuration "schema.registry.url"
+#
+# Mirrors docker/kafka.yml's kafka-schema-registry service. Listens on 8081
+# (docker mapped host 8091->8081; in-cluster we use 8081 directly). Consumers
+# reach it at http://schema-registry.infra.svc.cluster.local:8081 (seeded into
+# the `ecommerce` common Vault context by 03-vault-seed).
+#
+# Backed by the same single-node Kafka (KRaft) — the registry stores its
+# subjects in a compacted Kafka topic (_schemas), so no separate storage.
+#
+# LOCAL-DEV ONLY: PLAINTEXT, no auth. AWS overlay points services at a managed
+# registry (e.g. AWS Glue / MSK + Confluent) via Vault — no app change.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: schema-registry
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: schema-registry
+spec:
+  selector:
+    app.kubernetes.io/name: schema-registry
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: schema-registry
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: schema-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: schema-registry
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: schema-registry
+    spec:
+      # k8s injects service-discovery env vars for every Service in the namespace
+      # (e.g. KAFKA_PORT=tcp://10.x:9092). The Confluent cp image's configure
+      # scripts read KAFKA_*-style vars and choke on the tcp:// value, exiting 1
+      # at "Configuring ..." before the JVM starts. Disabling service links stops
+      # the injection — schema-registry reaches Kafka via its explicit
+      # SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS below, not env discovery.
+      enableServiceLinks: false
+      initContainers:
+        {{- include "microecom.waitForKafka" (dict "kafka" $kafka) | nindent 8 }}
+        {{- include "microecom.ensureCompacted" (dict "kafka" $kafka "topics" "_schemas") | nindent 8 }}
+      containers:
+        - name: schema-registry
+          image: confluentinc/cp-schema-registry:7.7.1
+          env:
+            - name: SCHEMA_REGISTRY_HOST_NAME
+              value: schema-registry
+            - name: SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS
+              value: "PLAINTEXT://{{ $kafka }}"
+            - name: SCHEMA_REGISTRY_LISTENERS
+              value: "http://0.0.0.0:8081"
+          ports:
+            - name: http
+              containerPort: 8081
+          resources:
+            requests: { cpu: 100m, memory: 384Mi }
+            limits:   { cpu: 500m, memory: 768Mi }
+          readinessProbe:
+            httpGet:
+              path: /subjects
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /subjects
+              port: http
+            initialDelaySeconds: 45
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
+{{- end }}

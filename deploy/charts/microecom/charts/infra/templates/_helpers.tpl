@@ -37,3 +37,38 @@ carries the CLI. No new image, no new pull.
     requests: { cpu: 10m, memory: 64Mi }
     limits:   { cpu: 200m, memory: 256Mi }
 {{- end -}}
+
+{{/*
+An initContainer that creates each named topic if missing and forces
+cleanup.policy=compact on it. Takes `kafka` (bootstrap host:port) and `topics`
+(space-separated list, consumed by the shell loop).
+
+Kafka auto-creates internal topics with cleanup.policy=delete, and both Schema
+Registry and Connect refuse to start on a non-compacted topic. install.sh fixed
+all four topics from one loop before either service started; here each service
+repairs exactly the topics it owns, from inside its own pod, so it also
+self-heals after a Kafka rebuild.
+*/}}
+{{- define "microecom.ensureCompacted" -}}
+- name: ensure-compacted
+  image: apache/kafka:3.9.1
+  env:
+    - name: TOPICS
+      value: "{{ .topics }}"
+  command:
+    - sh
+    - -c
+    - |
+      set -e
+      for t in $TOPICS; do
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server {{ .kafka }} \
+          --create --if-not-exists --topic "$t" \
+          --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-configs.sh --bootstrap-server {{ .kafka }} \
+          --alter --entity-type topics --entity-name "$t" \
+          --add-config cleanup.policy=compact
+      done
+  resources:
+    requests: { cpu: 10m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 256Mi }
+{{- end -}}

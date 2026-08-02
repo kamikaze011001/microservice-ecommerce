@@ -241,5 +241,40 @@ assert_lacks "kafka StatefulSet gated off"                      '^  name: kafka$
                                                                 "$(printf '%s\n' "$out" | docs_of_kind StatefulSet)"
 assert_lacks "kafka-exporter gated off"                         'image: danielqsj/kafka-exporter:v1\.8\.0' "$out"
 
+# ── Task 5: schema-registry + kafka-connect ─────────────────────────────────
+section "schema-registry / kafka-connect"
+
+out="$(render)"
+svc="$(printf '%s\n' "$out" | docs_of_kind Service)"
+dep="$(printf '%s\n' "$out" | docs_of_kind Deployment)"
+sr="$(printf '%s\n' "$dep" | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: schema-registry(\n|$)/')"
+kc="$(printf '%s\n' "$dep" | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: kafka-connect(\n|$)/')"
+assert_has   "schema-registry Service exists"                   '^  name: schema-registry$' "$svc"
+assert_has   "kafka-connect Service exists"                     '^  name: kafka-connect$' "$svc"
+# Both workloads get `ensure-compacted`, `cleanup.policy=compact` and
+# `enableServiceLinks: false` from the same helper, so an unscoped assertion is
+# satisfied by whichever pod still has it — each is asserted per workload.
+# NOTE: the brief's original single-regex assertion here was
+# 'TOPICS.*_schemas' against $sr. `.` never matches a newline under
+# `grep -E` (verified: `printf 'foo TOPICS\nbar _schemas\n' | grep -qE
+# 'TOPICS.*_schemas'` exits 1), and the ensure-compacted helper always
+# renders `- name: TOPICS` and `value: "..."` on separate lines — so that
+# regex can never match regardless of the template. Split into two
+# same-scope assertions that verify the same intent (schema-registry's
+# TOPICS env var is set to _schemas) without requiring a single-line match.
+assert_has   "schema-registry ensure-compacted carries a TOPICS env var" 'name: TOPICS' "$sr"
+assert_has   "schema-registry compacts _schemas"                'value: "_schemas"' "$sr"
+assert_has   "schema-registry has ensure-compacted"             'name: ensure-compacted' "$sr"
+assert_has   "schema-registry applies cleanup.policy=compact"   'cleanup\.policy=compact' "$sr"
+assert_has   "schema-registry disables service links"           'enableServiceLinks: false' "$sr"
+assert_has   "kafka-connect compacts its three internal topics" 'connect-configs connect-offsets connect-status' "$kc"
+assert_has   "kafka-connect has ensure-compacted"               'name: ensure-compacted' "$kc"
+assert_has   "kafka-connect waits for schema-registry"          'name: wait-for-schema-registry' "$kc"
+assert_has   "kafka-connect keeps its install-plugins step"     'name: install-plugins' "$kc"
+assert_has   "kafka-connect disables service links"             'enableServiceLinks: false' "$kc"
+
+out="$(render --set infra.schemaRegistry.enabled=false --set infra.kafkaConnect.enabled=false)"
+assert_lacks "confluent workloads gated off"                    'confluentinc/cp-' "$out"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
