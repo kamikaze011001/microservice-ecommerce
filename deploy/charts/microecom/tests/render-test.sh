@@ -207,5 +207,39 @@ out="$(render --set infra.minio.enabled=false)"
 assert_lacks "minio gated off"                                  'image: minio/minio' "$out"
 assert_lacks "minio ingress goes with it"                       'media\.microecom\.local' "$out"
 
+# ── Task 4: kafka + exporter ────────────────────────────────────────────────
+section "kafka"
+
+out="$(render)"
+sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet)"
+svc="$(printf '%s\n' "$out" | docs_of_kind Service)"
+kafka_sts="$(printf '%s\n' "$sts" | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: kafka(\n|$)/')"
+exporter="$(printf '%s\n' "$out" | docs_of_kind Deployment \
+            | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: kafka-exporter(\n|$)/')"
+assert_has   "kafka Service exists"                             '^  name: kafka$' "$svc"
+assert_has   "kafka StatefulSet exists"                         '^  name: kafka$' "$sts"
+assert_has   "kafka client port"                                'name: client' "$kafka_sts"
+# Scoped and override-proved below: minio's default storage is also 10Gi.
+assert_has   "kafka storage is 10Gi (default, kafka's own STS)" 'storage: 10Gi' "$kafka_sts"
+# The next three are scoped to the exporter's own Deployment. Task 5 gives
+# schema-registry and kafka-connect the same `wait-for-kafka` initContainer,
+# the same image and the same bootstrap address, so unscoped these would all
+# stay green with kafka-exporter deleted outright.
+assert_has   "kafka-exporter has a wait-for-kafka initContainer" 'name: wait-for-kafka' "$exporter"
+assert_has   "wait-for-kafka reuses the kafka image"            'image: apache/kafka:3\.9\.1' "$exporter"
+assert_has   "wait targets the kafka FQDN"                      'kafka\.infra\.svc\.cluster\.local:9092' "$exporter"
+
+out="$(render --set infra.kafka.storage=11Gi)"
+kafka_sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet \
+             | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: kafka(\n|$)/')"
+assert_has   "infra.kafka.storage reaches kafka's own PVC"      'storage: 11Gi' "$kafka_sts"
+
+out="$(render --set infra.kafka.enabled=false --set infra.kafkaExporter.enabled=false)"
+# NOT `apache/kafka` — schema-registry and kafka-connect are still enabled here
+# and their wait/compact initContainers reuse that image (Task 5).
+assert_lacks "kafka StatefulSet gated off"                      '^  name: kafka$' \
+                                                                "$(printf '%s\n' "$out" | docs_of_kind StatefulSet)"
+assert_lacks "kafka-exporter gated off"                         'image: danielqsj/kafka-exporter:v1\.8\.0' "$out"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
