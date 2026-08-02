@@ -1481,7 +1481,14 @@ cm="$(printf '%s\n' "$out" | docs_of_kind ConfigMap \
 assert_has   "dashboards ConfigMap exists"                      '^  name: grafana-custom-dashboards$' "$cm"
 assert_has   "dashboards land in the monitoring namespace"      '^  namespace: monitoring$' "$cm"
 assert_lacks "gp3 StorageClass is off by default"               'kind: StorageClass' "$out"
-assert_lacks "external-secrets is off by default"               'kind: SecretStore' "$out"
+# NOT 'kind: SecretStore' — the ESO resource copied from
+# k8s/infra/manifests/external-secrets-store.yaml is a `ClusterSecretStore`, and
+# 'kind: SecretStore' is a substring that can never match 'kind: ClusterSecretStore'
+# (the text after "kind: " is "Cluster"). The wrong spelling makes this assert_lacks
+# pass vacuously AND makes the aws-on assert_has below fail against a correctly
+# wired resource. Later phases writing real ExternalSecret objects must likewise
+# reference `kind: ClusterSecretStore`, not the default `SecretStore`.
+assert_lacks "external-secrets is off by default"               'kind: ClusterSecretStore' "$out"
 
 out="$(render --set infra.storageClassGp3.enabled=true)"
 sc="$(printf '%s\n' "$out" | docs_of_kind StorageClass)"
@@ -1501,7 +1508,7 @@ assert_lacks "aws: redis is replaced by ElastiCache"            'image: redis:7\
 assert_lacks "aws: minio is replaced by S3"                     'image: minio/minio' "$out"
 assert_lacks "aws: vault is replaced by ExternalSecrets"        'app\.kubernetes\.io/name: vault' "$out"
 assert_has   "aws: gp3 StorageClass is on"                      'kind: StorageClass' "$out"
-assert_has   "aws: external-secrets is on"                      'kind: SecretStore' "$out"
+assert_has   "aws: external-secrets is on"                      'kind: ClusterSecretStore' "$out"
 # Scoped to the kafka StatefulSet. `apache/kafka:3.9.1` is ALSO the image of the
 # wait-for-kafka (x3) and ensure-compacted (x2) initContainers, and those hang off
 # kafkaExporter / schemaRegistry / kafkaConnect, all of which stay enabled on AWS.
