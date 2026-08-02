@@ -736,29 +736,51 @@ Mechanical conversion for Redis and MinIO; MongoDB carries the `lookup` keyfile,
 section "mongodb / redis / minio"
 
 out="$(render)"
-assert_has   "redis Service is named redis-master (vault-seed contract)" 'name: redis-master' "$out"
-assert_has   "mongodb Service exists"                           '^  name: mongodb$' "$out"
-assert_has   "minio Service exists"                             '^  name: minio$' "$out"
-assert_has   "mongodb-keyfile Secret is rendered"               'name: mongodb-keyfile' "$out"
-assert_has   "keyfile carries resource-policy keep"             'helm\.sh/resource-policy: keep' "$out"
-assert_has   "minio ingress uses the media host from values"    'host: media\.microecom\.local' "$out"
-assert_has   "minio ingress uses the ingress class from values" 'ingressClassName: nginx' "$out"
-assert_has   "minio storage is 10Gi"                            'storage: 10Gi' "$out"
+sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet)"
+svc="$(printf '%s\n' "$out" | docs_of_kind Service)"
+sec="$(printf '%s\n' "$out" | docs_of_kind Secret)"
+ing="$(printf '%s\n' "$out" | docs_of_kind Ingress)"
+assert_has   "redis Service is named redis-master (vault-seed contract)" '^  name: redis-master$' "$svc"
+assert_has   "mongodb Service exists"                           '^  name: mongodb$' "$svc"
+assert_has   "mongodb StatefulSet exists"                       '^  name: mongodb$' "$sts"
+assert_has   "minio Service exists"                             '^  name: minio$' "$svc"
+# Scoped to Secret docs: the mongodb StatefulSet's keyfile volume references
+# `secretName: mongodb-keyfile`, so an unscoped grep stays green with the
+# Secret itself deleted — it could never fail.
+assert_has   "mongodb-keyfile Secret is rendered"               '^  name: mongodb-keyfile$' "$sec"
+assert_has   "keyfile carries resource-policy keep"             'helm\.sh/resource-policy: keep' "$sec"
+assert_has   "minio ingress uses the media host from values"    'host: media\.microecom\.local' "$ing"
+assert_has   "minio ingress uses the ingress class from values" 'ingressClassName: nginx' "$ing"
+# Scoped, and backed by the override below: kafka's default storage is also
+# 10Gi, so an unscoped check goes vacuous the moment Task 4 lands.
+assert_has   "minio storage is 10Gi (default, StatefulSet only)" 'storage: 10Gi' "$sts"
+
+out="$(render --set infra.minio.storage=11Gi)"
+minio_sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet \
+             | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: minio(\n|$)/')"
+assert_has   "infra.minio.storage reaches minio's own PVC"      'storage: 11Gi' "$minio_sts"
 
 out="$(render --set global.ingress.hosts.media=media.example.com --set global.ingress.className=alb)"
-assert_has   "media host is a values change"                    'host: media\.example\.com' "$out"
-assert_has   "ingress class is a values change"                 'ingressClassName: alb' "$out"
+ing="$(printf '%s\n' "$out" | docs_of_kind Ingress)"
+assert_has   "media host is a values change"                    'host: media\.example\.com' "$ing"
+assert_has   "ingress class is a values change"                 'ingressClassName: alb' "$ing"
 
 out="$(render --set infra.redis.enabled=false)"
-assert_lacks "redis gated off"                                  'redis-master' "$out"
+# NOT the bare string `redis-master` — it is a hostname in app config and in
+# victoriaMetrics' scrape targets, both of which stay enabled here.
+assert_lacks "redis gated off"                                  'image: redis:7\.4-alpine' "$out"
+assert_lacks "redis Service gated off"                          '^  name: redis-master$' \
+                                                                "$(printf '%s\n' "$out" | docs_of_kind Service)"
 
 out="$(render --set infra.minio.enabled=false)"
-assert_lacks "minio gated off (ingress goes with it)"           'media\.microecom\.local' "$out"
+assert_lacks "minio gated off"                                  'image: minio/minio' "$out"
+assert_lacks "minio ingress goes with it"                       'media\.microecom\.local' "$out"
 ```
 
 - [ ] **Step 2: Run — expect failure**
 
-Expected: the 8 positive assertions FAIL.
+Expected: every positive assertion FAILS. If one passes here, it is matching
+something other than the object it names — fix the assertion, not the template.
 
 - [ ] **Step 3: Convert `redis.yaml` and `minio.yaml`**
 
