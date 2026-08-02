@@ -80,5 +80,34 @@ assert_lacks "kube-state-metrics gated off"                     'kube-state-metr
 out="$(render)"
 assert_has   "grafana lands in the monitoring namespace"        'namespace: monitoring' "$out"
 
+# ── Task 2: MySQL family ────────────────────────────────────────────────────
+section "mysql family"
+
+out="$(render)"
+assert_has   "mysql StatefulSet name is exactly 'mysql'"        '^  name: mysql$' "$out"
+assert_has   "mysql-replica-headless Service exists"            'name: mysql-replica-headless' "$out"
+assert_has   "mysql-replica Service exists"                     '^  name: mysql-replica$' "$out"
+assert_has   "mysql storage is 4Gi"                             'storage: 4Gi' "$out"
+assert_has   "mysql-credentials carries the repl user"          'MYSQL_REPL_USER' "$out"
+assert_has   "primary exporter targets the mysql FQDN"          'host=mysql\.infra\.svc\.cluster\.local' "$out"
+assert_has   "replica-0 exporter targets pod-0 via headless"    'host=mysql-replica-0\.mysql-replica-headless\.infra\.svc\.cluster\.local' "$out"
+assert_has   "replica-1 exporter targets pod-1 via headless"    'host=mysql-replica-1\.mysql-replica-headless\.infra\.svc\.cluster\.local' "$out"
+
+out="$(render --set infra.mysqlReplica.replicas=3)"
+assert_has   "replicas=3 generates a third exporter"            'name: mysqld-exporter-replica-2' "$out"
+
+out="$(render --set infra.mysql.enabled=false --set infra.mysqlReplica.enabled=false --set infra.mysqldExporter.enabled=false)"
+# NOT `kind: StatefulSet` — mongodb, kafka and minio are StatefulSets too and are
+# still enabled here, so that assertion would fail for the wrong reason.
+assert_lacks "mysql gated off"                                  'image: mysql:8\.0\.40' "$out"
+# NOT the bare string `mysqld-exporter` — victoriaMetrics' own scrape config
+# (charts/infra/values.yaml) hardcodes a `job_name: mysqld-exporter` and target
+# hostnames containing that literal text, and VM stays enabled here, so that
+# assertion would fail for the wrong reason regardless of this gate.
+assert_lacks "mysqld-exporter gated off"                        'image: prom/mysqld-exporter:v0\.16\.0' "$out"
+
+out="$(render --set global.namespaces.infra=data)"
+assert_has   "namespace is a values change, not a literal"      'host=mysql\.data\.svc\.cluster\.local' "$out"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
