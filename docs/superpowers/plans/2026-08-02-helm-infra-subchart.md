@@ -1465,7 +1465,7 @@ ls deploy/charts/microecom/charts/infra/dashboards/
 
 Expected: 3 JSON files.
 
-- [ ] **Step 2: Append the failing tests**
+- [x] **Step 2: Append the failing tests**
 
 ```bash
 # ── Task 7: dashboards + AWS-gated resources ────────────────────────────────
@@ -1519,9 +1519,9 @@ kafka_sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet \
 assert_has   "aws: kafka still runs in-cluster"                 'image: apache/kafka:3\.9\.1' "$kafka_sts"
 ```
 
-- [ ] **Step 3: Run — expect failure**
+- [x] **Step 3: Run — expect failure**
 
-- [ ] **Step 4: Write `dashboards-cm.yaml`**
+- [x] **Step 4: Write `dashboards-cm.yaml`**
 
 `.Files` is scoped to the chart containing the template, so this glob reads `charts/infra/dashboards/`.
 
@@ -1552,7 +1552,7 @@ data:
 {{- end }}
 ```
 
-- [ ] **Step 5: Write `storageclass-gp3.yaml` and `external-secrets.yaml`**
+- [x] **Step 5: Write `storageclass-gp3.yaml` and `external-secrets.yaml`**
 
 Copy `k8s/infra/overlays/aws/storageclass-gp3.yaml` and the two `external-secrets-*.yaml` manifests, wrapping each in its gate:
 
@@ -1575,7 +1575,7 @@ directory breaks Kafka's log.dir
 
 `external-secrets.yaml` gets `{{- if .Values.externalSecrets.enabled }}`, with the IRSA role ARN from `{{ .Values.externalSecrets.roleArn }}` and the region from `{{ .Values.externalSecrets.region }}`. Phase 4 wires the actual values.
 
-- [ ] **Step 6: Write `envs/aws.yaml`**
+- [x] **Step 6: Write `envs/aws.yaml`**
 
 ```yaml
 # EKS overrides. Written in Phase 2 so the gating can be proven now; first
@@ -1614,9 +1614,9 @@ infra:
   kubeStateMetrics: { enabled: true }
 ```
 
-- [ ] **Step 7: Run the harness — expect pass**
+- [x] **Step 7: Run the harness — expect pass**
 
-- [ ] **Step 8: Confirm the ConfigMap has exactly 3 keys**
+- [x] **Step 8: Confirm the ConfigMap has exactly 3 keys**
 
 ```bash
 helm template microecom deploy/charts/microecom --namespace infra \
@@ -1626,7 +1626,7 @@ helm template microecom deploy/charts/microecom --namespace infra \
 
 Expected: the three dashboard filenames, no `.DS_Store`.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add deploy/charts/microecom
@@ -1655,7 +1655,7 @@ The chart is complete; this makes it runnable alongside the old path. Nothing he
 - Consumes: the chart from Tasks 1–7.
 - Produces: `make k8s-platform` and `make k8s-infra-helm`.
 
-- [ ] **Step 1: Confirm the Helm version (the `--wait` form is already settled)**
+- [x] **Step 1: Confirm the Helm version (the `--wait` form is already settled)**
 
 ```bash
 helm version --short          # expect v4.2.0+g0646808 or later
@@ -1666,7 +1666,7 @@ helm version --short          # expect v4.2.0+g0646808 or later
 the flag is **omitted** is `hookOnly`, so hooks are awaited even without it. Use
 bare `--wait` consistently in `platform.sh` and the Makefile.
 
-- [ ] **Step 2: Write `platform.sh`**
+- [x] **Step 2: Write `platform.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -1727,7 +1727,7 @@ log_ok "platform ready"
 `info`/`warn`/`ok`. All four write to **stderr** deliberately, so command output stays clean on
 stdout. Use the `log_*` names above; do not add shim functions and do not edit `colors.sh`.
 
-- [ ] **Step 3: Add the Makefile targets**
+- [x] **Step 3: Add the Makefile targets**
 
 Place them next to the existing `k8s-infra` target, leaving it untouched.
 
@@ -1755,7 +1755,7 @@ k8s-infra-helm: k8s-platform
 	  --wait --timeout 20m
 ```
 
-- [ ] **Step 4: Verify the targets resolve without running them**
+- [x] **Step 4: Verify the targets resolve without running them**
 
 ```bash
 make -n k8s-platform
@@ -1765,7 +1765,7 @@ bash -n deploy/scripts/platform.sh
 
 Expected: both print their recipes; `bash -n` is silent.
 
-- [ ] **Step 5: Document the chart in `deploy/README.md`**
+- [x] **Step 5: Document the chart in `deploy/README.md`**
 
 Append a section covering, at minimum:
 
@@ -1779,7 +1779,7 @@ Append a section covering, at minimum:
   pre-empted by a generic Helm timeout.
 - That `deploy/charts/microecom/tests/render-test.sh` is the fast check and needs no cluster.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add deploy Makefile
@@ -1808,14 +1808,14 @@ Green pods prove little here — the point of the four ordering fixes is that sp
 - Consumes: everything from Tasks 1–8.
 - Produces: nothing.
 
-- [ ] **Step 1: Rebuild the cluster**
+- [x] **Step 1: Rebuild the cluster**
 
 ```bash
 make k8s-down
 make k8s-cluster-up
 ```
 
-- [ ] **Step 2: Bring up infra through Helm**
+- [x] **Step 2: Bring up infra through Helm**
 
 ```bash
 time make k8s-infra-helm
@@ -1823,7 +1823,7 @@ time make k8s-infra-helm
 
 Expected: the release reaches `deployed`. If it times out, check whether pods are merely still pulling the Confluent images before treating it as a failure.
 
-- [ ] **Step 3: Check 1 — the three crash-without-their-initContainers workloads**
+- [x] **Step 3: Check 1 — the three crash-without-their-initContainers workloads**
 
 ```bash
 kubectl -n infra get pods -l 'app.kubernetes.io/name in (schema-registry,kafka-connect,kafka-exporter)' \
@@ -1832,7 +1832,7 @@ kubectl -n infra get pods -l 'app.kubernetes.io/name in (schema-registry,kafka-c
 
 Expected: all three `READY=true`, `RESTARTS=0`. Each crashes without its initContainers, so this is direct proof rather than a smoke test.
 
-- [ ] **Step 4: Check 2 — replication on both replicas**
+- [x] **Step 4: Check 2 — replication on both replicas**
 
 ```bash
 kubectl -n infra logs job/mysql-replication | tail -20
@@ -1845,7 +1845,7 @@ done
 
 Expected: `Replica_IO_Running: Yes` **and** `Replica_SQL_Running: Yes` for both.
 
-- [ ] **Step 5: Check 3 — dashboards**
+- [x] **Step 5: Check 3 — dashboards**
 
 ```bash
 kubectl -n monitoring get configmap grafana-custom-dashboards \
@@ -1855,7 +1855,7 @@ kubectl -n monitoring get pods -l app.kubernetes.io/name=grafana
 
 Expected: 3 keys, Grafana Running. Then open Grafana and confirm the JVM / Kafka / MySQL dashboards appear under the `Custom` folder.
 
-- [ ] **Step 6: Check 4 — idempotence**
+- [x] **Step 6: Check 4 — idempotence**
 
 ```bash
 kubectl -n infra get secret mongodb-keyfile -o jsonpath='{.data.keyfile}' | sha256sum
@@ -1871,7 +1871,7 @@ kubectl -n infra logs job/mysql-replication | grep 'already replicating'
 
 Expected: identical keyfile hashes, no restart-count changes, and the Job reporting "already replicating" for both replicas.
 
-- [ ] **Step 7: Check 5 — restart resilience (the property the old script never had)**
+- [x] **Step 7: Check 5 — restart resilience (the property the old script never had)**
 
 ```bash
 kubectl -n infra delete pod kafka-0
@@ -1880,7 +1880,7 @@ kubectl -n infra get pods -l app.kubernetes.io/name=kafka-exporter -w   # ctrl-c
 
 Expected: `kafka-exporter` blocks in `Init:0/1` while Kafka is down, then goes Ready on its own. Under `install.sh` it would exit and stay dead.
 
-- [ ] **Step 8: Check 6 — AWS gating renders**
+- [x] **Step 8: Check 6 — AWS gating renders**
 
 ```bash
 helm template microecom deploy/charts/microecom --namespace infra \
@@ -1890,7 +1890,7 @@ grep -cE 'image: mysql:8\.0\.40|redis-master|minio/minio|app.kubernetes.io/name:
 
 Expected: `0`. (Task 7 asserts this too; repeating it here confirms nothing regressed across Tasks 8–9.)
 
-- [ ] **Step 9: Check 7 — the old path still works**
+- [x] **Step 9: Check 7 — the old path still works**
 
 ```bash
 make k8s-down
@@ -1901,7 +1901,7 @@ kubectl -n infra get pods
 
 Expected: the kubectl path brings everything up exactly as before. This is the rollback guarantee — if it fails, the phase is not done regardless of how well the Helm path works.
 
-- [ ] **Step 10: Record the results and commit**
+- [x] **Step 10: Record the results and commit**
 
 Tick every checkbox in this plan that the run verified, and add any newly-discovered gotcha to `deploy/README.md`.
 
@@ -1912,7 +1912,7 @@ git commit -m "docs(deploy): record Phase 2 E2E verification results
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 11: Hand the push to the user**
+- [x] **Step 11: Hand the push to the user**
 
 The pre-push hook blocks `git push` from the agent shell — the repo overrides `core.hooksPath=.husky/_`, so the global gitleaks hook cannot run. Do not bypass it. Ask the user to run, with the `! ` prefix:
 

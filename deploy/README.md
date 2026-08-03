@@ -120,6 +120,42 @@ done | sort -u
 `render-test.sh` asserts no infra image carries the local registry, which is
 what locks this in.
 
+### Docker Hub rate limiting looks like a chart failure
+
+A fresh 4-node cluster pulls ~10 upstream images in parallel and can exhaust
+Docker Hub's anonymous quota. Hub answers an exhausted quota with **401
+`unauthorized: authentication required`**, not the 429 `toomanyrequests` you
+would expect, so the pod event reads like a credentials problem. It is
+per-IP — the host's own `docker pull` fails identically, and
+`~/.docker/config.json` holds no Hub login on either side.
+
+Downstream, `k8s/infra/install.sh` aborts at its `kubectl wait` with a bare
+`error: timed out waiting for the condition`, and every stage *after* that
+wait is never applied. The cluster then looks "mostly up" while
+schema-registry, kafka-connect, vault, VictoriaMetrics and Grafana are simply
+absent. Re-running is idempotent and resumes — one bring-up needed three
+invocations of `make k8s-infra` to get through.
+
+It is transient and self-healing: kubelet backoff eventually lands every
+image. Waiting is the correct first response. To skip Hub entirely, pre-load
+from the host cache before installing:
+
+```bash
+for img in $(grep -rhoE 'image: *"?[a-z0-9][^ "]*' \
+               deploy/charts/microecom/charts/infra/templates/ \
+             | sed 's/image: *"*//' | sort -u); do
+  docker image inspect "$img" >/dev/null 2>&1 || docker pull "$img"
+  minikube -p microecom image load "$img"
+done
+```
+
+This only works for tags the host actually has, so it is worth doing right
+after `make k8s-cluster-up`. Bumping a pinned tag that the local cache does
+not carry converts a soft dependency on Docker Hub into a hard one — a stale
+cache holding `cp-kafka-connect:7.7.1` does nothing for a chart pinned to
+`7.6.1`. With all ten images pre-loaded, `make k8s-infra-helm` completes in
+about 4 minutes instead of stalling on pulls.
+
 ### Fast check — no cluster required
 
 `deploy/charts/microecom/tests/render-test.sh` renders the chart with `helm
