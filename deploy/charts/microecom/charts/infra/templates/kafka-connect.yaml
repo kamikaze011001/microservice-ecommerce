@@ -1,0 +1,162 @@
+{{- if .Values.kafkaConnect.enabled }}
+{{- $ns := .Values.global.namespaces.infra -}}
+{{- $kafka := printf "%s:9092" (include "microecom.fqdn" (dict "name" "kafka" "namespace" $ns)) -}}
+{{- $sr := include "microecom.fqdn" (dict "name" "schema-registry" "namespace" $ns) -}}
+# Kafka Connect worker — long-running Deployment that hosts source/sink
+# connectors. Single replica is enough for local stress testing; for AWS,
+# bump replicas and switch the internal topics' replication factor to 3.
+#
+# JSON converter is used for keys and values to avoid the Schema Registry
+# dependency. If/when Avro is needed, deploy confluentinc-schema-registry
+# and flip the converter classes here.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-connect-plugins
+  namespace: {{ $ns }}
+data:
+  install-plugins.sh: |
+    #!/bin/sh
+    set -eu
+    # NOTE: 1.13.1 was never published to Confluent Hub ("Component not found").
+    # 1.13.0 is the real release closest to the original intent. Valid versions:
+    # https://api.hub.confluent.io/api/plugins/mongodb/kafka-connect-mongodb/versions
+    confluent-hub install --no-prompt mongodb/kafka-connect-mongodb:1.13.0
+---
+apiVersion: apps/v1
+#
+# Labels use `app.kubernetes.io/name`, matching every other workload in this
+# subchart. This was `app:` until an E2E run caught it: the plan's own Check 1
+# command (`-l 'app.kubernetes.io/name in (schema-registry,kafka-connect,
+# kafka-exporter)'`) silently returned two pods instead of three. The Service
+# selector matched the pod template either way, so nothing broke — a
+# cross-cutting selector just skips this one workload, quietly.
+#
+# Changing it is NOT upgrade-safe: `spec.selector` is immutable on a Deployment,
+# so `helm upgrade` over a release that predates this fix fails with a
+# field-immutable error. Delete the Deployment first, or reinstall.
+kind: Deployment
+metadata:
+  name: kafka-connect
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: kafka-connect
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka-connect
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafka-connect
+    spec:
+      # Same reasoning as schema-registry: the Confluent cp image's configure
+      # scripts choke on k8s's injected KAFKA_*/tcp:// service-link env vars.
+      enableServiceLinks: false
+      initContainers:
+        {{- include "microecom.waitForKafka" (dict "kafka" $kafka) | nindent 8 }}
+        {{- include "microecom.ensureCompacted" (dict "kafka" $kafka "topics" "connect-configs connect-offsets connect-status") | nindent 8 }}
+        - name: wait-for-schema-registry
+          image: confluentinc/cp-kafka-connect:7.6.1
+          command:
+            - sh
+            - -c
+            - |
+              until curl -fsS http://{{ $sr }}:8081/subjects >/dev/null 2>&1; do
+                echo "waiting for schema-registry at {{ $sr }}:8081"
+                sleep 3
+              done
+          resources:
+            requests: { cpu: 10m, memory: 64Mi }
+            limits:   { cpu: 200m, memory: 256Mi }
+        - name: install-plugins
+          image: confluentinc/cp-kafka-connect:7.6.1
+          command: ["/bin/sh", "/scripts/install-plugins.sh"]
+          env:
+            - name: CONFLUENT_HUB_COMPONENT_DIR
+              value: /usr/share/confluent-hub-components
+          volumeMounts:
+            - name: plugins
+              mountPath: /usr/share/confluent-hub-components
+            - name: scripts
+              mountPath: /scripts
+      containers:
+        - name: connect
+          image: confluentinc/cp-kafka-connect:7.6.1
+          ports:
+            - name: rest
+              containerPort: 8083
+          env:
+            - name: CONNECT_BOOTSTRAP_SERVERS
+              value: "{{ $kafka }}"
+            - name: CONNECT_REST_PORT
+              value: "8083"
+            - name: CONNECT_REST_ADVERTISED_HOST_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: CONNECT_GROUP_ID
+              value: "ecommerce-connect"
+            - name: CONNECT_CONFIG_STORAGE_TOPIC
+              value: "connect-configs"
+            - name: CONNECT_OFFSET_STORAGE_TOPIC
+              value: "connect-offsets"
+            - name: CONNECT_STATUS_STORAGE_TOPIC
+              value: "connect-status"
+            - name: CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: CONNECT_STATUS_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: CONNECT_KEY_CONVERTER
+              value: "org.apache.kafka.connect.json.JsonConverter"
+            - name: CONNECT_VALUE_CONVERTER
+              value: "org.apache.kafka.connect.json.JsonConverter"
+            - name: CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE
+              value: "false"
+            - name: CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE
+              value: "false"
+            - name: CONNECT_PLUGIN_PATH
+              value: "/usr/share/java,/usr/share/confluent-hub-components"
+          # cp-kafka-connect (JVM + connector plugins) was OOMKilled repeatedly
+          # (exit 137) at a 1Gi limit — RSS peaked ~963Mi (94% of limit). Give it
+          # real headroom: request 1Gi, cap at 2Gi.
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "1Gi"
+            limits:
+              memory: "2Gi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: rest
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          volumeMounts:
+            - name: plugins
+              mountPath: /usr/share/confluent-hub-components
+      volumes:
+        - name: plugins
+          emptyDir: {}
+        - name: scripts
+          configMap:
+            name: kafka-connect-plugins
+            defaultMode: 0755
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-connect
+  namespace: {{ $ns }}
+spec:
+  selector:
+    app.kubernetes.io/name: kafka-connect
+  ports:
+    - name: rest
+      port: 8083
+      targetPort: rest
+{{- end }}

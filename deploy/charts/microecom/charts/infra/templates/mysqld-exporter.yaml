@@ -1,0 +1,99 @@
+{{- if .Values.mysqldExporter.enabled }}
+{{- $ns := .Values.global.namespaces.infra -}}
+{{/*
+mysqld-exporter — one process per MySQL instance (primary + N replicas) so each
+replica's seconds_behind_master is collected. v0.15+: credentials come from a
+mounted .my.cnf ([client] section), NOT DATA_SOURCE_NAME. Uses root (local-dev
+only). VM scrapes each Service; the scrape job relabels `instance` to a friendly
+name.
+*/}}
+{{- $instances := list -}}
+{{- if .Values.mysql.enabled -}}
+  {{- $instances = append $instances (dict
+        "name" "primary"
+        "host" (include "microecom.fqdn" (dict "name" "mysql" "namespace" $ns))) -}}
+{{- end -}}
+{{- if .Values.mysqlReplica.enabled -}}
+  {{- range $i := until (int .Values.mysqlReplica.replicas) -}}
+    {{- $instances = append $instances (dict
+          "name" (printf "replica-%d" $i)
+          "host" (printf "mysql-replica-%d.%s" $i
+                   (include "microecom.fqdn" (dict "name" "mysql-replica-headless" "namespace" $ns)))) -}}
+  {{- end -}}
+{{- end -}}
+{{- range $inst := $instances }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysqld-exporter-{{ $inst.name }}-cnf
+  namespace: {{ $ns }}
+type: Opaque
+stringData:
+  .my.cnf: |
+    [client]
+    user=root
+    password=root
+    host={{ $inst.host }}
+    port=3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysqld-exporter-{{ $inst.name }}
+  namespace: {{ $ns }}
+  labels: { app.kubernetes.io/name: mysqld-exporter, mysql-instance: {{ $inst.name }} }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: mysqld-exporter, mysql-instance: {{ $inst.name }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: mysqld-exporter, mysql-instance: {{ $inst.name }} }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: mysqld-exporter
+          image: prom/mysqld-exporter:v0.16.0
+          args:
+            - --config.my-cnf=/cfg/.my.cnf
+            - --web.listen-address=:9104
+            - --collect.slave_status
+            - --collect.global_status
+            - --collect.global_variables
+            - --collect.info_schema.innodb_metrics
+          ports:
+            - { name: metrics, containerPort: 9104 }
+          readinessProbe:
+            httpGet: { path: /metrics, port: metrics }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: { path: /metrics, port: metrics }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+          volumeMounts:
+            - { name: cfg, mountPath: /cfg, readOnly: true }
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits:   { cpu: 100m, memory: 64Mi }
+      volumes:
+        - name: cfg
+          secret:
+            secretName: mysqld-exporter-{{ $inst.name }}-cnf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysqld-exporter-{{ $inst.name }}
+  namespace: {{ $ns }}
+  labels: { app.kubernetes.io/name: mysqld-exporter }
+spec:
+  type: ClusterIP
+  selector: { app.kubernetes.io/name: mysqld-exporter, mysql-instance: {{ $inst.name }} }
+  ports:
+    - { name: metrics, port: 9104, targetPort: metrics }
+{{- end }}
+{{- end }}

@@ -1,0 +1,12 @@
+{{- range $key, $name := .Values.global.namespaces }}
+{{- if ne $key "infra" }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $name }}
+  labels:
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+    app.kubernetes.io/part-of: microecom
+{{- end }}
+{{- end }}

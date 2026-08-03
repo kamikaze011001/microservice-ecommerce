@@ -1,0 +1,12 @@
+apiVersion: v2
+name: microecom
+description: Umbrella chart for the microservice-ecommerce platform (infra + apps)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+dependencies:
+  - name: infra
+    version: 0.1.0
+    repository: ""          # local subchart in charts/infra
+    condition: infra.enabled

@@ -1,0 +1,33 @@
+apiVersion: v2
+name: infra
+description: Stateful services, observability and secret backends for microecom
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+dependencies:
+  - name: vault
+    version: 0.27.0
+    repository: https://helm.releases.hashicorp.com
+    condition: vault.enabled
+  - name: victoria-metrics-single
+    version: 0.39.0
+    repository: https://victoriametrics.github.io/helm-charts/
+    alias: victoriaMetrics
+    condition: victoriaMetrics.enabled
+  - name: grafana
+    version: 10.5.15
+    repository: https://grafana.github.io/helm-charts
+    condition: grafana.enabled
+  # 8.1.0 was the latest prometheus-community/kube-state-metrics release at the
+  # time this dependency was added; there is no changelog entry or commit in
+  # this repo recording *why* this version specifically, so treat it as
+  # "current at authoring time," not a deliberately pinned/tested floor.
+  # Bumping it is safe to do casually; if you do, re-run
+  # `helm dependency build deploy/charts/microecom/charts/infra` and let it
+  # regenerate Chart.lock's digest (do not hand-edit the lock file).
+  - name: kube-state-metrics
+    version: 8.1.0
+    repository: https://prometheus-community.github.io/helm-charts
+    alias: kubeStateMetrics
+    condition: kubeStateMetrics.enabled

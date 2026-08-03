@@ -255,10 +255,36 @@ k8s-build-cache-prune:
 	@docker builder prune --filter type=exec.cachemount -f
 	@docker builder du | tail -3
 
-.PHONY: k8s-infra k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest k8s-seed-images k8s-app-secrets
+.PHONY: k8s-infra k8s-platform k8s-infra-helm k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest k8s-seed-images k8s-app-secrets
 
 k8s-infra:
 	@k8s/infra/install.sh
+
+## k8s-platform: install cluster-wide platform charts + vendor Helm deps
+k8s-platform:
+	@./deploy/scripts/platform.sh $(or $(ENV),local-k8s)
+
+## k8s-infra-helm: bring up infra via the Helm umbrella chart (Phase 2 path)
+##   Runs ALONGSIDE `make k8s-infra` — the kubectl path is still the default.
+##   --timeout 30m is the OUTER backstop, not the primary bound: the chart's
+##   mysql-replication post-install hook Job carries its own derived
+##   activeDeadlineSeconds -- (mysqlReplica.replicas + 1) * waitTimeout + 60,
+##   960s at the defaults (replicas=2, waitTimeout=300) -- which fires FIRST and
+##   produces the readable "ERROR: <host> unreachable after 300s" diagnostic.
+##   30m must cover BOTH phases sequentially, not just the larger one: `--wait`
+##   blocks on every OTHER resource going Ready (cold Confluent image pull
+##   ~330s/5.5m) BEFORE the post-install hook Job is even created, and only
+##   THEN can the hook burn its own activeDeadlineSeconds. Worst case
+##   960s + 330s ~= 1290s (~21.5m); 20m (1200s) left no headroom and could
+##   abandon the wait before the hook ever prints its diagnostic -- the exact
+##   inversion this timeout exists to prevent. 30m = 960s hook deadline + ~330s
+##   cold-pull + headroom. render-test.sh asserts this timeout stays >=
+##   activeDeadlineSeconds + 330 so the two can't silently drift apart.
+k8s-infra-helm: k8s-platform
+	@helm upgrade --install microecom deploy/charts/microecom \
+	  --namespace infra --create-namespace \
+	  -f deploy/charts/microecom/envs/$(or $(ENV),local-k8s).yaml \
+	  --wait --timeout 30m
 
 # k8s-seed: run the PRE-APPS bootstrap Jobs in fixed dependency order. Each Job
 # is idempotent (see seed.sh in each dir) so re-running is safe.

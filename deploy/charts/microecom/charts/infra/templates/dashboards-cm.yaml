@@ -1,0 +1,24 @@
+{{- if .Values.grafana.enabled }}
+{{/*
+Custom dashboards (JVM/Kafka/MySQL) -> ConfigMap mounted by Grafana's `custom`
+provider. install.sh built this imperatively from `find | --from-file` because
+kubectl's embedded kustomize forbids out-of-tree file refs; .Files.Glob has no
+such restriction.
+
+Globbing *.json explicitly means a stray file (macOS .DS_Store) never becomes a
+ConfigMap key that Grafana would fail to parse on every reload.
+
+Helm's install order puts ConfigMap ahead of Deployment, so the "must exist
+before the grafana pod starts" constraint is satisfied structurally.
+*/}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-custom-dashboards
+  namespace: {{ .Values.global.namespaces.monitoring }}
+  labels:
+    app.kubernetes.io/part-of: microecom
+data:
+{{ (.Files.Glob "dashboards/*.json").AsConfig | indent 2 }}
+{{- end }}

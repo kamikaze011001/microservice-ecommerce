@@ -1,0 +1,34 @@
+# EKS overrides. Written in Phase 2 so the gating can be proven now; first
+# exercised for real in Phase 7.
+global:
+  appImage:
+    registry: ""            # filled from terraform output (ECR registry) by the deploy script
+    tag: ""                 # filled from the build's git sha
+    pullPolicy: IfNotPresent
+  secret:
+    backend: externalSecrets
+  ingress:
+    className: alb
+
+infra:
+  # Managed AWS services replace these in-cluster workloads.
+  mysql:          { enabled: false }   # RDS
+  mysqlReplica:   { enabled: false }   # RDS read replicas
+  mysqldExporter: { enabled: false }   # RDS Enhanced Monitoring / Performance Insights
+  redis:          { enabled: false }   # ElastiCache
+  minio:          { enabled: false }   # S3
+  vault:          { enabled: false }   # AWS Secrets Manager via ExternalSecrets
+
+  # Still in-cluster on EKS.
+  mongodb:        { enabled: true, storage: 20Gi }
+  kafka:          { enabled: true, storage: 50Gi }
+  schemaRegistry: { enabled: true }
+  kafkaConnect:   { enabled: true }
+  kafkaExporter:  { enabled: true }
+
+  storageClassGp3: { enabled: true }
+  externalSecrets: { enabled: true, roleArn: "", region: ap-southeast-1 }
+
+  victoriaMetrics:  { enabled: true }
+  grafana:          { enabled: true }
+  kubeStateMetrics: { enabled: true }
