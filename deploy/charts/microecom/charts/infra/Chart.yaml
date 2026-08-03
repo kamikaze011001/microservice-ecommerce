@@ -19,6 +19,13 @@ dependencies:
     version: 10.5.15
     repository: https://grafana.github.io/helm-charts
     condition: grafana.enabled
+  # 8.1.0 was the latest prometheus-community/kube-state-metrics release at the
+  # time this dependency was added; there is no changelog entry or commit in
+  # this repo recording *why* this version specifically, so treat it as
+  # "current at authoring time," not a deliberately pinned/tested floor.
+  # Bumping it is safe to do casually; if you do, re-run
+  # `helm dependency build deploy/charts/microecom/charts/infra` and let it
+  # regenerate Chart.lock's digest (do not hand-edit the lock file).
   - name: kube-state-metrics
     version: 8.1.0
     repository: https://prometheus-community.github.io/helm-charts

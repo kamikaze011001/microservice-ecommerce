@@ -2,6 +2,19 @@
 {{- $ns := .Values.global.namespaces.infra -}}
 {{- $primary := include "microecom.fqdn" (dict "name" "mysql" "namespace" $ns) -}}
 {{- $headless := include "microecom.fqdn" (dict "name" "mysql-replica-headless" "namespace" $ns) -}}
+{{/*
+Sprig's `int` silently coerces anything it can't parse to 0 — it does not
+error. A malformed `--set infra.mysqlReplica.waitTimeout=abc` would otherwise
+render WAIT_TIMEOUT="0" and activeDeadlineSeconds derived from a 0 host
+timeout, turning a typo into an immediate, misleading "unreachable after 0s"
+failure instead of a clear config error. Fail the render instead.
+*/}}
+{{- if not (regexMatch "^[0-9]+$" (toString .Values.mysqlReplica.waitTimeout)) -}}
+{{- fail (printf "infra.mysqlReplica.waitTimeout must be a positive integer, got %q" (toString .Values.mysqlReplica.waitTimeout)) -}}
+{{- end -}}
+{{- if not (regexMatch "^[0-9]+$" (toString .Values.mysqlReplica.replicas)) -}}
+{{- fail (printf "infra.mysqlReplica.replicas must be a positive integer, got %q" (toString .Values.mysqlReplica.replicas)) -}}
+{{- end -}}
 {{- $waitTimeout := int .Values.mysqlReplica.waitTimeout -}}
 {{- $hostCount := add1 (int .Values.mysqlReplica.replicas) -}}
 {{- $postWaitSlack := 60 -}}
@@ -138,10 +151,23 @@ spec:
               done
 
               # Verify; fail the release rather than seed onto a broken topology.
+              # `|| true` on the query itself: under `set -e`, a bare failed
+              # command substitution (not part of an if/while test) aborts the
+              # whole script immediately, so one unreachable replica would kill
+              # the loop before it could report on the others. This mirrors a
+              # pre-existing gap in the install.sh version this Job replaces
+              # (same missing guard there), not a new regression — call it out
+              # explicitly rather than let the surrounding "hardened" comments
+              # overstate what this step actually covers.
               sleep 5
               rc=0
               for rep in $REPLICA_HOSTS; do
-                status=$(mysql -h "$rep" $ROOT -e 'SHOW REPLICA STATUS\G')
+                status=$(mysql -h "$rep" $ROOT -e 'SHOW REPLICA STATUS\G' 2>/dev/null || true)
+                if [ -z "$status" ]; then
+                  echo "ERROR: $rep unreachable for the post-verify status check"
+                  rc=1
+                  continue
+                fi
                 if echo "$status" | grep -q 'Replica_IO_Running: Yes' \
                    && echo "$status" | grep -q 'Replica_SQL_Running: Yes'; then
                   echo "$rep replication OK"

@@ -43,9 +43,13 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
 # --kubelet-insecure-tls: minikube kubelet serving certs are self-signed.
 # InternalIP avoids inter-node hostname resolution issues. Upstream chart uses
 # an `args` list, NOT bitnami's extraArgs/apiService.create keys.
+# --create-namespace here too, not just on ingress-nginx above: this install
+# only worked without it because ingress-nginx's --create-namespace already
+# ran first in this same script and created `infra`. Don't rely on that
+# ordering — make each install independently correct.
 log_info "installing metrics-server"
 helm upgrade --install metrics-server metrics-server/metrics-server \
-  --namespace infra \
+  --namespace infra --create-namespace \
   --set 'args={--kubelet-insecure-tls,--kubelet-preferred-address-types=InternalIP}' \
   --wait --timeout 3m
 
