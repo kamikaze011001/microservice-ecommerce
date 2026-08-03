@@ -20,6 +20,12 @@ render() {
 # flat stream, so an unscoped grep asks "does this string appear anywhere in the
 # release?" — which has repeatedly passed for the wrong reason. Scope first.
 #   usage: out="$(render | docs_of_kind StatefulSet)"
+# Latent fragility, not currently triggered: splitting on the literal `\n---\n`
+# would fracture a single document if any embedded ConfigMap/Secret data (a
+# multi-doc YAML blob, a rendered dashboard JSON with a stray `---` line, etc.)
+# contained that exact three-dash line itself. None of this chart's current
+# ConfigMap/Secret payloads do. If a future one does, prefer `--show-only` for
+# that specific object over trusting this split.
 docs_of_kind() {
   awk -v k="kind: $1" 'BEGIN { RS = "\n---\n" } $0 ~ ("(^|\n)" k "([ \t]*$|\n)") { print; print "---" }'
 }
@@ -65,16 +71,39 @@ section "scaffold and dependency gating"
 
 out="$(render)"
 assert_ok    "default values render"                            "$out"
+ns="$(printf '%s\n' "$out" | docs_of_kind Namespace)"
+svc="$(printf '%s\n' "$out" | docs_of_kind Service)"
+sts="$(printf '%s\n' "$out" | docs_of_kind StatefulSet)"
 assert_has   "apps namespace is created"                        'kind: Namespace' "$out"
 assert_has   "apps namespace name"                              'name: apps' "$out"
 assert_has   "monitoring namespace name"                        'name: monitoring' "$out"
-assert_has   "bootstrap namespace name"                         'name: bootstrap' "$out"
+# Scoped to Namespace docs: mongodb's keyfile-bootstrap sidecar container is
+# literally named `- name: bootstrap`, so the unscoped form stayed green even
+# with global.namespaces.bootstrap renamed away from "bootstrap" (RED-proven).
+assert_has   "bootstrap namespace name"                         '^  name: bootstrap$' "$ns"
 assert_lacks "infra namespace is NOT templated (--create-namespace owns it)" \
                                                                 '^  name: infra$' "$out"
-assert_has   "vault Service keeps its name (apps hardcode vault.infra.svc)" '^  name: vault$' "$out"
+# Scoped to Service docs: vault's ServiceAccount, ClusterRoleBinding, and
+# StatefulSet also render `name: vault`, so the unscoped form stayed green even
+# with the vault Service itself disabled (server.service.enabled=false,
+# RED-proven) — the exact failure mode this assertion's own description names.
+assert_has   "vault Service keeps its name (apps hardcode vault.infra.svc)" '^  name: vault$' "$svc"
 assert_lacks "no release-name prefix leaked onto vault"         'name: microecom-vault' "$out"
-assert_has   "grafana keeps its name"                           '^  name: grafana$' "$out"
-assert_has   "vmsingle keeps its name (grafana datasource)"     '^  name: vmsingle$' "$out"
+# Scoped to Service docs: grafana's ServiceAccount/Secret/ConfigMap/Role/
+# RoleBinding/Deployment/Ingress independently render `name: grafana`, so the
+# unscoped form stayed green even with grafana's own Service disabled
+# (service.enabled=false, RED-proven).
+assert_has   "grafana keeps its name"                           '^  name: grafana$' "$svc"
+# Scoped to Service docs: VictoriaMetrics' ServiceAccount/ClusterRole/
+# ClusterRoleBinding are gated independently (rbac.create/serviceAccount.create,
+# not server.enabled) and also render `name: vmsingle`, so the unscoped form
+# stayed green even with the vmsingle Service AND StatefulSet — the actual
+# datasource endpoint grafana talks to — disabled (server.enabled=false,
+# RED-proven).
+assert_has   "vmsingle keeps its name (grafana datasource)"     '^  name: vmsingle$' "$svc"
+# The Service existing doesn't prove the server pod exists either — assert the
+# StatefulSet independently.
+assert_has   "vmsingle StatefulSet exists (server pod, not just its Service)" '^  name: vmsingle$' "$sts"
 assert_has   "kube-state-metrics keeps its scrape label"        'app\.kubernetes\.io/name: kube-state-metrics' "$out"
 assert_lacks "alias did not leak into the KSM name label"       'app\.kubernetes\.io/name: kubeStateMetrics' "$out"
 # Anchored to the name label on purpose. A bare `kubeStateMetrics` can never
@@ -114,7 +143,14 @@ assert_lacks "grafana gated off"                                'image: .*grafan
 assert_lacks "kube-state-metrics gated off"                     'kube-state-metrics/kube-state-metrics' "$out"
 
 out="$(render)"
-assert_has   "grafana lands in the monitoring namespace"        'namespace: monitoring' "$out"
+# Scoped to grafana's own Deployment doc: roughly a dozen other objects (VM,
+# kube-state-metrics, the dashboards ConfigMap) legitimately render
+# `namespace: monitoring` too, so the unscoped form stayed green even with
+# grafana's own objects moved out of that namespace via namespaceOverride
+# (RED-proven), which would break its VictoriaMetrics datasource DNS lookup.
+grafana_dep="$(printf '%s\n' "$out" | docs_of_kind Deployment \
+               | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: grafana(\n|$)/')"
+assert_has   "grafana lands in the monitoring namespace"        '^  namespace: monitoring$' "$grafana_dep"
 
 # ── Task 2: MySQL family ────────────────────────────────────────────────────
 section "mysql family"
@@ -136,7 +172,15 @@ assert_has   "mysql-replica Service exists"                     '^  name: mysql-
 # Scoped to StatefulSet docs so this can't be satisfied by mysqlReplica.storage
 # or mongodb.storage (both also 4Gi in values.yaml) once mongodb is templated.
 assert_has   "mysql storage is 4Gi (default, StatefulSet only)" 'storage: 4Gi' "$sts"
-assert_has   "mysql-credentials carries the repl user"          'MYSQL_REPL_USER' "$out"
+# Scoped to the mysql-credentials Secret doc specifically, mirroring the
+# keyfile_sec pattern above: the replication hook Job references
+# ${MYSQL_REPL_USER} as a shell variable in its script body, an unrelated
+# occurrence of the same literal string that kept the unscoped form green
+# even with the key deleted from the Secret's stringData (RED-proven against
+# a scratch copy).
+sec="$(printf '%s\n' "$out" | docs_of_kind Secret)"
+mysql_cred_sec="$(printf '%s' "$sec" | awk -v RS='\n---\n' '$0 ~ /(^|\n)  name: mysql-credentials(\n|$)/')"
+assert_has   "mysql-credentials carries the repl user"          'MYSQL_REPL_USER' "$mysql_cred_sec"
 assert_has   "primary exporter targets the mysql FQDN"          'host=mysql\.infra\.svc\.cluster\.local' "$out"
 assert_has   "replica-0 exporter targets pod-0 via headless"    'host=mysql-replica-0\.mysql-replica-headless\.infra\.svc\.cluster\.local' "$out"
 assert_has   "replica-1 exporter targets pod-1 via headless"    'host=mysql-replica-1\.mysql-replica-headless\.infra\.svc\.cluster\.local' "$out"
@@ -418,6 +462,41 @@ assert_has   "aws: kafka still runs in-cluster"                 'image: apache/k
 assert_lacks "aws: no hardcoded mysqld-exporter primary target"   'mysqld-exporter-primary\.infra\.svc\.cluster\.local:9104' "$out"
 assert_lacks "aws: no hardcoded mysqld-exporter replica-0 target" 'mysqld-exporter-replica-0\.infra\.svc\.cluster\.local:9104' "$out"
 assert_lacks "aws: no hardcoded mysqld-exporter replica-1 target" 'mysqld-exporter-replica-1\.infra\.svc\.cluster\.local:9104' "$out"
+
+# ── Task 8: Makefile --timeout <-> hook activeDeadlineSeconds coupling ─────
+section "Makefile --timeout / hook activeDeadlineSeconds drift guard"
+
+# `make k8s-infra-helm`'s outer `helm --wait --timeout` is a Makefile literal;
+# the mysql-replication hook Job's activeDeadlineSeconds is derived from
+# .Values.mysqlReplica.{replicas,waitTimeout}. Helm's `--wait` blocks on every
+# OTHER resource going Ready (cold Confluent image pull ~330s) BEFORE the
+# post-install hook Job is even created, so the two windows are additive: the
+# Makefile timeout must cover activeDeadlineSeconds + that cold-pull margin,
+# or Helm abandons the wait before the hook can ever emit its own readable
+# "ERROR: <host> unreachable after Ns" diagnostic. Parsed out of the checked-in
+# files (not hardcoded here) so a future change to either side that lets them
+# drift apart fails loudly instead of silently reintroducing that bug.
+repo_root="$(cd "$CHART_DIR/../../.." && pwd)"
+k8s_infra_helm_recipe="$(awk '/^k8s-infra-helm:/{flag=1} flag{print} flag && /^$/{exit}' "$repo_root/Makefile")"
+timeout_token="$(printf '%s\n' "$k8s_infra_helm_recipe" | grep -oE -- '--timeout [0-9]+[hms]' | grep -oE '[0-9]+[hms]$' | head -1)"
+case "$timeout_token" in
+  *h) helm_timeout_s=$(( ${timeout_token%h} * 3600 )) ;;
+  *m) helm_timeout_s=$(( ${timeout_token%m} * 60 )) ;;
+  *s) helm_timeout_s=$(( ${timeout_token%s} )) ;;
+  *)  helm_timeout_s="" ;;
+esac
+
+out="$(render)"
+job="$(printf '%s\n' "$out" | docs_of_kind Job)"
+active_deadline_s="$(printf '%s\n' "$job" | grep -oE 'activeDeadlineSeconds: [0-9]+' | grep -oE '[0-9]+$' | head -1)"
+cold_pull_margin_s=330
+required_s=$(( ${active_deadline_s:-0} + cold_pull_margin_s ))
+
+if [ -n "$timeout_token" ] && [ -n "$active_deadline_s" ] && [ "$helm_timeout_s" -ge "$required_s" ]; then
+  ok "Makefile k8s-infra-helm --timeout (${helm_timeout_s}s) covers hook activeDeadlineSeconds (${active_deadline_s}s) + ${cold_pull_margin_s}s cold-pull margin (need >= ${required_s}s)"
+else
+  bad "Makefile k8s-infra-helm --timeout (${helm_timeout_s:-0}s, parsed '${timeout_token:-<none>}') is LESS THAN hook activeDeadlineSeconds (${active_deadline_s:-<none>}s) + ${cold_pull_margin_s}s cold-pull margin (need >= ${required_s}s) -- raise the Makefile's --timeout or lower mysqlReplica.replicas/waitTimeout so they stay in sync"
+fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
