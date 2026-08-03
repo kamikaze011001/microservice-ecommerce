@@ -53,6 +53,39 @@ make k8s-infra-helm   # brings up infra via the umbrella chart (runs k8s-platfor
 
 **`make k8s-infra` is still the default path for this phase.** `k8s-infra-helm`
 runs *alongside* it, not in place of it — rollback is reverting one target.
+"Runs alongside it" is a codebase-level statement (both bring-up paths stay in
+the tree, either can be chosen), **not** a claim that both are safe to run
+against the *same already-provisioned cluster*. See the next section.
+
+### The two infra bring-up paths are alternatives, not composable, on one cluster
+
+`k8s-infra` (`k8s/infra/install.sh`) creates mysql/mongodb/redis/minio/kafka/
+schema-registry/kafka-connect/mysqld-exporter/vault via plain `kubectl apply
+-f`. The `infra` subchart deliberately renders the **same object names** in
+the same `infra` namespace (`charts/infra/values.yaml`'s `fullnameOverride`
+comments say so explicitly — the whole point is to keep app-facing DNS names
+byte-identical across both paths). Plain `kubectl`-created objects carry none
+of Helm's ownership annotations (`meta.helm.sh/release-name`,
+`app.kubernetes.io/managed-by: Helm`), and Helm 3+ refuses to adopt an
+existing unmanaged object into a release ("... exists and cannot be imported
+into the current release: invalid ownership metadata"). So running
+`make k8s-infra` and then `make k8s-infra-helm` against the **same** cluster
+(or the reverse order) should be expected to fail `helm upgrade --install`
+on essentially every stateful workload it tries to create — not a graceful
+no-op. `ingress-nginx` and `metrics-server` (installed by `make k8s-platform`,
+a genuine Helm release either way) are the one exception: both paths use the
+same release name/namespace/chart version there, so sharing a cluster across
+paths is fine for those two specifically.
+
+**Operational rule: pick one infra bring-up path per cluster.** Tear the
+cluster down (or use a fresh one) before switching from `k8s-infra` to
+`k8s-infra-helm` or back.
+
+Caveat: this is reasoned from documented Helm ownership-metadata behavior,
+not verified against a live cluster in this repo — nobody has run both paths
+back-to-back against one cluster and captured the actual error text. Treat
+the *rule* (don't mix them) as solid and the *exact failure mode/error text*
+as inferred, not observed.
 
 ### `--dry-run` / `helm template` keyfile hazard
 
@@ -74,19 +107,31 @@ is why `k8s-infra-helm` depends on `k8s-platform`. The resulting
 
 ### `--wait` timeouts
 
-`k8s-infra-helm` uses `--timeout 20m`, not the more obvious `15m`. The
-`mysql-replication` post-install hook Job carries its own **derived**
+`k8s-infra-helm` uses `--timeout 30m`, not the more obvious `15m` or `20m`.
+The `mysql-replication` post-install hook Job carries its own **derived**
 `activeDeadlineSeconds` — `(mysqlReplica.replicas + 1) * mysqlReplica.waitTimeout
 + 60`, which at the defaults (`replicas: 2`, `waitTimeout: 300`) renders to
 **960s (16m)**. The layering has to put the *inner, more specific* bound
 first: the Job's own deadline should fire and emit its readable
 `ERROR: <host> unreachable after 300s` diagnostic before Helm's `--timeout`
-gives up. `15m` (900s) is tighter than the Job's 960s deadline, so Helm would
-abandon the wait ~60s before the Job could ever produce that message — you'd
-get a generic Helm timeout instead. `20m` keeps Helm's timeout as the outer
-backstop. Separately, the Confluent (Kafka/Schema Registry/Connect) images
-are ~1.8 GB combined and a cold image pull alone takes ~5.5 minutes, which
-also has to fit inside the window.
+gives up.
+
+These two windows are **additive, not independent**: Helm's sequence is
+`create resources -> wait for readiness (--wait) -> post-install hooks`, so
+the post-install `mysql-replication` hook is not even created until *every
+other* resource is Ready — including schema-registry/kafka-connect, whose
+cold Confluent image pull (~1.8 GB combined) alone takes ~5.5 minutes (~330s).
+Worst case: `330s` (cold-pull wait phase) `+ 960s` (hook's own deadline)
+`≈ 1290s (~21.5m)`. `15m` (900s) and even `20m` (1200s) are both tighter than
+that compound worst case — Helm would abandon the wait *before* the hook
+could ever emit its own diagnostic, the exact inversion this timeout exists
+to prevent. `30m` = the 960s hook deadline + ~330s cold-pull + headroom.
+`deploy/charts/microecom/tests/render-test.sh` asserts that the Makefile's
+`--timeout` (parsed from the recipe) stays `>= activeDeadlineSeconds + 330s`
+(parsed from the rendered hook Job), so a future change to either
+`mysqlReplica.replicas`/`waitTimeout` or the Makefile literal that lets them
+drift apart fails the render-test suite instead of failing silently on a
+cold cluster.
 
 ### `global:` keys collide with upstream charts
 
@@ -164,4 +209,17 @@ it after any chart change:
 
 ```bash
 bash deploy/charts/microecom/tests/render-test.sh
+```
+
+**Prerequisite: vendor the dependencies first**, or this "fast check" gives a
+false green. `helm template` does **not** error on a missing vendored
+dependency (see "Dependency vendoring" above) — it exits 0 and silently omits
+every object from any subchart that isn't vendored yet. On a fresh clone (or
+CI) that has never run `make k8s-platform` / `helm dependency build`, the
+render-test assertions for vault/grafana/vmsingle/kube-state-metrics fail
+loudly (not silently) for the "chart not vendored" reason, which a first-time
+reader could mistake for a real regression rather than a missing setup step:
+
+```bash
+helm dependency build deploy/charts/microecom/charts/infra
 ```
