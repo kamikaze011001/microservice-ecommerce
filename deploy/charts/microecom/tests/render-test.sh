@@ -89,6 +89,30 @@ probe_block() {
   esac
 }
 
+# selector_block <doc> — slices `spec.selector:` out of one rendered Service or
+# Deployment document (Service: `selector: <labels>`; Deployment: `selector:
+# matchLabels: <labels>`). Both forms start with the sole line indented exactly
+# 2 spaces reading `selector:` and end at the next 2-space-indented sibling key
+# in `spec` (`ports:` / `template:`), so this generalizes across kinds without
+# caring which key follows next.
+#
+# Needed because `apps.labels` (metadata.labels, and for Deployments also
+# spec.template.metadata.labels) and `apps.selectorLabels` (spec.selector)
+# render the byte-identical `app.kubernetes.io/name: <svc>` line. An assertion
+# scoped only to the object document — not to this block specifically — is
+# satisfied by the labels block no matter what the selector actually says.
+# RED-proven against a scratch copy: replacing spec.selector's content with
+# `app.kubernetes.io/name: BROKEN-SELECTOR-DOES-NOT-MATCH-DEPLOYMENT` while
+# leaving metadata.labels untouched still passed the old, document-scoped
+# assertion — which in a live cluster means a Service with zero endpoints.
+selector_block() {
+  awk '
+    /^  selector:/ { f=1; print; next }
+    f && /^  [A-Za-z]/ { exit }
+    f
+  ' <<<"$1"
+}
+
 # assert_probe <deployment-name> <liveness|readiness> <field> <expected> <text>
 assert_probe() {
   local doc block actual
@@ -647,8 +671,13 @@ done
 gw_svc="$(doc_named Service gateway "$apps_out")"
 assert_has   "gateway Service exposes 6868"                'port: 6868' "$gw_svc"
 assert_has   "gateway Service exposes management 19093"    'port: 19093' "$gw_svc"
+# Scoped to spec.selector specifically, not the whole Service doc: metadata.labels
+# renders the identical `app.kubernetes.io/name: gateway` line via the same
+# apps.labels helper, so a document-scoped assertion here stays green even if
+# spec.selector is wrong or missing entirely (RED-proven — see selector_block).
+gw_svc_selector="$(selector_block "$gw_svc")"
 assert_has   "gateway Service selects by app.kubernetes.io/name" \
-             'app\.kubernetes\.io/name: gateway' "$gw_svc"
+             'app\.kubernetes\.io/name: gateway' "$gw_svc_selector"
 
 fe_svc="$(doc_named Service frontend "$apps_out")"
 # 80 → containerPort 8080, matching the base manifest. The port is NAMED http on
