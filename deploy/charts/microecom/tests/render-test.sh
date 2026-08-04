@@ -813,7 +813,10 @@ section "apps subchart — secret backend"
 # $apps_out also carries infra, and an unscoped match there would be noise.
 assert_lacks "vault: no ExternalSecrets"        'kind: ExternalSecret' "$apps_out"
 assert_lacks "vault: no app-config volume"      'app-config' "$apps_deploys"
-assert_lacks "vault: no IRSA annotation"        'eks\.amazonaws\.com/role-arn' "$apps_deploys"
+# The annotation is only ever stamped on a ServiceAccount (irsa-serviceaccounts.yaml),
+# never on a Deployment — scope to the ServiceAccount stream ($apps_sas, from the
+# gateway-RBAC section above) so this can actually fail if that template regresses.
+assert_lacks "vault: no IRSA annotation"        'eks\.amazonaws\.com/role-arn' "$apps_sas"
 assert_has   "vault: services still get VAULT_TOKEN" 'VAULT_TOKEN' "$(doc_named Deployment order-service "$apps_out")"
 
 # backend=externalSecrets.
@@ -840,7 +843,17 @@ assert_has   "eso: app-config volume is mounted"           'mountPath: /etc/app-
 assert_has   "eso: volume comes from <name>-config"        'secretName: order-service-config' "$aws_os"
 assert_has   "eso: SPRING_CONFIG_IMPORT points at the configtree" \
              'optional:configtree:/etc/app-config/' "$aws_os"
-assert_has   "eso: Spring Cloud Vault is switched off"     'SPRING_CLOUD_VAULT_ENABLED' "$aws_os"
+# Check the key AND its value together — a bare key-name match stays green even
+# if the value flips to "true" (reproduced with
+# --set apps.defaults.env.SPRING_CLOUD_VAULT_ENABLED=true, which still renders
+# `value: "true"`). The env entry renders as two lines:
+#   - name: SPRING_CLOUD_VAULT_ENABLED
+#     value: "false"
+# BSD grep (this repo's `grep -qE`) does not match a literal `\n` across lines,
+# so squash the name/value pair onto one line first, then assert on that line.
+scv_pair="$(awk '/- name: SPRING_CLOUD_VAULT_ENABLED$/ { n = $0; getline; print n " " $0 }' <<<"$aws_os")"
+assert_has   "eso: Spring Cloud Vault is switched off" \
+             'name: SPRING_CLOUD_VAULT_ENABLED +value: "false"' "$scv_pair"
 # Helm deletes a key whose override value is null. If that ever stops holding,
 # every pod would try to reach a Vault that does not exist on EKS.
 assert_lacks "eso: VAULT_TOKEN is deleted, not just disabled" 'VAULT_TOKEN' "$aws_os"
