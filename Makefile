@@ -402,8 +402,9 @@ k8s-apps-down:
 # app.kubernetes.io/name while the base manifests use a bare `app:` key, and
 # spec.selector is immutable on a Deployment. Pick one path per cluster.
 #
-# --timeout stays 30m and remains governed by the Plan 2 drift guard in
-# tests/render-test.sh, which asserts it stays >= activeDeadlineSeconds + 330s.
+# --timeout stays 30m. The drift guard in tests/render-test.sh only parses the
+# k8s-infra-helm recipe (activeDeadlineSeconds + 330s); this target's --timeout
+# is unguarded and could drift with no test failing.
 #
 # ENV=aws additionally REQUIRES the S3 IRSA role ARN, or the render fails by
 # design (see charts/apps/templates/irsa-serviceaccounts.yaml):

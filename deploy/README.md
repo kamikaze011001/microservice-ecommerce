@@ -87,73 +87,6 @@ back-to-back against one cluster and captured the actual error text. Treat
 the *rule* (don't mix them) as solid and the *exact failure mode/error text*
 as inferred, not observed.
 
-## Helm apps subchart (Phase 3 path)
-
-`deploy/charts/microecom/charts/apps` renders the ten application workloads
-previously brought up by `kubectl apply -k k8s/apps/overlays/local`: nine JVM
-services plus the storefront SPA, with their Services, five HPAs, the gateway's
-discovery RBAC, the nginx Ingresses, and — on AWS — the ExternalSecrets,
-`app-config` configtree mounts and S3 IRSA ServiceAccounts.
-
-```bash
-make k8s-apps        # kubectl/kustomize path (still the default)
-make k8s-apps-helm   # Helm path (ENV=aws selects envs/aws.yaml)
-```
-
-The subchart is gated `apps.enabled: false` in the umbrella `values.yaml`, so
-`make k8s-infra-helm` renders exactly what it rendered in Phase 2.
-`k8s-apps-helm` passes `--set apps.enabled=true`.
-
-### The apps paths are alternatives too — same rule, different reason
-
-The infra rule above is about Helm ownership metadata. For apps the reason is
-sharper: the base manifests use a bare `app: <name>` as their
-`spec.selector.matchLabels`, the chart uses `app.kubernetes.io/name`, and
-**`spec.selector` is immutable on a Deployment**. Neither path can be installed
-over the other. Tear the cluster down before switching.
-
-### One shared template, variation in values
-
-Per-service blocks under `apps:` are merged over a chart-level `defaults:` block.
-Three rules are load-bearing, and breaking any of them fails quietly:
-
-1. **`deepCopy` before every merge.** Sprig's `mergeOverwrite` wraps mergo's
-   in-place API and mutates its destination. Without `deepCopy`, the first
-   service's overrides contaminate `.Values.defaults` permanently, and because
-   `range` over a map iterates in sorted key order, every service sorting after
-   it inherits them — `gateway` sorts 4th of 10, so its `initialDelaySeconds: 45`
-   leaks into the six after it. `render-test.sh` asserts order-service still gets
-   60.
-2. **`enabled` is read from the raw values block, before the merge.** Mergo
-   treats falsy values as absent, so `enabled: false` cannot survive a merge
-   against a default of `true`.
-3. **`env` is merged outside mergo, key by key.** For the same reason: mergo
-   skips nil source values, so a per-key `null` could not unset an inherited
-   variable. `env` is a map rather than a list because YAML lists cannot merge
-   element-wise; the list-of-`{name,value}` shape appears only at render time,
-   emitted by a sorted `range`.
-
-### `managementPort` is listed, never derived
-
-Seven of the nine JVM services put Actuator on `port + 10000`. Two do not:
-authorization-server is `6666 → 19091` and gateway is `6868 → 19093` (fossils of
-an older shared-9091 scheme, later prefixed with `1`). Both probes target the
-management port by name, so deriving it would render correctly for seven
-services and point two at dead ports — permanent readiness failure with a
-values file that looks clean.
-
-General rule: derive a value only when the relationship is *enforced*, not
-merely *observed*. The ALB service prefixes (§ below) are safe to derive because
-the gateway's `Path=/<service-name>/**` routing convention enforces them.
-
-### The ALB service prefixes are derived from the service list
-
-The hand-written `k8s/apps/overlays/aws/ingress-gateway.yaml` lists eight
-`/<service>` paths by hand. Adding a service and forgetting that list gave you a
-service that worked locally and was invisible on AWS. The chart ranges the
-service list, skips `gateway` and `frontend`, and emits the rest — the
-divergence is no longer representable.
-
 ### `--dry-run` / `helm template` keyfile hazard
 
 `lookup` returns empty during `helm template` and any `--dry-run`, so a dry
@@ -290,3 +223,71 @@ reader could mistake for a real regression rather than a missing setup step:
 ```bash
 helm dependency build deploy/charts/microecom/charts/infra
 ```
+
+## Helm apps subchart (Phase 3 path)
+
+`deploy/charts/microecom/charts/apps` renders the ten application workloads
+previously brought up by `kubectl apply -k k8s/apps/overlays/local`: nine JVM
+services plus the storefront SPA, with their Services, five HPAs, the gateway's
+discovery RBAC, the nginx Ingresses, and — on AWS — the ExternalSecrets,
+`app-config` configtree mounts and S3 IRSA ServiceAccounts.
+
+```bash
+make k8s-apps        # kubectl/kustomize path (still the default)
+make k8s-apps-helm   # Helm path (ENV=aws selects envs/aws.yaml)
+```
+
+The subchart is gated `apps.enabled: false` in the umbrella `values.yaml`, so
+`make k8s-infra-helm` renders exactly what it rendered in Phase 2.
+`k8s-apps-helm` passes `--set apps.enabled=true`.
+
+### The apps paths are alternatives too — same rule, different reason
+
+The infra rule above is about Helm ownership metadata. For apps the reason is
+sharper: the base manifests use a bare `app: <name>` as their
+`spec.selector.matchLabels`, the chart uses `app.kubernetes.io/name`, and
+**`spec.selector` is immutable on a Deployment**. Neither path can be installed
+over the other. Tear the cluster down before switching.
+
+### One shared template, variation in values
+
+Per-service blocks under `apps:` are merged over a chart-level `defaults:` block.
+Three rules are load-bearing, and breaking any of them fails quietly:
+
+1. **`deepCopy` before every merge.** Sprig's `mergeOverwrite` wraps mergo's
+   in-place API and mutates its destination. Without `deepCopy`, the first
+   service's overrides contaminate `.Values.defaults` permanently, and because
+   `range` over a map iterates in sorted key order, every service sorting after
+   it inherits them — `gateway` sorts 4th of 10, so its `initialDelaySeconds: 45`
+   leaks into the six after it. `render-test.sh` asserts order-service still gets
+   60.
+2. **`enabled` is read from the raw values block, before the merge.** Mergo
+   treats falsy values as absent, so `enabled: false` cannot survive a merge
+   against a default of `true`.
+3. **`env` is merged outside mergo, key by key.** For the same reason: mergo
+   skips nil source values, so a per-key `null` could not unset an inherited
+   variable. `env` is a map rather than a list because YAML lists cannot merge
+   element-wise; the list-of-`{name,value}` shape appears only at render time,
+   emitted by a sorted `range`.
+
+### `managementPort` is listed, never derived
+
+Seven of the nine JVM services put Actuator on `port + 10000`. Two do not:
+authorization-server is `6666 → 19091` and gateway is `6868 → 19093` (fossils of
+an older shared-9091 scheme, later prefixed with `1`). Both probes target the
+management port by name, so deriving it would render correctly for seven
+services and point two at dead ports — permanent readiness failure with a
+values file that looks clean.
+
+General rule: derive a value only when the relationship is *enforced*, not
+merely *observed*. The ALB service prefixes (§ below) are safe to derive because
+the gateway's `Path=/<service-name>/**` routing convention enforces them.
+
+### The ALB service prefixes are derived from the service list
+
+The hand-written `k8s/apps/overlays/aws/ingress-gateway.yaml` lists eight
+`/<service>` paths by hand. Adding a service and forgetting that list gave you a
+service that worked locally and was invisible on AWS. The chart ranges the
+service list, skips `gateway` and `frontend`, and emits the rest — the
+divergence is no longer representable.
+
