@@ -66,6 +66,42 @@ assert_ok() {
 
 section() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
+# ── Phase 3 helpers ─────────────────────────────────────────────────────────
+
+# The apps subchart is gated off by default (side-by-side phase). Every apps
+# assertion renders through this instead of render().
+apps_render() { render --set apps.enabled=true "$@"; }
+
+# doc_named <kind> <name> <text> — one object, by kind AND metadata.name.
+# docs_of_kind alone is not enough here: ten Deployments in one stream means an
+# unscoped probe assertion could be satisfied by any of the other nine.
+doc_named() {
+  docs_of_kind "$1" <<<"$3" | awk -v RS='\n---\n' -v n="$2" '$0 ~ ("(^|\n)  name: " n "([ \t]*$|\n)")'
+}
+
+# probe_block <deployment-doc> <liveness|readiness>
+# Slices one probe out of a rendered container. The container block's key order
+# is fixed by apps.container: ... livenessProbe / readinessProbe / resources.
+probe_block() {
+  case "$2" in
+    liveness)  awk '/livenessProbe:/{f=1} /readinessProbe:/{f=0} f' <<<"$1" ;;
+    readiness) awk '/readinessProbe:/{f=1} /resources:/{f=0} f' <<<"$1" ;;
+  esac
+}
+
+# assert_probe <deployment-name> <liveness|readiness> <field> <expected> <text>
+assert_probe() {
+  local doc block actual
+  doc="$(doc_named Deployment "$1" "$5")"
+  block="$(probe_block "$doc" "$2")"
+  actual="$(awk -v f="$3:" '$1 == f { print $2; exit }' <<<"$block")"
+  if [ "$actual" = "$4" ]; then
+    ok   "$1 $2 $3 = $4"
+  else
+    bad  "$1 $2 $3 is '${actual:-<none>}', expected '$4'"
+  fi
+}
+
 # ── Task 1: scaffold and gating ─────────────────────────────────────────────
 section "scaffold and dependency gating"
 
@@ -124,9 +160,15 @@ assert_lacks "alias did not leak into the KSM name label"       'app\.kubernetes
 # image registry. No infra workload should ever carry the local registry — each
 # pins its upstream image explicitly.
 #
-# PHASE 3: the apps subchart's images legitimately ARE localhost:5000/... —
-# scope this assertion to the infra documents then, do not delete it.
-assert_lacks "no infra image is rewritten to the local registry"  'image: .*localhost:5000/' "$out"
+# PHASE 3 (done): the apps subchart's images legitimately ARE localhost:5000/...,
+# so this assertion is now scoped to an apps-DISABLED render. `$out` above comes
+# from render(), and the umbrella defaults apps.enabled=false — that IS the
+# scoping, and it is enforced rather than incidental by the paired assertion in
+# the apps section below, which requires apps images TO carry the registry. If
+# apps.enabled ever flips to true by default, that pairing makes the conflict
+# fail loudly instead of quietly weakening this check.
+assert_lacks "no infra image is rewritten to the local registry (apps off)" \
+                                                                  'image: .*localhost:5000/' "$out"
 assert_has   "vmsingle keeps its upstream image registry"         'image: victoriametrics/victoria-metrics:' "$out"
 
 out="$(render --set infra.vault.enabled=false)"
@@ -497,6 +539,98 @@ if [ -n "$timeout_token" ] && [ -n "$active_deadline_s" ] && [ "$helm_timeout_s"
 else
   bad "Makefile k8s-infra-helm --timeout (${helm_timeout_s:-0}s, parsed '${timeout_token:-<none>}') is LESS THAN hook activeDeadlineSeconds (${active_deadline_s:-<none>}s) + ${cold_pull_margin_s}s cold-pull margin (need >= ${required_s}s) -- raise the Makefile's --timeout or lower mysqlReplica.replicas/waitTimeout so they stay in sync"
 fi
+
+# ── Phase 3 / Task 1: apps subchart gating and Deployments ──────────────────
+section "apps subchart — gating and Deployments"
+
+infra_only="$(render)"
+assert_lacks "apps subchart is OFF by default (side-by-side phase)" \
+             '^  name: order-service$' "$(docs_of_kind Deployment <<<"$infra_only")"
+
+apps_out="$(apps_render)"
+assert_ok    "apps.enabled=true renders"                          "$apps_out"
+
+apps_deploys="$(docs_of_kind Deployment <<<"$apps_out")"
+# Asserted by NAME, not by count: the stream also carries infra Deployments, so a
+# count would flip to a false red the day infra gains or loses one.
+for s in authorization-server bff-service frontend gateway inventory-service \
+         mock-paypal-service orchestrator-service order-service payment-service \
+         product-service; do
+  assert_has "Deployment rendered: $s" "^  name: ${s}\$" "$apps_deploys"
+done
+
+# Pairs with the infra-only assertion above: apps images MUST carry the local
+# registry. Together the two pin the scoping in both directions.
+gw="$(doc_named Deployment gateway "$apps_out")"
+assert_has   "gateway image comes from the local registry" \
+             'image: localhost:5000/gateway:dev' "$gw"
+
+# ── deepCopy contamination guard (design spec §3 rule 1) ────────────────────
+# gateway overrides liveness initialDelaySeconds to 45. `range` over a map
+# iterates in sorted key order and gateway sorts 4th of 10, so if the template
+# merged without deepCopy, mergeOverwrite would mutate .Values.defaults in place
+# and the six services after gateway would inherit 45. order-service is one of
+# them. Asserting it still gets 60 fails the moment the deepCopy is dropped.
+assert_probe order-service liveness initialDelaySeconds 60 "$apps_out"
+assert_probe gateway       liveness initialDelaySeconds 45 "$apps_out"
+assert_probe gateway       readiness initialDelaySeconds 25 "$apps_out"
+
+# Per-service transcription checks (design spec §3 table).
+assert_probe mock-paypal-service liveness  initialDelaySeconds 30 "$apps_out"
+assert_probe mock-paypal-service readiness initialDelaySeconds 15 "$apps_out"
+assert_probe frontend            liveness  initialDelaySeconds 10 "$apps_out"
+assert_probe frontend            readiness initialDelaySeconds 2  "$apps_out"
+# The base frontend readinessProbe omits failureThreshold; the merge supplies an
+# explicit inherited 6 (design spec §5, a deliberate stated change).
+assert_probe frontend            readiness failureThreshold    6  "$apps_out"
+
+# managementPort is listed per service, never derived. authorization-server and
+# gateway break the `port + 10000` pattern; deriving would point their probes at
+# dead ports and both would fail readiness forever with a clean-looking values file.
+auth="$(doc_named Deployment authorization-server "$apps_out")"
+assert_has   "authorization-server management port is 19091, not 16991" \
+             'containerPort: 19091' "$auth"
+assert_lacks "authorization-server management port was not derived" \
+             'containerPort: 16666' "$auth"
+assert_has   "gateway management port is 19093, not 16868" 'containerPort: 19093' "$gw"
+assert_lacks "gateway management port was not derived"     'containerPort: 16868' "$gw"
+
+# env: null semantics — mergo would have silently kept these.
+mock="$(doc_named Deployment mock-paypal-service "$apps_out")"
+assert_lacks "mock-paypal-service does not inherit VAULT_TOKEN (null unset)" \
+             'VAULT_TOKEN' "$mock"
+assert_lacks "mock-paypal-service does not inherit SPRING_CLOUD_VAULT_URI" \
+             'SPRING_CLOUD_VAULT_URI' "$mock"
+assert_has   "mock-paypal-service keeps its own JAVA_OPTS (no G1GC)" \
+             'value: "-XX:MaxRAMPercentage=75.0"' "$mock"
+fe="$(doc_named Deployment frontend "$apps_out")"
+assert_lacks "frontend has no env block at all"            '^          - name: JAVA_OPTS$' "$fe"
+assert_lacks "frontend has no management port"             'name: management' "$fe"
+
+# gateway is the only service with SPRING_PROFILES_ACTIVE.
+assert_has   "gateway sets SPRING_PROFILES_ACTIVE=k8s"     'SPRING_PROFILES_ACTIVE' "$gw"
+assert_lacks "order-service does not set SPRING_PROFILES_ACTIVE" \
+             'SPRING_PROFILES_ACTIVE' "$(doc_named Deployment order-service "$apps_out")"
+
+# extraPorts, envFrom, serviceAccountName hatches.
+inv="$(doc_named Deployment inventory-service "$apps_out")"
+assert_has   "inventory-service exposes grpc 9090"         'containerPort: 9090' "$inv"
+assert_has   "authorization-server has envFrom app-secrets" 'name: app-secrets' "$auth"
+assert_lacks "order-service has no envFrom"                'envFrom' "$(doc_named Deployment order-service "$apps_out")"
+assert_has   "gateway uses the gateway ServiceAccount"     'serviceAccountName: gateway' "$gw"
+
+# Resources, sampled across the spread of the §3 table.
+assert_has   "authorization-server cpu limit is 2000m"     'cpu: 2000m' "$auth"
+assert_has   "frontend memory request is 32Mi"             'memory: 32Mi' "$fe"
+
+# Labels and namespace.
+assert_has   "apps objects land in the apps namespace"     '^  namespace: apps$' "$gw"
+# Any indent, not just 4: pod-template labels sit at 8 spaces, and a bare `app:`
+# there would be just as wrong as one in metadata.
+assert_lacks "no bare app: label anywhere in apps"         '^ +app: ' "$apps_deploys"
+
+# Vault backend (default) renders no app-config volume.
+assert_lacks "backend=vault renders no app-config volume"  'app-config' "$apps_deploys"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

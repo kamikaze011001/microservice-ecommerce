@@ -36,6 +36,12 @@ global:
       api: api.microecom.local
       media: media.microecom.local
 
+# Phase 3 is side by side, not a cut-over: `make k8s-apps` (kubectl) stays the
+# default path. Off here so `make k8s-infra-helm` keeps rendering exactly what it
+# rendered in Phase 2; `make k8s-apps-helm` passes --set apps.enabled=true.
+apps:
+  enabled: false
+
 infra:
   enabled: true
 
@@ -61,5 +67,3 @@ infra:
   victoriaMetrics:  { enabled: true }
   grafana:          { enabled: true }
   kubeStateMetrics: { enabled: true }
-
-apps: {}   # stub — Phase 3 populates this

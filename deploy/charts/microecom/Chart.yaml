@@ -10,3 +10,7 @@ dependencies:
     version: 0.1.0
     repository: ""          # local subchart in charts/infra
     condition: infra.enabled
+  - name: apps
+    version: 0.1.0
+    repository: ""          # local subchart in charts/apps
+    condition: apps.enabled
