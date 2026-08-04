@@ -708,5 +708,32 @@ assert_has   "gateway HPA maxReplicas 2"                   'maxReplicas: 2' "$gw
 assert_has   "gateway HPA targets 60% CPU"                 'averageUtilization: 60' "$gw_hpa"
 assert_has   "gateway HPA scaleDown window is 300s"        'stabilizationWindowSeconds: 300' "$gw_hpa"
 
+# ── Phase 3 / Task 3: gateway RBAC ──────────────────────────────────────────
+section "apps subchart — gateway RBAC"
+
+apps_sas="$(docs_of_kind ServiceAccount <<<"$apps_out")"
+assert_has   "gateway ServiceAccount exists"               '^  name: gateway$' "$apps_sas"
+assert_lacks "no ServiceAccount for order-service"         '^  name: order-service$' "$apps_sas"
+
+gw_role="$(doc_named Role gateway-discovery "$apps_out")"
+# Match the whole flow list, not the bare resource names. A bare 'endpoints'
+# ALSO matches inside 'endpointslices', so dropping `endpoints` from the core
+# rule would leave that assertion green while gateway discovery breaks. `pods`
+# get is required even in SERVICE discovery mode: Spring Cloud Kubernetes reads
+# its OWN pod at startup. Dropping it looks harmless and breaks boot.
+assert_has   "gateway Role grants services+endpoints+pods" \
+             'resources: \[services, endpoints, pods\]' "$gw_role"
+assert_has   "gateway Role covers endpointslices"          'resources: \[endpointslices\]' "$gw_role"
+gw_rb="$(doc_named RoleBinding gateway-discovery "$apps_out")"
+# Anchored to the 4-space subjects indent. An unanchored 'name: gateway' also
+# matches this doc's own `  name: gateway-discovery` (metadata AND roleRef, both
+# 2-space), so it stays green even with the ServiceAccount subject wrong or
+# missing — which is the one thing this assertion exists to prove.
+assert_has   "RoleBinding targets the gateway SA"          '^    name: gateway$' "$gw_rb"
+
+no_rbac="$(apps_render --set apps.apps.gateway.rbac=null)"
+assert_lacks "gateway.rbac unset removes the Role" \
+             'gateway-discovery' "$(docs_of_kind Role <<<"$no_rbac")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
