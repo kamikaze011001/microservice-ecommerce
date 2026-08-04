@@ -806,5 +806,105 @@ assert_backend() {
 assert_backend frontend /              "$alb"
 assert_backend gateway  /order-service "$alb"
 
+# ── Phase 3 / Task 5: ExternalSecrets, app-config, IRSA ─────────────────────
+section "apps subchart — secret backend"
+
+# backend=vault (default) — none of this renders. Scoped to the apps documents:
+# $apps_out also carries infra, and an unscoped match there would be noise.
+assert_lacks "vault: no ExternalSecrets"        'kind: ExternalSecret' "$apps_out"
+assert_lacks "vault: no app-config volume"      'app-config' "$apps_deploys"
+assert_lacks "vault: no IRSA annotation"        'eks\.amazonaws\.com/role-arn' "$apps_deploys"
+assert_has   "vault: services still get VAULT_TOKEN" 'VAULT_TOKEN' "$(doc_named Deployment order-service "$apps_out")"
+
+# backend=externalSecrets.
+aws_es="$(docs_of_kind ExternalSecret <<<"$aws_out")"
+for s in authorization-server bff-service gateway inventory-service \
+         mock-paypal-service orchestrator-service order-service payment-service \
+         product-service; do
+  assert_has "eso: ExternalSecret for $s" "^  name: ${s}\$" "$aws_es"
+done
+assert_lacks "eso: no ExternalSecret for the static frontend" '^  name: frontend$' "$aws_es"
+
+ps_es="$(doc_named ExternalSecret product-service "$aws_out")"
+assert_has   "eso: product-service pulls app/ecommerce"    'key: app/ecommerce' "$ps_es"
+assert_has   "eso: product-service pulls app/core-s3"      'key: app/core-s3' "$ps_es"
+assert_has   "eso: product-service pulls its own secret"   'key: app/product-service' "$ps_es"
+assert_has   "eso: target Secret is <name>-config"         'name: product-service-config' "$ps_es"
+os_es="$(doc_named ExternalSecret order-service "$aws_out")"
+assert_lacks "eso: order-service does NOT pull core-s3"    'key: app/core-s3' "$os_es"
+
+# The configtree mount and the Vault switch-off are pure data in envs/aws.yaml —
+# applied once to `defaults`, not nine times via a JSON6902 component.
+aws_os="$(doc_named Deployment order-service "$aws_out")"
+assert_has   "eso: app-config volume is mounted"           'mountPath: /etc/app-config' "$aws_os"
+assert_has   "eso: volume comes from <name>-config"        'secretName: order-service-config' "$aws_os"
+assert_has   "eso: SPRING_CONFIG_IMPORT points at the configtree" \
+             'optional:configtree:/etc/app-config/' "$aws_os"
+assert_has   "eso: Spring Cloud Vault is switched off"     'SPRING_CLOUD_VAULT_ENABLED' "$aws_os"
+# Helm deletes a key whose override value is null. If that ever stops holding,
+# every pod would try to reach a Vault that does not exist on EKS.
+assert_lacks "eso: VAULT_TOKEN is deleted, not just disabled" 'VAULT_TOKEN' "$aws_os"
+assert_lacks "eso: SPRING_CLOUD_VAULT_URI is deleted"      'vault\.infra\.svc' "$aws_os"
+aws_fe="$(doc_named Deployment frontend "$aws_out")"
+assert_lacks "eso: the static frontend gets no app-config volume" \
+             'app-config' "$aws_fe"
+
+# IRSA. This file exists today at k8s/apps/overlays/aws/s3-irsa-serviceaccounts.yaml
+# referenced by NO kustomization, applied imperatively by a script with a
+# sed-stamped placeholder. As a chart object the "present but not wired in" state
+# stops being representable.
+aws_sas="$(docs_of_kind ServiceAccount <<<"$aws_out")"
+assert_has   "irsa: product-service ServiceAccount"        '^  name: product-service$' "$aws_sas"
+assert_has   "irsa: authorization-server ServiceAccount"   '^  name: authorization-server$' "$aws_sas"
+assert_lacks "irsa: no ServiceAccount for order-service"   '^  name: order-service$' "$aws_sas"
+# Scoped to ONE ServiceAccount. Against the whole ServiceAccount stream this
+# proves only that SOME SA carries the ARN — three services set irsa: true, and
+# the annotation going missing on two of them would stay green.
+assert_has   "irsa: the role ARN is stamped, not a placeholder" \
+             'role-arn: arn:aws:iam::583178372344:role/microecom-s3' \
+             "$(doc_named ServiceAccount product-service "$aws_out")"
+assert_has   "irsa: authorization-server carries the ARN too" \
+             'role-arn: arn:aws:iam::583178372344:role/microecom-s3' \
+             "$(doc_named ServiceAccount authorization-server "$aws_out")"
+assert_lacks "irsa: no PLACEHOLDER survives"               'PLACEHOLDER' "$aws_sas"
+assert_has   "irsa: product-service Deployment uses its SA" \
+             'serviceAccountName: product-service' "$(doc_named Deployment product-service "$aws_out")"
+
+# ALB per-target-group health checks live on the Services, not the Ingress.
+aws_gw_svc="$(doc_named Service gateway "$aws_out")"
+assert_has   "alb: gateway healthcheck targets the management port" \
+             'healthcheck-port: "19093"' "$aws_gw_svc"
+assert_has   "alb: gateway healthcheck path is readiness" \
+             'healthcheck-path: /actuator/health/readiness' "$aws_gw_svc"
+aws_fe_svc="$(doc_named Service frontend "$aws_out")"
+assert_has   "alb: frontend healthcheck is / on the traffic port" \
+             'healthcheck-port: traffic-port' "$aws_fe_svc"
+
+# ── Task 5 (mandatory extra): backend=externalSecrets discriminates on `static`
+# The existing "backend=vault renders no app-config volume" assertion above can
+# never fail: global.secret.backend defaults to vault, so the `static` sentinel
+# gate in deployments.yaml/_helpers.tpl is never exercised at all. Prove the
+# gate is load-bearing by rendering backend=externalSecrets together with a
+# service that sets static: true, and showing the static service gets NO
+# app-config volume while a non-static sibling in the SAME render DOES.
+static_probe_out="$(apps_render --set global.secret.backend=externalSecrets \
+                                 --set apps.apps.bff-service.static=true \
+                                 --set apps.irsa.s3RoleArn=arn:aws:iam::583178372344:role/microecom-s3)"
+static_probe_deploys="$(docs_of_kind Deployment <<<"$static_probe_out")"
+bff_static="$(doc_named Deployment bff-service "$static_probe_out")"
+order_sibling="$(doc_named Deployment order-service "$static_probe_out")"
+assert_lacks "eso+static: the forced-static bff-service gets NO app-config volume" \
+             'app-config' "$bff_static"
+assert_has   "eso+static: a non-static sibling in the SAME render DOES get one" \
+             'app-config' "$order_sibling"
+# And bff-service must also lose its ExternalSecret under the same forced flag —
+# the two gates (deployments.yaml's volume, externalsecrets.yaml's `not $svc.static`)
+# must agree, or a pod ends up mounting a Secret that ESO never creates.
+static_probe_es="$(docs_of_kind ExternalSecret <<<"$static_probe_out")"
+assert_lacks "eso+static: no ExternalSecret is created for the forced-static service" \
+             '^  name: bff-service$' "$static_probe_es"
+assert_has   "eso+static: the non-static sibling still gets its ExternalSecret" \
+             '^  name: order-service$' "$static_probe_es"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
