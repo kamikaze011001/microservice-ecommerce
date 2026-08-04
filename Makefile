@@ -371,7 +371,7 @@ k8s-seed-perftest:
 k8s-seed-images:
 	@scripts/seed/k8s-product-images.sh
 
-.PHONY: k8s-apps k8s-apps-down k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs k8s-storefront-smoke k8s-storefront-soak k8s-storefront-stress k8s-storefront-run k8s-storefront-logs k9s
+.PHONY: k8s-apps k8s-apps-down k8s-apps-helm k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs k8s-storefront-smoke k8s-storefront-soak k8s-storefront-stress k8s-storefront-run k8s-storefront-logs k9s
 
 # Apply all 8 service Deployments via the local overlay.
 # k8s-app-secrets: build the `app-secrets` Secret in the apps namespace from
@@ -395,6 +395,28 @@ k8s-apps: k8s-app-secrets
 
 k8s-apps-down:
 	@kubectl delete -k k8s/apps/overlays/local --ignore-not-found
+
+# Helm path for the apps, alongside `make k8s-apps` (kubectl/kustomize).
+# Both bring-up paths stay in the tree this phase; rolling back is reverting this
+# target. They are NOT composable on one cluster — the Helm chart selects on
+# app.kubernetes.io/name while the base manifests use a bare `app:` key, and
+# spec.selector is immutable on a Deployment. Pick one path per cluster.
+#
+# --timeout stays 30m and remains governed by the Plan 2 drift guard in
+# tests/render-test.sh, which asserts it stays >= activeDeadlineSeconds + 330s.
+#
+# ENV=aws additionally REQUIRES the S3 IRSA role ARN, or the render fails by
+# design (see charts/apps/templates/irsa-serviceaccounts.yaml):
+#   make k8s-apps-helm ENV=aws \
+#     HELM_EXTRA='--set apps.irsa.s3RoleArn=$$(terraform output -raw s3_irsa_role_arn)'
+# Phase 7 moves that into the AWS deploy script; this phase only ever runs local.
+k8s-apps-helm:
+	@helm upgrade --install microecom deploy/charts/microecom \
+	  --namespace infra --create-namespace \
+	  -f deploy/charts/microecom/envs/$(or $(ENV),local-k8s).yaml \
+	  --set apps.enabled=true $(HELM_EXTRA) \
+	  --wait --timeout 30m
+	@kubectl -n apps rollout status deployment --timeout=10m
 
 # Quick health dashboard for the cluster.
 k8s-status:

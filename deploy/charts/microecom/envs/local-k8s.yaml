@@ -4,3 +4,12 @@ global:
   appImage:
     registry: localhost:5000
     tag: dev
+
+apps:
+  apps:
+    payment-service:
+      env:
+        # Local checkout goes through mock-paypal-service, not api-m.paypal.com.
+        # Without these, checkout silently calls the real PayPal sandbox and fails.
+        SPRING_APPLICATION_JSON: '{"application":{"paypal":{"base-url":"http://mock-paypal-service.apps.svc.cluster.local:8585/mock-paypal-service"}}}'
+        PAYPAL_TUNNEL_URL: "http://api.microecom.local"

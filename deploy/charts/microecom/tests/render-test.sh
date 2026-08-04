@@ -919,5 +919,32 @@ assert_lacks "eso+static: no ExternalSecret is created for the forced-static ser
 assert_has   "eso+static: the non-static sibling still gets its ExternalSecret" \
              '^  name: order-service$' "$static_probe_es"
 
+# ── Phase 3 / Task 6: local env data ────────────────────────────────────────
+section "apps subchart — local env"
+
+local_out="$(apps_render -f "$CHART_DIR/envs/local-k8s.yaml")"
+assert_ok    "local-k8s values render"                     "$local_out"
+pay="$(doc_named Deployment payment-service "$local_out")"
+# The local Kustomize overlay injects these two into payment-service so checkout
+# talks to mock-paypal instead of real PayPal. Missing them, local checkout
+# silently calls api-m.paypal.com and fails.
+assert_has   "local: payment-service points at mock-paypal" \
+             'mock-paypal-service\.apps\.svc\.cluster\.local:8585' "$pay"
+# Assert the key AND its value together. A bare 'PAYPAL_TUNNEL_URL' match proves
+# only that the key exists — the value carries all the meaning, and a blank or
+# wrong host stays green. This is the same value-blind shape that Task 5's review
+# caught on SPRING_CLOUD_VAULT_ENABLED. BSD `grep -qE` cannot match a literal
+# newline across lines, so squash the two-line env entry
+#   - name: PAYPAL_TUNNEL_URL
+#     value: "http://api.microecom.local"
+# onto one line first, exactly as the Task 5 fix does, then assert on that.
+ptu_pair="$(awk '/- name: PAYPAL_TUNNEL_URL$/ { n = $0; getline; print n " " $0 }' <<<"$pay")"
+assert_has   "local: PAYPAL_TUNNEL_URL points at the local ingress host" \
+             'name: PAYPAL_TUNNEL_URL +value: "http://api\.microecom\.local"' "$ptu_pair"
+# Not on AWS, where real PayPal is used.
+assert_lacks "aws: payment-service does NOT point at mock-paypal" \
+             'mock-paypal-service\.apps\.svc\.cluster\.local:8585' \
+             "$(doc_named Deployment payment-service "$aws_out")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
