@@ -634,5 +634,50 @@ assert_lacks "no bare app: label anywhere in apps"         '^ +app: ' "$apps_dep
 # Vault backend (default) renders no app-config volume.
 assert_lacks "backend=vault renders no app-config volume"  'app-config' "$apps_deploys"
 
+# ── Phase 3 / Task 2: Services and HPAs ─────────────────────────────────────
+section "apps subchart — Services and HPAs"
+
+apps_svcs="$(docs_of_kind Service <<<"$apps_out")"
+for s in authorization-server bff-service frontend gateway inventory-service \
+         mock-paypal-service orchestrator-service order-service payment-service \
+         product-service; do
+  assert_has "Service rendered: $s" "^  name: ${s}\$" "$apps_svcs"
+done
+
+gw_svc="$(doc_named Service gateway "$apps_out")"
+assert_has   "gateway Service exposes 6868"                'port: 6868' "$gw_svc"
+assert_has   "gateway Service exposes management 19093"    'port: 19093' "$gw_svc"
+assert_has   "gateway Service selects by app.kubernetes.io/name" \
+             'app\.kubernetes\.io/name: gateway' "$gw_svc"
+
+fe_svc="$(doc_named Service frontend "$apps_out")"
+# 80 → containerPort 8080, matching the base manifest. The port is NAMED http on
+# purpose: ingress.yaml binds both gateway and frontend by port name.
+assert_has   "frontend Service listens on 80"              'port: 80$' "$fe_svc"
+assert_has   "frontend Service port is named http"         'name: http' "$fe_svc"
+assert_lacks "frontend Service has no management port"     'name: management' "$fe_svc"
+
+inv_svc="$(doc_named Service inventory-service "$apps_out")"
+assert_has   "inventory-service Service exposes grpc"      'name: grpc' "$inv_svc"
+assert_has   "inventory-service grpc port is 9090"         'port: 9090' "$inv_svc"
+
+# HPAs: exactly the five that have one today. Assert both directions — the
+# services that must have one, and a representative that must not.
+apps_hpas="$(docs_of_kind HorizontalPodAutoscaler <<<"$apps_out")"
+for s in authorization-server gateway inventory-service order-service product-service; do
+  assert_has "HPA rendered: $s" "^  name: ${s}\$" "$apps_hpas"
+done
+for s in bff-service frontend mock-paypal-service orchestrator-service payment-service; do
+  assert_lacks "no HPA for $s" "^  name: ${s}\$" "$apps_hpas"
+done
+
+auth_hpa="$(doc_named HorizontalPodAutoscaler authorization-server "$apps_out")"
+assert_has   "authorization-server HPA maxReplicas 3"      'maxReplicas: 3' "$auth_hpa"
+assert_has   "authorization-server HPA scales up 2 pods"   'value: 2' "$auth_hpa"
+gw_hpa="$(doc_named HorizontalPodAutoscaler gateway "$apps_out")"
+assert_has   "gateway HPA maxReplicas 2"                   'maxReplicas: 2' "$gw_hpa"
+assert_has   "gateway HPA targets 60% CPU"                 'averageUtilization: 60' "$gw_hpa"
+assert_has   "gateway HPA scaleDown window is 300s"        'stabilizationWindowSeconds: 300' "$gw_hpa"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
