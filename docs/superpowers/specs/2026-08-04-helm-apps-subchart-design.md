@@ -147,6 +147,35 @@ the service inherits the defaults (60/30).
 `periodSeconds` (15 liveness / 10 readiness) and `failureThreshold`
 (4 liveness / 6 readiness) are uniform across all 9 JVM services.
 
+### `managementPort` must stay explicit — do not derive it
+
+`managementPort` is Spring Boot Actuator's separate listener
+(`management.server.port` in each service's `application.yml`), carrying
+`/actuator/health/{liveness,readiness}` and `/actuator/prometheus`. Both
+probes target it by name, so a wrong value means permanent readiness failure.
+
+Seven of the nine JVM services follow `port + 10000`. **Two do not:**
+
+| Service | http | management | `port + 10000` would give |
+|---|---|---|---|
+| authorization-server | 6666 | **19091** | 16666 ✗ |
+| gateway | 6868 | **19093** | 16868 ✗ |
+
+Verified against `authorization-server/src/main/resources/application.yml` and
+`gateway/src/main/resources/application.yml`, which match the k8s manifests
+exactly. They appear to be fossils of the older shared-`9091` scheme CLAUDE.md
+describes, later prefixed with `1`.
+
+So `managementPort` is listed per service and **must never be derived in the
+template**. Deriving it would render correctly for seven services and silently
+point authorization-server's and gateway's probes at dead ports — both pods
+failing readiness forever, with a values file that looks clean.
+
+General rule this instance illustrates: derive a value only when the
+relationship is *enforced* somewhere, not merely *observed* to hold. The ALB
+paths (§6) are safe to derive because the gateway's `Path=/<service-name>/**`
+routing convention enforces them. Management ports are not.
+
 HPA min/max/target values are transcribed verbatim from the five existing
 files — `k8s/apps/base/{authorization-server,gateway,inventory-service,
 order-service,product-service}/hpa.yaml` — and are not redesigned here.
