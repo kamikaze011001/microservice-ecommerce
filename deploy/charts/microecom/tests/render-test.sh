@@ -566,11 +566,13 @@ assert_has   "gateway image comes from the local registry" \
              'image: localhost:5000/gateway:dev' "$gw"
 
 # ── deepCopy contamination guard (design spec §3 rule 1) ────────────────────
-# gateway overrides liveness initialDelaySeconds to 45. `range` over a map
-# iterates in sorted key order and gateway sorts 4th of 10, so if the template
-# merged without deepCopy, mergeOverwrite would mutate .Values.defaults in place
-# and the six services after gateway would inherit 45. order-service is one of
-# them. Asserting it still gets 60 fails the moment the deepCopy is dropped.
+# `range` over a map iterates in SORTED KEY ORDER, so without deepCopy each
+# service's overrides mutate .Values.defaults in place and leak into every
+# service sorting after it — and each later override compounds on the last.
+# gateway (4th of 10) leaks initialDelaySeconds:45; mock-paypal-service (6th)
+# then overwrites that with 30; so order-service (8th) inherits 30, NOT 45.
+# Asserting order-service still gets its own 60 fails the moment deepCopy is
+# dropped, whichever value happens to be the one that leaks.
 assert_probe order-service liveness initialDelaySeconds 60 "$apps_out"
 assert_probe gateway       liveness initialDelaySeconds 45 "$apps_out"
 assert_probe gateway       readiness initialDelaySeconds 25 "$apps_out"

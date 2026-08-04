@@ -407,8 +407,10 @@ The four-line merge preamble at the top of the `range` is repeated verbatim in `
      and MUTATES its destination. Without deepCopy the first service's overrides
      permanently contaminate $.Values.defaults, and because `range` over a map
      iterates in sorted key order, every service sorting after it inherits them.
-     `gateway` sorts 4th of 10, so its initialDelaySeconds:45 would leak into the
-     six services after it. render-test.sh asserts order-service still gets 60.
+     Contamination COMPOUNDS: each later service that overrides the same field
+     overwrites the previous leak. gateway (4th) leaks 45, then mock-paypal (6th)
+     overwrites it with 30, so order-service (8th) observes 30 — not 45.
+     render-test.sh asserts order-service still gets 60.
   3. `env` is merged OUTSIDE mergo, key by key. Mergo skips nil source values, so
      a per-key `null` (mock-paypal's VAULT_TOKEN) could not unset an inherited
      value, and `env: {}` could not clear the map. The explicit loop can store a
@@ -593,11 +595,12 @@ assert_has   "gateway image comes from the local registry" \
              'image: localhost:5000/gateway:dev' "$gw"
 
 # ── deepCopy contamination guard (design spec §3 rule 1) ────────────────────
-# gateway overrides liveness initialDelaySeconds to 45. `range` over a map
-# iterates in sorted key order and gateway sorts 4th of 10, so if the template
-# merged without deepCopy, mergeOverwrite would mutate .Values.defaults in place
-# and the six services after gateway would inherit 45. order-service is one of
-# them. Asserting it still gets 60 fails the moment the deepCopy is dropped.
+# `range` over a map iterates in sorted key order, so without deepCopy every
+# service's overrides mutate .Values.defaults in place and leak into the ones
+# sorting after it — and each later override compounds on the last. gateway
+# (4th of 10) leaks 45, mock-paypal-service (6th) then overwrites that with 30,
+# so order-service (8th) inherits 30. Asserting it still gets its own 60 fails
+# the moment the deepCopy is dropped, whichever value happens to leak.
 assert_probe order-service liveness initialDelaySeconds 60 "$apps_out"
 assert_probe gateway       liveness initialDelaySeconds 45 "$apps_out"
 assert_probe gateway       readiness initialDelaySeconds 25 "$apps_out"
