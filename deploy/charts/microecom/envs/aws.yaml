@@ -9,6 +9,12 @@ global:
     backend: externalSecrets
   ingress:
     className: alb
+    hosts:
+      # ONE host feeds two things: the AWS LB Controller auto-discovers the ACM
+      # cert matching it for the :443 listener, and external-dns reads it to
+      # create the Route 53 A-alias. Consequence: the raw *.elb.amazonaws.com
+      # hostname 404s, because every rule requires this Host header.
+      storefront: shop.microecom.click
 
 infra:
   # Managed AWS services replace these in-cluster workloads.

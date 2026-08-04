@@ -1,0 +1,100 @@
+{{- $ns := .Values.global.namespaces.apps }}
+{{- if eq .Values.global.ingress.className "nginx" }}
+{{/* Local: one Ingress per service that declares a host. */}}
+{{- range $name, $svc := .Values.apps }}
+{{- if and $svc.enabled $svc.ingress }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "apps.labels" (dict "name" $name "root" $) | nindent 4 }}
+  {{- with $svc.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: {{ $svc.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $name }}
+                port:
+                  name: http
+{{- end }}
+{{- end }}
+
+{{- else if eq .Values.global.ingress.className "alb" }}
+{{/*
+  AWS: ONE Ingress. Listener-rule precedence is by path specificity — the AWS
+  Load Balancer Controller expands a Prefix path "/foo" into ALB conditions
+  "/foo" + "/foo/*", and "/" into "/*" (the catch-all, lowest priority). So the
+  service prefixes out-rank "/" regardless of the order they appear here: only
+  genuine /<service>/** traffic reaches the gateway, everything else boots the SPA.
+
+  Health checks are deliberately NOT set here. With two backends an
+  Ingress-level check would apply to BOTH target groups, and the gateway's
+  19093/actuator probe would fail the static SPA. Each Service carries its own
+  alb.ingress.kubernetes.io/healthcheck-* annotations instead (envs/aws.yaml).
+*/}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gateway-alb
+  namespace: {{ $ns }}
+  labels:
+    {{- include "apps.labels" (dict "name" "gateway" "root" $) | nindent 4 }}
+  annotations:
+    # Public ALB, in the public subnets tagged kubernetes.io/role/elb.
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    # ip mode registers pod IPs directly as targets; instance mode would need a
+    # NodePort Service.
+    alb.ingress.kubernetes.io/target-type: ip
+    # Opens BOTH :80 and :443; ssl-redirect 301-bounces :80 to :443. No
+    # certificate-arn — the controller auto-discovers the ACM cert whose domain
+    # matches the host rule below.
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+spec:
+  ingressClassName: alb
+  rules:
+    - host: {{ .Values.global.ingress.hosts.storefront }}
+      http:
+        paths:
+          {{- range $name, $svc := .Values.apps }}
+          {{- if and $svc.enabled (not (has $name (list "gateway" "frontend"))) }}
+          {{/*
+            DERIVED, not listed. Each service sets
+            `server.servlet.context-path: /<service-name>` and the gateway routes
+            `Path=/<service-name>/**` with no StripPrefix, so the prefix follows
+            from the service name by an ENFORCED convention. Adding a service can
+            no longer leave it working locally and invisible on AWS.
+          */}}
+          - path: /{{ $name }}
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  name: http
+          {{- end }}
+          {{- end }}
+          # Catch-all: the SPA. Caddy serves index.html for any unmatched path
+          # (try_files {path} /index.html), then Vue Router takes over for deep
+          # links like /checkout, /products/123, /payment/success.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  name: http
+{{- end }}

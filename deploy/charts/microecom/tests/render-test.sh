@@ -735,5 +735,76 @@ no_rbac="$(apps_render --set apps.apps.gateway.rbac=null)"
 assert_lacks "gateway.rbac unset removes the Role" \
              'gateway-discovery' "$(docs_of_kind Role <<<"$no_rbac")"
 
+# ── Phase 3 / Task 4: Ingress ───────────────────────────────────────────────
+section "apps subchart — Ingress (nginx | alb)"
+
+apps_ings="$(docs_of_kind Ingress <<<"$apps_out")"
+assert_has   "nginx: gateway Ingress exists"               '^  name: gateway$' "$apps_ings"
+assert_has   "nginx: frontend Ingress exists"              '^  name: frontend$' "$apps_ings"
+assert_lacks "nginx: no ALB Ingress"                       'gateway-alb' "$apps_ings"
+gw_ing="$(doc_named Ingress gateway "$apps_out")"
+assert_has   "nginx: gateway host"                         'host: api\.microecom\.local' "$gw_ing"
+# 120s, not nginx's default 60s: k6 bursts push gateway p99 past 60s and the
+# proxy would return 504 before the service answered.
+assert_has   "nginx: gateway keeps the 120s proxy-read-timeout" \
+             'proxy-read-timeout: "120"' "$gw_ing"
+assert_has   "nginx: gateway keeps the 120s proxy-send-timeout" \
+             'proxy-send-timeout: "120"' "$gw_ing"
+fe_ing="$(doc_named Ingress frontend "$apps_out")"
+assert_has   "nginx: frontend host"                        'host: microecom\.local' "$fe_ing"
+assert_lacks "nginx: frontend carries no proxy timeouts"   'proxy-read-timeout' "$fe_ing"
+
+# ALB. `global.appImage.registry` is empty in envs/aws.yaml (the deploy script
+# stamps it), so pass one here — otherwise every image renders as `/name:`.
+ALB_ARGS=(-f "$CHART_DIR/envs/aws.yaml"
+          --set global.appImage.registry=583178372344.dkr.ecr.ap-southeast-1.amazonaws.com
+          --set global.appImage.tag=testsha
+          --set apps.irsa.s3RoleArn=arn:aws:iam::583178372344:role/microecom-s3)
+aws_out="$(apps_render "${ALB_ARGS[@]}")"
+assert_ok    "aws values render"                           "$aws_out"
+aws_ings="$(docs_of_kind Ingress <<<"$aws_out")"
+assert_has   "alb: the ALB Ingress exists"                 '^  name: gateway-alb$' "$aws_ings"
+assert_lacks "alb: no nginx gateway Ingress"               '^  name: gateway$' "$aws_ings"
+assert_lacks "alb: no nginx frontend Ingress"              '^  name: frontend$' "$aws_ings"
+alb="$(doc_named Ingress gateway-alb "$aws_out")"
+assert_has   "alb: internet-facing"                        'scheme: internet-facing' "$alb"
+assert_has   "alb: target-type ip"                         'target-type: ip' "$alb"
+# Assert the VALUE, not just the annotation key — a bare 'listen-ports' passes
+# on any listener config at all, including one that dropped 443.
+assert_has   "alb: listens on 80 and 443" \
+             'listen-ports: .\[\{"HTTP": 80\}, \{"HTTPS": 443\}\]' "$alb"
+assert_has   "alb: host is the storefront domain"          'host: shop\.microecom\.click' "$alb"
+# The 8 service prefixes are DERIVED from the service list (range, skipping
+# gateway and frontend), so adding a service can no longer leave it invisible on
+# AWS — the failure mode that motivated this phase.
+paths="$(grep -c '^          - path: /' <<<"$alb")"
+if [ "$paths" = "9" ]; then
+  ok  "alb: 8 service prefixes + the / catch-all"
+else
+  bad "alb: expected 9 paths (8 services + catch-all), got $paths"
+fi
+assert_has   "alb: order-service prefix is derived"        '- path: /order-service$' "$alb"
+assert_lacks "alb: gateway is not its own prefix"          '- path: /gateway$' "$alb"
+assert_lacks "alb: frontend is not a prefix"               '- path: /frontend$' "$alb"
+
+# alb_backend <alb-doc> <path> — the backend Service name serving ONE ALB path.
+# Which path routes where is the whole point of this Ingress, and an unscoped
+# `name: frontend` proves only that frontend is a backend SOMEWHERE in the doc:
+# swap the / and /order-service backends and it stays green while the storefront
+# serves API traffic. Read the first `name:` under the matching path instead.
+alb_backend() {
+  awk -v p="          - path: $2" '
+    $0 == p             { f = 1; next }
+    f && /^ +name: /    { print $2; exit }
+  ' <<<"$1"
+}
+assert_backend() {
+  local actual; actual="$(alb_backend "$3" "$2")"
+  if [ "$actual" = "$1" ]; then ok "alb: $2 routes to $1"
+  else bad "alb: $2 routes to '${actual:-<none>}', expected '$1'"; fi
+}
+assert_backend frontend /              "$alb"
+assert_backend gateway  /order-service "$alb"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
