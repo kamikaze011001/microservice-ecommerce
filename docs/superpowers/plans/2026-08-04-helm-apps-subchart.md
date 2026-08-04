@@ -943,13 +943,20 @@ assert_has   "gateway ServiceAccount exists"               '^  name: gateway$' "
 assert_lacks "no ServiceAccount for order-service"         '^  name: order-service$' "$apps_sas"
 
 gw_role="$(doc_named Role gateway-discovery "$apps_out")"
-assert_has   "gateway Role can list endpoints"             'endpoints' "$gw_role"
-# `pods` get is required even in SERVICE discovery mode: Spring Cloud Kubernetes
-# reads its OWN pod at startup. Dropping it looks harmless and breaks boot.
-assert_has   "gateway Role can get pods"                   'pods' "$gw_role"
-assert_has   "gateway Role covers endpointslices"          'endpointslices' "$gw_role"
+# Match the whole flow list, not the bare resource names. A bare 'endpoints'
+# ALSO matches inside 'endpointslices', so dropping `endpoints` from the core
+# rule would leave that assertion green while gateway discovery breaks. `pods`
+# get is required even in SERVICE discovery mode: Spring Cloud Kubernetes reads
+# its OWN pod at startup. Dropping it looks harmless and breaks boot.
+assert_has   "gateway Role grants services+endpoints+pods" \
+             'resources: \[services, endpoints, pods\]' "$gw_role"
+assert_has   "gateway Role covers endpointslices"          'resources: \[endpointslices\]' "$gw_role"
 gw_rb="$(doc_named RoleBinding gateway-discovery "$apps_out")"
-assert_has   "RoleBinding targets the gateway SA"          'name: gateway' "$gw_rb"
+# Anchored to the 4-space subjects indent. An unanchored 'name: gateway' also
+# matches this doc's own `  name: gateway-discovery` (metadata AND roleRef, both
+# 2-space), so it stays green even with the ServiceAccount subject wrong or
+# missing — which is the one thing this assertion exists to prove.
+assert_has   "RoleBinding targets the gateway SA"          '^    name: gateway$' "$gw_rb"
 
 no_rbac="$(apps_render --set apps.apps.gateway.rbac=null)"
 assert_lacks "gateway.rbac unset removes the Role" \
@@ -1083,7 +1090,10 @@ assert_lacks "alb: no nginx frontend Ingress"              '^  name: frontend$' 
 alb="$(doc_named Ingress gateway-alb "$aws_out")"
 assert_has   "alb: internet-facing"                        'scheme: internet-facing' "$alb"
 assert_has   "alb: target-type ip"                         'target-type: ip' "$alb"
-assert_has   "alb: listens on 80 and 443"                  'listen-ports' "$alb"
+# Assert the VALUE, not just the annotation key — a bare 'listen-ports' passes
+# on any listener config at all, including one that dropped 443.
+assert_has   "alb: listens on 80 and 443" \
+             'listen-ports: .\[\{"HTTP": 80\}, \{"HTTPS": 443\}\]' "$alb"
 assert_has   "alb: host is the storefront domain"          'host: shop\.microecom\.click' "$alb"
 # The 8 service prefixes are DERIVED from the service list (range, skipping
 # gateway and frontend), so adding a service can no longer leave it invisible on
@@ -1097,7 +1107,25 @@ fi
 assert_has   "alb: order-service prefix is derived"        '- path: /order-service$' "$alb"
 assert_lacks "alb: gateway is not its own prefix"          '- path: /gateway$' "$alb"
 assert_lacks "alb: frontend is not a prefix"               '- path: /frontend$' "$alb"
-assert_has   "alb: / falls through to the SPA"             'name: frontend' "$alb"
+
+# alb_backend <alb-doc> <path> — the backend Service name serving ONE ALB path.
+# Which path routes where is the whole point of this Ingress, and an unscoped
+# `name: frontend` proves only that frontend is a backend SOMEWHERE in the doc:
+# swap the / and /order-service backends and it stays green while the storefront
+# serves API traffic. Read the first `name:` under the matching path instead.
+alb_backend() {
+  awk -v p="          - path: $2" '
+    $0 == p             { f = 1; next }
+    f && /^ +name: /    { print $2; exit }
+  ' <<<"$1"
+}
+assert_backend() {
+  local actual; actual="$(alb_backend "$3" "$2")"
+  if [ "$actual" = "$1" ]; then ok "alb: $2 routes to $1"
+  else bad "alb: $2 routes to '${actual:-<none>}', expected '$1'"; fi
+}
+assert_backend frontend /              "$alb"
+assert_backend gateway  /order-service "$alb"
 ```
 
 - [ ] **Step 2: Run the suite to verify they fail**
@@ -1341,8 +1369,15 @@ aws_sas="$(docs_of_kind ServiceAccount <<<"$aws_out")"
 assert_has   "irsa: product-service ServiceAccount"        '^  name: product-service$' "$aws_sas"
 assert_has   "irsa: authorization-server ServiceAccount"   '^  name: authorization-server$' "$aws_sas"
 assert_lacks "irsa: no ServiceAccount for order-service"   '^  name: order-service$' "$aws_sas"
+# Scoped to ONE ServiceAccount. Against the whole ServiceAccount stream this
+# proves only that SOME SA carries the ARN — three services set irsa: true, and
+# the annotation going missing on two of them would stay green.
 assert_has   "irsa: the role ARN is stamped, not a placeholder" \
-             'role-arn: arn:aws:iam::583178372344:role/microecom-s3' "$aws_sas"
+             'role-arn: arn:aws:iam::583178372344:role/microecom-s3' \
+             "$(doc_named ServiceAccount product-service "$aws_out")"
+assert_has   "irsa: authorization-server carries the ARN too" \
+             'role-arn: arn:aws:iam::583178372344:role/microecom-s3' \
+             "$(doc_named ServiceAccount authorization-server "$aws_out")"
 assert_lacks "irsa: no PLACEHOLDER survives"               'PLACEHOLDER' "$aws_sas"
 assert_has   "irsa: product-service Deployment uses its SA" \
              'serviceAccountName: product-service' "$(doc_named Deployment product-service "$aws_out")"
