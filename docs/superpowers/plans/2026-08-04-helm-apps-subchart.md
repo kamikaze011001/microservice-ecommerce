@@ -1325,7 +1325,11 @@ section "apps subchart — secret backend"
 # $apps_out also carries infra, and an unscoped match there would be noise.
 assert_lacks "vault: no ExternalSecrets"        'kind: ExternalSecret' "$apps_out"
 assert_lacks "vault: no app-config volume"      'app-config' "$apps_deploys"
-assert_lacks "vault: no IRSA annotation"        'eks\.amazonaws\.com/role-arn' "$apps_deploys"
+# Scope to the ServiceAccount stream, NOT $apps_deploys. The annotation is only
+# ever stamped on a ServiceAccount (irsa-serviceaccounts.yaml) and never appears
+# inside a Deployment doc under any backend — so against $apps_deploys this
+# assertion stays green even if irsa-serviceaccounts.yaml is deleted outright.
+assert_lacks "vault: no IRSA annotation"        'eks\.amazonaws\.com/role-arn' "$apps_sas"
 assert_has   "vault: services still get VAULT_TOKEN" 'VAULT_TOKEN' "$(doc_named Deployment order-service "$apps_out")"
 
 # backend=externalSecrets.
@@ -1352,7 +1356,13 @@ assert_has   "eso: app-config volume is mounted"           'mountPath: /etc/app-
 assert_has   "eso: volume comes from <name>-config"        'secretName: order-service-config' "$aws_os"
 assert_has   "eso: SPRING_CONFIG_IMPORT points at the configtree" \
              'optional:configtree:/etc/app-config/' "$aws_os"
-assert_has   "eso: Spring Cloud Vault is switched off"     'SPRING_CLOUD_VAULT_ENABLED' "$aws_os"
+# Key AND value. A bare key-name match stays green when the value flips to
+# "true" (reproduced: --set apps.defaults.env.SPRING_CLOUD_VAULT_ENABLED=true
+# still renders `value: "true"`) — on EKS, where no Vault exists. BSD `grep -qE`
+# cannot match a literal newline, so squash the two-line env entry onto one line.
+scv_pair="$(awk '/- name: SPRING_CLOUD_VAULT_ENABLED$/ { n = $0; getline; print n " " $0 }' <<<"$aws_os")"
+assert_has   "eso: Spring Cloud Vault is switched off" \
+             'name: SPRING_CLOUD_VAULT_ENABLED +value: "false"' "$scv_pair"
 # Helm deletes a key whose override value is null. If that ever stops holding,
 # every pod would try to reach a Vault that does not exist on EKS.
 assert_lacks "eso: VAULT_TOKEN is deleted, not just disabled" 'VAULT_TOKEN' "$aws_os"
@@ -1574,8 +1584,17 @@ pay="$(doc_named Deployment payment-service "$local_out")"
 # silently calls api-m.paypal.com and fails.
 assert_has   "local: payment-service points at mock-paypal" \
              'mock-paypal-service\.apps\.svc\.cluster\.local:8585' "$pay"
-assert_has   "local: payment-service has PAYPAL_TUNNEL_URL" \
-             'PAYPAL_TUNNEL_URL' "$pay"
+# Assert the key AND its value together. A bare 'PAYPAL_TUNNEL_URL' match proves
+# only that the key exists — the value carries all the meaning, and a blank or
+# wrong host stays green. This is the same value-blind shape that Task 5's review
+# caught on SPRING_CLOUD_VAULT_ENABLED. BSD `grep -qE` cannot match a literal
+# newline across lines, so squash the two-line env entry
+#   - name: PAYPAL_TUNNEL_URL
+#     value: "http://api.microecom.local"
+# onto one line first, exactly as the Task 5 fix does, then assert on that.
+ptu_pair="$(awk '/- name: PAYPAL_TUNNEL_URL$/ { n = $0; getline; print n " " $0 }' <<<"$pay")"
+assert_has   "local: PAYPAL_TUNNEL_URL points at the local ingress host" \
+             'name: PAYPAL_TUNNEL_URL +value: "http://api\.microecom\.local"' "$ptu_pair"
 # Not on AWS, where real PayPal is used.
 assert_lacks "aws: payment-service does NOT point at mock-paypal" \
              'mock-paypal-service\.apps\.svc\.cluster\.local:8585' \
