@@ -92,7 +92,7 @@ One observation, deliberately **not** fixed: mock-paypal-service's `MOCK_PUBLIC_
   - `apps.labels` — `dict "name" <string> "root" $` → the four `app.kubernetes.io/*` label lines (no leading indent; caller uses `nindent`).
   - `apps.selectorLabels` — same dict → the two immutable selector label lines.
   - `apps.container` — `dict "name" <string> "svc" $s "root" $` → the container list item. `$s` must be the **merged** service.
-  - There is deliberately **no** merge helper. A Helm `define` returns a string, not a dict, so the merge cannot be factored out — `deployments.yaml` and `services.yaml` each repeat the merge preamble verbatim. Do not "DRY" it away.
+  - There is deliberately **no** merge helper: a Helm `define` returns a string, not a dict, so the merge cannot be factored out. `deployments.yaml` is the only template that needs it — see Task 2 for why `services.yaml` does not.
 - Values keys later tasks read: `$svc.enabled`, `$svc.hpa`, `$svc.rbac`, `$svc.ingress`, `$svc.static`, `$svc.s3`, `$svc.irsa`, `$svc.serviceAnnotations`, `$svc.servicePort`, `$svc.extraPorts`, `.Values.irsa.s3RoleArn`.
 
 - [ ] **Step 1: Create the subchart `Chart.yaml`**
@@ -716,8 +716,17 @@ git commit -m "feat(helm): apps subchart with value-driven Deployments"
 - Test: `deploy/charts/microecom/tests/render-test.sh`
 
 **Interfaces:**
-- Consumes: `apps.labels`, `apps.selectorLabels` from Task 1; the merge preamble, repeated verbatim.
+- Consumes: `apps.labels`, `apps.selectorLabels` from Task 1. **Not** the merge preamble — see below.
 - Produces: Services named `<service>` with a port named `http` on every one (the Ingress templates in Task 4 bind by `port: { name: http }` for both gateway and frontend, which is why the frontend's port 80 must also be named `http`).
+
+**Why these two templates read raw values, not merged ones:** a Service needs
+`port`, `servicePort`, `extraPorts`, `managementPort` and `serviceAnnotations`;
+an HPA needs `hpa`. **None of those keys exist in `defaults`** — every one is
+per-service by nature — so merging would copy five keys that can never differ
+from their source. Reading `$svc` directly is both shorter and honest about
+where the values come from. `deployments.yaml` is the one template that must
+merge, because it reads `resources`, `probes`, `env`, `replicas` and
+`imagePullPolicy`, all of which do have defaults.
 
 - [ ] **Step 1: Write the failing assertions first**
 
@@ -782,9 +791,16 @@ Expected: the Task 2 section fails (no Service or HPA documents exist yet). Ever
 
 ```gotemplate
 {{- range $name, $svc := .Values.apps }}
-{{/* Same merge preamble as deployments.yaml — see the rationale there. */}}
+{{/*
+  Raw $svc, no merge. Every key a Service reads — port, servicePort, extraPorts,
+  managementPort, serviceAnnotations — is per-service by nature and absent from
+  `defaults`, so a merge would copy five keys that can never differ from their
+  source. If you ever add one of these to `defaults`, add the merge preamble from
+  deployments.yaml here at the same time, or the Service's targetPort and the
+  container's containerPort will silently disagree.
+*/}}
 {{- if $svc.enabled }}
-{{- $s := mergeOverwrite (deepCopy $.Values.defaults) (omit $svc "env") }}
+{{- $s := $svc }}
 ---
 apiVersion: v1
 kind: Service
