@@ -4,7 +4,16 @@ global:
   appImage:
     registry: ""            # filled from terraform output (ECR registry) by the deploy script
     tag: ""                 # filled from the build's git sha
-    pullPolicy: IfNotPresent
+    # No pullPolicy override here (previously IfNotPresent): nothing in the
+    # apps subchart ever read global.appImage.pullPolicy — imagePullPolicy is
+    # sourced from charts/apps/values.yaml's defaults.imagePullPolicy (Always),
+    # hardcoded, on every env. That single source of truth is deliberate:
+    # k8s/apps/base/*/deployment.yaml all hardcode `imagePullPolicy: Always`
+    # and k8s/apps/overlays/aws/* patches NONE of them, so Always is the
+    # Kustomize source of truth's actual AWS behavior too — this chart just
+    # matches it. Switching AWS to IfNotPresent (correct once ECR tags are
+    # immutable git-shas) is a real, deliberate improvement but belongs to the
+    # later AWS cut-over phase, not this transcription branch.
   secret:
     backend: externalSecrets
   ingress:
