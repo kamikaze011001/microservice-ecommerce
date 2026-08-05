@@ -379,7 +379,17 @@ k8s-seed-images:
 # payment-service envFrom it. Kept out of git (k8s/.env is gitignored) and out
 # of Vault. If k8s/.env is missing we create an empty Secret so the optional
 # secretRef resolves (mail/PayPal just stay unset). Idempotent (apply).
+#
+# Ensures the `apps` namespace exists FIRST, idempotently, rather than assuming
+# some other target already created it. This makes the target self-sufficient
+# regardless of which bring-up path (kubectl `k8s-infra` or Helm
+# `k8s-infra-helm`) created the namespace, or whether either has run yet —
+# which is what lets `k8s-apps-helm` below declare this as a real prerequisite.
+# `kubectl apply` on a namespace that already carries another owner's labels
+# (e.g. Helm's) is safe: with no prior last-applied-configuration annotation,
+# the merge only ADDS fields, it never deletes the existing owner's labels.
 k8s-app-secrets:
+	@kubectl create namespace apps --dry-run=client -o yaml | kubectl apply -f -
 	@if [ -f k8s/.env ]; then \
 	  kubectl create secret generic app-secrets --namespace apps \
 	    --from-env-file=k8s/.env --dry-run=client -o yaml | kubectl apply -f - ; \
@@ -411,7 +421,14 @@ k8s-apps-down:
 #   make k8s-apps-helm ENV=aws \
 #     HELM_EXTRA='--set apps.irsa.s3RoleArn=$$(terraform output -raw s3_irsa_role_arn)'
 # Phase 7 moves that into the AWS deploy script; this phase only ever runs local.
-k8s-apps-helm:
+#
+# k8s-app-secrets prerequisite: the apps chart mounts app-secrets with
+# envFrom.secretRef.optional: true, so a missing Secret doesn't crash pods — it
+# silently drops mail and PayPal config. `k8s-apps` (the kubectl path) already
+# declares this; it was missing here. Order-independent now that
+# k8s-app-secrets creates its own namespace (see its recipe above) instead of
+# assuming k8s-infra-helm's templates/namespaces.yaml ran first.
+k8s-apps-helm: k8s-app-secrets
 	@helm upgrade --install microecom deploy/charts/microecom \
 	  --namespace infra --create-namespace \
 	  -f deploy/charts/microecom/envs/$(or $(ENV),local-k8s).yaml \
