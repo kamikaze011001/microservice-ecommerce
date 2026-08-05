@@ -113,6 +113,39 @@ selector_block() {
   ' <<<"$1"
 }
 
+# assert_selector_matches_template <service-name> <deployment-doc>
+#
+# A Deployment whose spec.selector.matchLabels disagrees with its own pod
+# template's labels manages ZERO pods — and spec.selector is immutable, so
+# repair means delete + recreate, not a rolling update. Nothing in
+# render-test.sh asserted this before (confirmed by grep: zero occurrences of
+# `matchLabels` in any assertion). Both fields are correctly templated today;
+# this closes the coverage gap, not a bug.
+#
+# Compares selector_block's matchLabels lines (via the `app.kubernetes.io/`
+# grep, which drops the `selector:`/`matchLabels:` header lines) against the
+# pod template's own labels block. The pod-template labels line is the sole
+# `      labels:` at EXACTLY 6-space indent in a Deployment doc — top-level
+# metadata.labels sits at 2-space indent, so this can't be confused with it —
+# nested under spec.template.metadata; it ends at the next 4-space sibling key
+# (`    spec:`).
+assert_selector_matches_template() {
+  local name="$1" doc="$2"
+  local sel tmpl line trimmed missing=""
+  sel="$(selector_block "$doc" | grep 'app\.kubernetes\.io/')"
+  tmpl="$(awk '/^      labels:$/ { f=1; next } f && /^    [A-Za-z]/ { exit } f' <<<"$doc")"
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    trimmed="$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//')"
+    grep -qF -- "$trimmed" <<<"$tmpl" || missing="$missing [$trimmed]"
+  done <<<"$sel"
+  if [ -z "$missing" ]; then
+    ok  "$name Deployment: matchLabels is contained in its own pod template labels"
+  else
+    bad "$name Deployment: matchLabels has entries NOT in its pod template labels —$missing"
+  fi
+}
+
 # assert_probe <deployment-name> <liveness|readiness> <field> <expected> <text>
 assert_probe() {
   local doc block actual
@@ -588,6 +621,13 @@ done
 gw="$(doc_named Deployment gateway "$apps_out")"
 assert_has   "gateway image comes from the local registry" \
              'image: localhost:5000/gateway:dev' "$gw"
+# imagePullPolicy has ONE source of truth: charts/apps/values.yaml's
+# defaults.imagePullPolicy. There used to be a second, dead knob
+# (global.appImage.pullPolicy, set here and overridden in envs/aws.yaml) that
+# no template ever read (Important #2) — pin the effective value so a future
+# reader can't reintroduce that confusion without a test noticing.
+assert_has   "local-k8s: gateway imagePullPolicy is Always" \
+             'imagePullPolicy: Always' "$gw"
 
 # ── deepCopy contamination guard (design spec §3 rule 1) ────────────────────
 # `range` over a map iterates in SORTED KEY ORDER, so without deepCopy each
@@ -633,8 +673,17 @@ fe="$(doc_named Deployment frontend "$apps_out")"
 assert_lacks "frontend has no env block at all"            '^          - name: JAVA_OPTS$' "$fe"
 assert_lacks "frontend has no management port"             'name: management' "$fe"
 
-# gateway is the only service with SPRING_PROFILES_ACTIVE.
-assert_has   "gateway sets SPRING_PROFILES_ACTIVE=k8s"     'SPRING_PROFILES_ACTIVE' "$gw"
+# gateway is the only service with SPRING_PROFILES_ACTIVE. Check the KEY AND ITS
+# VALUE together, not just the key: a bare key match stays green even if the
+# value were changed to the wrong string or emptied. BSD `grep -qE` cannot match
+# a literal newline across lines, so squash the two-line env entry
+#   - name: SPRING_PROFILES_ACTIVE
+#     value: "k8s"
+# onto one line first, exactly as the SPRING_CLOUD_VAULT_ENABLED (Task 5) and
+# PAYPAL_TUNNEL_URL (Task 6 / local env) fixes do, then assert on that.
+spa_pair="$(awk '/- name: SPRING_PROFILES_ACTIVE$/ { n = $0; getline; print n " " $0 }' <<<"$gw")"
+assert_has   "gateway sets SPRING_PROFILES_ACTIVE=k8s" \
+             'name: SPRING_PROFILES_ACTIVE +value: "k8s"' "$spa_pair"
 assert_lacks "order-service does not set SPRING_PROFILES_ACTIVE" \
              'SPRING_PROFILES_ACTIVE' "$(doc_named Deployment order-service "$apps_out")"
 
@@ -654,6 +703,13 @@ assert_has   "apps objects land in the apps namespace"     '^  namespace: apps$'
 # Any indent, not just 4: pod-template labels sit at 8 spaces, and a bare `app:`
 # there would be just as wrong as one in metadata.
 assert_lacks "no bare app: label anywhere in apps"         '^ +app: ' "$apps_deploys"
+
+# matchLabels coverage (Important #3): a Deployment whose selector disagrees
+# with its own pod template manages zero pods, silently, with no error — and
+# the fix is delete + recreate because spec.selector is immutable. Covers two
+# services, not just one.
+assert_selector_matches_template gateway              "$gw"
+assert_selector_matches_template authorization-server  "$auth"
 
 # Vault backend (default) renders no app-config volume.
 assert_lacks "backend=vault renders no app-config volume"  'app-config' "$apps_deploys"
@@ -707,6 +763,19 @@ gw_hpa="$(doc_named HorizontalPodAutoscaler gateway "$apps_out")"
 assert_has   "gateway HPA maxReplicas 2"                   'maxReplicas: 2' "$gw_hpa"
 assert_has   "gateway HPA targets 60% CPU"                 'averageUtilization: 60' "$gw_hpa"
 assert_has   "gateway HPA scaleDown window is 300s"        'stabilizationWindowSeconds: 300' "$gw_hpa"
+
+# scaleTargetRef.name coverage (Important #3): an HPA whose scaleTargetRef.name
+# is wrong scales NOTHING and reports no error — the failure is silent. Anchored
+# to the 4-space indent under spec.scaleTargetRef specifically (metadata.name
+# sits at 2-space, metrics.resource.name at 8-space, so this can't be confused
+# with either). Covers three of the five HPAs, not just one.
+assert_has   "authorization-server HPA scaleTargetRef names its own Deployment" \
+             '^    name: authorization-server$' "$auth_hpa"
+assert_has   "gateway HPA scaleTargetRef names its own Deployment" \
+             '^    name: gateway$' "$gw_hpa"
+ps_hpa="$(doc_named HorizontalPodAutoscaler product-service "$apps_out")"
+assert_has   "product-service HPA scaleTargetRef names its own Deployment" \
+             '^    name: product-service$' "$ps_hpa"
 
 # ── Phase 3 / Task 3: gateway RBAC ──────────────────────────────────────────
 section "apps subchart — gateway RBAC"
@@ -762,6 +831,10 @@ ALB_ARGS=(-f "$CHART_DIR/envs/aws.yaml"
           --set apps.irsa.s3RoleArn=arn:aws:iam::583178372344:role/microecom-s3)
 aws_out="$(apps_render "${ALB_ARGS[@]}")"
 assert_ok    "aws values render"                           "$aws_out"
+# Same single source of truth as the local-k8s pin above (Important #2): AWS
+# gets no separate imagePullPolicy override, so this must render identically.
+assert_has   "aws: gateway imagePullPolicy is Always (no per-env override exists)" \
+             'imagePullPolicy: Always' "$(doc_named Deployment gateway "$aws_out")"
 aws_ings="$(docs_of_kind Ingress <<<"$aws_out")"
 assert_has   "alb: the ALB Ingress exists"                 '^  name: gateway-alb$' "$aws_ings"
 assert_lacks "alb: no nginx gateway Ingress"               '^  name: gateway$' "$aws_ings"
