@@ -388,8 +388,27 @@ k8s-seed-images:
 # `kubectl apply` on a namespace that already carries another owner's labels
 # (e.g. Helm's) is safe: with no prior last-applied-configuration annotation,
 # the merge only ADDS fields, it never deletes the existing owner's labels.
+#
+# The ownership stamp is load-bearing, not decoration. The umbrella chart also
+# renders this namespace (deploy/charts/microecom/templates/namespaces.yaml,
+# deliberately NOT gated on apps.enabled), and Helm REFUSES to adopt a
+# pre-existing object that lacks these three keys — it aborts the whole install
+# with "cannot be imported into the current release: invalid ownership
+# metadata". Without the stamp, creating the namespace here would break
+# `make k8s-apps-helm` on any cluster where the microecom release does not
+# exist yet. Verified both directions against a live cluster: plain
+# kubectl-created namespace => install aborts; same namespace with these keys
+# => install and a subsequent upgrade both succeed.
+#
+# On the pure kubectl path (`k8s-apps`) no Helm release exists and the keys are
+# inert — Helm deletes what its release manifest lists, never what merely
+# carries a label, so this does not change `helm uninstall` blast radius.
 k8s-app-secrets:
 	@kubectl create namespace apps --dry-run=client -o yaml | kubectl apply -f -
+	@kubectl label namespace apps app.kubernetes.io/managed-by=Helm --overwrite >/dev/null
+	@kubectl annotate namespace apps \
+	  meta.helm.sh/release-name=microecom \
+	  meta.helm.sh/release-namespace=infra --overwrite >/dev/null
 	@if [ -f k8s/.env ]; then \
 	  kubectl create secret generic app-secrets --namespace apps \
 	    --from-env-file=k8s/.env --dry-run=client -o yaml | kubectl apply -f - ; \
