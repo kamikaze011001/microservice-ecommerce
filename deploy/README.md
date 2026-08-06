@@ -83,6 +83,45 @@ removed by this change. They are retired in Phase 8, once both the compose
 and k8s seeding paths have been run against a live backend and proven
 equivalent (Phase 7).
 
+### Verification status
+
+**Offline, all three envs — equivalence proven.** `equivalence-test.sh`
+resolves every service in every env and diffs it against a capture of what
+each old path would write, taken by running the real old scripts with fake
+`vault` / `aws` / `terraform` binaries on `PATH`. 33 passed, 0 failed,
+0 pending. This covers `aws` too, which cannot otherwise be exercised
+without an account.
+
+**Live, compose — transport and content proven end to end.** Seeded with
+`make secrets-seed ENV=compose` against a running dev Vault, then every path
+read back over the HTTP API and compared:
+
+- all 11 paths byte-identical to the golden capture (90 keys);
+- and, because Vault KV v2 keeps versions, a direct comparison of what the
+  **old** `make vault-import` actually wrote (v1) against what the **new**
+  seeder wrote (v2) on the same live backend: **zero value differences, zero
+  keys added, exactly four keys removed** — `_comment`,
+  `_comment_mail_creds`, `_comment_mock_paypal`, `_comment_paypal_creds`.
+
+Those four are inert JSON pseudo-comments. `docker/vault-configs/*.json` has
+no comment syntax, so documentation was written as `_comment`-prefixed keys,
+and `import-secrets.sh` POSTs the file verbatim — so they have always been
+seeded into Vault as properties nothing reads. The canonical YAML carries
+that documentation as real YAML comments instead. This is the one intended
+behavioural difference in the whole phase.
+
+**Not yet proven, deliberately:**
+
+- **`make up` after a compose seed** was not run. The seeded bytes are
+  identical to the old path's apart from four properties no code reads, so
+  service startup cannot differ — but that is an inference, not a
+  measurement.
+- **The k8s transport** (`make secrets-seed ENV=k8s`, which port-forwards to
+  the in-cluster Vault) has not been run against a live cluster.
+- **The aws transport** has never written to AWS Secrets Manager. It is
+  verified only against fixture terraform outputs with a shimmed `aws` CLI.
+  Live AWS seeding is Phase 7.
+
 ## Current minikube workflow
 
 ```bash
