@@ -10,11 +10,18 @@
 The same per-service Spring configuration is maintained by hand in three
 places, one per deployment environment:
 
-| Source | Env | Shape |
-|---|---|---|
-| `docker/vault-configs/*.json` | docker-compose | 11 JSON files, imported into Vault |
-| `k8s/infra/jobs/03-vault-seed/seed.sh` | local k8s (minikube) | 190-line shell script, `put_if_missing` into Vault |
-| `scripts/aws/seed-secrets.sh` | EKS | 203-line shell script, `put` into AWS Secrets Manager |
+| Source | Env | Shape | Transport |
+|---|---|---|---|
+| `docker/vault-configs/*.json` | docker-compose | 11 JSON files | `scripts/vault/import-secrets.sh` POSTs each file verbatim to the Vault **HTTP API** with `curl` |
+| `k8s/infra/jobs/03-vault-seed/seed.sh` | local k8s (minikube) | 190-line shell script | `vault kv put` **CLI**, from an in-cluster Job |
+| `scripts/aws/seed-secrets.sh` | EKS | 203-line shell script | `aws secretsmanager put-secret-value` **CLI**, from the host |
+
+The two Vault environments already disagree about transport as well as content:
+compose talks HTTP, k8s shells out to the `vault` binary inside a Job. The
+`vault` CLI is not installed on the host at all. Note also that compose's
+`import-secrets.sh` maps `ecommerce-common.json` → Vault path `ecommerce`
+(all ten others are 1:1), and that its `POST` **already overwrites** — only the
+k8s path uses `put_if_missing`.
 
 All three are keyed by the exact dotted Spring property name, and roughly 55 of
 the ~100 keys hold the *same literal value* in all three. Every one of those is
@@ -290,8 +297,27 @@ secrets-seed.sh --env=compose|k8s|aws [--dry-run] [--service=NAME]
 ```
 
 - Resolve → push. **Always overwrite**, per decision 2.
-- Backend follows from `--env`: `vault kv put` for compose and k8s,
+- Backend follows from `--env`: the **Vault HTTP API** for compose and k8s,
   `aws secretsmanager put-secret-value` for aws.
+
+### Why the Vault HTTP API, not the `vault` CLI
+
+The two Vault envs use different transports today, and the `vault` binary is
+not installed on the host. Unifying on the HTTP API (`POST
+$VAULT_ADDR/v1/secret/data/<path>`, exactly what compose's `import-secrets.sh`
+already does) gives one push implementation for both envs and adds no new
+host dependency — `curl` is already required.
+
+The consequence is that k8s seeding moves from an **in-cluster Job** to a
+**host-driven** script, which is the direction the parent design specifies
+("canonical seed scripts run outside Helm with `--env`"). `secrets-seed.sh
+--env=k8s` therefore establishes an ephemeral `kubectl port-forward` to
+`svc/vault -n infra` for the duration of the push and tears it down after. The
+existing `03-vault-seed` Job is left in place and untouched until Phase 8.
+
+Resolution is Python (`python3` + `pyyaml`, both already present; `yq` is
+**not** installed) because the canonical files are YAML. Pushing stays bash, so
+the entry points match the repo's existing `deploy/scripts/*.sh` convention.
 - `--dry-run` prints the fully-resolved map as canonical JSON (sorted keys,
   stable formatting) and touches no network. This is the artefact the
   equivalence proof diffs.
@@ -330,14 +356,17 @@ cover AWS at all. This phase splits them.
 
 ### Equivalence — offline, all three envs
 
-Both old scripts are shaped to allow backend shimming: `seed.sh` writes through
-`put_if_missing` → `vault`; `seed-secrets.sh` writes through `put()` → `aws
-secretsmanager`, and reads endpoints via `tf_out()` → `terraform`.
+Each old path yields its intended key→value map without a live backend, by a
+route that suits its shape:
 
-Put fake `vault`, `aws` and `terraform` executables first on `PATH`, run the
-old script, and capture the exact key→value map it *would* have written.
-Run `secrets-seed.sh --dry-run` for the same env. Normalise both to sorted JSON
-and diff.
+| Env | How the golden map is captured |
+|---|---|
+| compose | **No shim needed.** `import-secrets.sh` POSTs each JSON file verbatim, so the map *is* the file content, under the filename→path mapping at `scripts/vault/import-secrets.sh:41-51` |
+| k8s | Put a fake `vault` first on `PATH` and run `seed.sh`; capture the arguments of every `vault kv put` |
+| aws | Put fake `aws` and `terraform` first on `PATH` and run `seed-secrets.sh` with fixture outputs and dummy credentials; capture each `put-secret-value` payload |
+
+Then run `secrets-seed.sh --dry-run` for the same env, normalise both sides to
+sorted JSON, and diff.
 
 This yields a byte-level equivalence assertion for compose, k8s **and AWS
 alike** — including the path that cannot otherwise be exercised — with no
