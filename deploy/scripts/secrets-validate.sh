@@ -6,9 +6,16 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SECRETS="$ROOT/deploy/secrets"
 
+# env → the .env.example that documents THAT env's user-owned credentials.
+# Per-env, not a union: a variable documented in only one env's file is not
+# documented for the other, and check 3 must be able to say so. Overridable so
+# the test suite can point at a corrupted copy.
+ENV_EXAMPLES="compose=$ROOT/docker/.env.example,k8s=$ROOT/k8s/.env.example"
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --secrets-dir) SECRETS="$2"; shift 2 ;;
+    --secrets-dir)  SECRETS="$2"; shift 2 ;;
+    --env-examples) ENV_EXAMPLES="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -16,7 +23,7 @@ done
 PYTHONPATH="$ROOT/deploy/scripts/lib" \
 SECRETS_DIR="$SECRETS" \
 TF_FIXTURE="$ROOT/deploy/secrets/tests/fixtures/terraform-outputs.json" \
-ENV_EXAMPLES="$ROOT/docker/.env.example:$ROOT/k8s/.env.example" \
+ENV_EXAMPLES="$ENV_EXAMPLES" \
 python3 - <<'PY'
 import json, os, pathlib, re, sys
 import yaml
@@ -52,21 +59,62 @@ for env in ENVS:
                 f"by any canonical file — a renamed placeholder left it behind")
 
 # Check 3 — every owner:user variable is documented in the .env.example of each
-# env that delivers credentials by envfrom.
-documented = set()
-for p in os.environ["ENV_EXAMPLES"].split(":"):
-    f = pathlib.Path(p)
-    if f.exists():
-        documented |= set(re.findall(r"^\s*([A-Z_][A-Z0-9_]*)=", f.read_text(), re.M))
-for path in secrets.glob("*.yaml"):
-    raw = yaml.safe_load(path.read_text()) or {}
-    for key, val in raw.items():
-        if isinstance(val, dict) and val.get("owner") == "user":
+# env that delivers credentials by env file.
+#
+# PER-ENV, deliberately. Unioning the two .env.example files made a variable
+# documented in only ONE of them pass for both, which hid a live gap: the mail
+# credentials were listed in k8s/.env.example and absent from docker/.env.example,
+# so a newcomer copying the example to docker/.env got silent mail failure — the
+# exact failure class this whole phase exists to eliminate.
+#
+# Envs whose context sets userCredDelivery other than 'envfrom' (aws, which uses
+# 'backend') are exempt: the value reaches the pod through the secret backend,
+# and no .env.example is involved at all.
+env_examples = {}
+for spec in os.environ["ENV_EXAMPLES"].split(","):
+    if not spec:
+        continue
+    name, _, p = spec.partition("=")
+    env_examples[name] = pathlib.Path(p)
+
+
+def _short(path):
+    # 'docker/.env.example' rather than an absolute path — readable in both the
+    # real tree and a temp copy, and stable across machines.
+    return f"{path.parent.name}/{path.name}"
+
+
+for env in ENVS:
+    ctx = yaml.safe_load((secrets / "contexts" / f"{env}.yaml").read_text()) or {}
+    if ctx.get("userCredDelivery") != "envfrom":
+        continue
+    example = env_examples.get(env)
+    if example is None:
+        problems.append(
+            f"check 3 (contexts/{env}.yaml): userCredDelivery is 'envfrom' but no "
+            f".env.example is mapped for '{env}' — the validator cannot tell "
+            f"whether its credential variables are documented anywhere")
+        continue
+    if not example.exists():
+        problems.append(
+            f"check 3 (contexts/{env}.yaml): userCredDelivery is 'envfrom' but "
+            f"{example} does not exist, so nothing documents '{env}'s credentials")
+        continue
+    documented = set(re.findall(r"^\s*([A-Z_][A-Z0-9_]*)=", example.read_text(), re.M))
+    for path in sorted(secrets.glob("*.yaml")):
+        raw = yaml.safe_load(path.read_text()) or {}
+        for key, val in raw.items():
+            if not isinstance(val, dict) or val.get("owner") != "user":
+                continue
+            envs = val.get("envs")
+            if envs is not None and env not in envs:
+                continue
             for var in ENV_REF.findall(str(val.get("value", ""))):
                 if var not in documented:
                     problems.append(
-                        f"check 3 ({path.name}): key '{key}' needs '{var}', which "
-                        f"no .env.example documents")
+                        f"check 3 ({path.name}): key '{key}' is delivered by env "
+                        f"file on '{env}' and needs '{var}', which "
+                        f"{_short(example)} does not document")
 
 # Check 4 — application.jwk is byte-identical across all three envs.
 jwks = {}

@@ -29,7 +29,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$ROOT/deploy/scripts/lib/colors.sh"
 
 ENV_NAME=""; DRY_RUN=0; SERVICE=""; REFRESH_TF=0; TF_OUTPUTS_OVERRIDE=""
-KUBE_CONTEXT="${KUBE_CONTEXT:-}"
+KUBE_CONTEXT="${KUBE_CONTEXT:-}"; CONTEXT_FLAG_GIVEN=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --env)        ENV_NAME="$2"; shift 2 ;;
@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
     --service)    SERVICE="$2"; shift 2 ;;
     --refresh-tf) REFRESH_TF=1; shift ;;
     --tf-outputs) TF_OUTPUTS_OVERRIDE="$2"; shift 2 ;;
-    --context)    KUBE_CONTEXT="$2"; shift 2 ;;
+    --context)    KUBE_CONTEXT="$2"; CONTEXT_FLAG_GIVEN=1; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -45,6 +45,15 @@ case "$ENV_NAME" in
   compose|k8s|aws) ;;
   *) echo "usage: secrets-seed.sh --env compose|k8s|aws [--dry-run] [--service NAME] [--refresh-tf] [--tf-outputs FILE] [--context NAME]" >&2; exit 2 ;;
 esac
+
+# A kubectl context means nothing to the compose or aws backends. Accepting it
+# silently would leave the user believing they had pinned a target on a seeding
+# tool — a flag that appears to work but does nothing is worse than one that
+# refuses. Note this rejects only the explicit --context; an ambient
+# KUBE_CONTEXT in the environment is ignored for these envs, as it must be.
+if [ "$CONTEXT_FLAG_GIVEN" -eq 1 ] && [ "$ENV_NAME" != "k8s" ]; then
+  echo "--context applies only to --env k8s (got --env $ENV_NAME)" >&2; exit 2
+fi
 
 # ENV=k8s writes to whichever cluster kubectl happens to point at, and there is
 # nothing in a `kubectl port-forward svc/vault -n infra` that says which one.

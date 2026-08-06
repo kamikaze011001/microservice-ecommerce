@@ -17,6 +17,12 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  if grep -qF -- "$2" <<<"$3"; then
+    bad "$1"; printf '       must NOT contain: %s\n       got: %s\n' "$2" "$3"
+  else ok "$1"; fi
+}
+
 copy_tree() { local d="$1"; mkdir -p "$d"; cp -R "$ROOT/deploy/secrets/." "$d/"; rm -rf "$d/tests"; }
 
 echo; printf '\033[1msecrets-validate\033[0m\n'
@@ -60,6 +66,40 @@ YAML
 out="$(bash "$VALIDATE" --secrets-dir "$T" 2>&1)"
 assert_contains "check 3 catches an undocumented credential variable" "NOT_IN_ENV_EXAMPLE" "$out"
 assert_contains "check 3 catches an undocumented credential variable (check-3 prefix)" "check 3 (" "$out"
+rm -rf "$T"
+
+# 3b. check 3 is PER-ENV, not a union of the two .env.example files. Drop the
+# mail line from a COPY of docker/.env.example only: compose must fail (its own
+# file no longer documents it), k8s must not (its file still does), and aws must
+# not either — its context sets userCredDelivery: backend, so the value reaches
+# the pod through the secret backend and no env file is involved at all.
+# Unioning the files is what let the real docker/.env.example ship without any
+# MAIL line while this check stayed green.
+T="$(mktemp -d)"; copy_tree "$T"
+mkdir -p "$T/docker" "$T/k8s"
+cp "$ROOT/docker/.env.example" "$T/docker/.env.example"
+cp "$ROOT/k8s/.env.example" "$T/k8s/.env.example"
+python3 - "$T/docker/.env.example" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+lines = p.read_text().splitlines(True)
+kept = [l for l in lines if not l.startswith("APPLICATION_MAIL_USERNAME=")]
+assert len(kept) == len(lines) - 1, \
+    "fixture assumption broken: docker/.env.example has no APPLICATION_MAIL_USERNAME line"
+p.write_text("".join(kept))
+PY
+out="$(bash "$VALIDATE" --secrets-dir "$T" \
+        --env-examples "compose=$T/docker/.env.example,k8s=$T/k8s/.env.example" 2>&1)"
+assert_contains "check 3 fires per-env when only one .env.example documents the variable" \
+  "APPLICATION_MAIL_USERNAME" "$out"
+assert_contains "check 3 names the env whose file is missing it" "on 'compose'" "$out"
+assert_contains "check 3 names the file that should document it" \
+  "docker/.env.example does not document" "$out"
+assert_contains "check 3 fires per-env (check-3 prefix)" "check 3 (" "$out"
+assert_not_contains "check 3 does NOT fire for aws (userCredDelivery: backend)" \
+  "on 'aws'" "$out"
+assert_not_contains "check 3 does NOT fire for k8s (its own file still documents it)" \
+  "on 'k8s'" "$out"
 rm -rf "$T"
 
 # 4. a JWK that differs between envs

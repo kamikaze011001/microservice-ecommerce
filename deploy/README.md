@@ -40,6 +40,16 @@ make secrets-seed ENV=compose      # resolve, then push to the env's backend
 
 `ENV` is one of `compose`, `k8s`, `aws` (default `compose`).
 
+Each env that delivers user-owned credentials by env file
+(`userCredDelivery: envfrom` — `compose` and `k8s`) must document every
+`owner: user` variable in **its own** `.env.example`: `docker/.env.example` for
+compose, `k8s/.env.example` for k8s. `secrets-validate.sh` check 3 enforces
+this per-env rather than against the union of both files, because a variable
+documented in only one of them is not documented for the other — that union is
+what let the mail credentials ship missing from `docker/.env.example`. `aws` is
+exempt: `userCredDelivery: backend` means the value reaches the pod through AWS
+Secrets Manager and no env file is involved.
+
 A `<file:…>` reference (used by `application.jwk`) must point inside
 `deploy/secrets/`, and its **trailing newlines are stripped**. That is
 deliberate: the gateway caches JWKS by `kid`, so a single newline appended by
