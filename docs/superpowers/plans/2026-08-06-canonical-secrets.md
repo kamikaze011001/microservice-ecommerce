@@ -444,7 +444,9 @@ A pure function from (canonical YAML + context + environment) to a flat map. No 
   ```
   stdout: `{"<service>": {"<key>": "<value>"}}`, sorted keys, 2-space indent, trailing newline — **byte-identical in shape to Task 1's goldens**. Exit 0 on success; on failure, exit 1 with a `secrets-resolve: `-prefixed message on stderr and **no stdout output**.
 
-  Python API imported by Task 5's validator, exactly these names: `resolve_all(secrets_dir: Path, env: str, tf_outputs: dict | None = None, only: str | None = None) -> dict[str, dict[str, str]]`, `load_tf_outputs(path: str | None) -> dict | None`, and the module constants `CTX_REF`, `ENV_REF`, `TF_REF` (compiled `re.Pattern`), `ENVS` (tuple), `RESERVED_CONTEXT_KEYS` (set).
+  Python API imported by Task 5's validator, exactly these names: `resolve_all(secrets_dir: Path, env: str, tf_outputs: dict | None = None, only: str | None = None, stub_env: bool = False) -> dict[str, dict[str, str]]`, `load_tf_outputs(path: str | None) -> dict | None`, and the module constants `CTX_REF`, `ENV_REF`, `TF_REF` (compiled `re.Pattern`), `ENVS` (tuple), `RESERVED_CONTEXT_KEYS` (set).
+
+  `stub_env=True` (CLI: `--stub-env`) replaces every `${VAR}` with `<stub:VAR>` instead of reading the environment. Task 5's validator **must** use it: `secrets-validate.sh` is specified to need no credentials, and without stubbing, validating the aws tree would fail on an unset `PAYPAL_CLIENT_SECRET` — a false positive that would get the guard disabled. Seeding must **never** use it.
 
 - [ ] **Step 1: Write the failing test harness**
 
@@ -584,6 +586,14 @@ assert_contains "missing <file:> ref names the path" \
 outonly="$(python3 "$RESOLVER" --secrets-dir "$missing_ctx" --env compose 2>/dev/null)"
 assert_eq "failed resolve writes nothing to stdout" "" "$outonly"
 
+# 12. --stub-env resolves with NO credentials in the environment. This is what
+#     lets secrets-validate.sh run in CI with nothing configured; without it,
+#     validating the aws tree would demand a real PayPal secret.
+out_stub="$(env -u DEMO_SECRET python3 "$RESOLVER" --secrets-dir "$TMP" \
+             --env aws --tf-outputs "$TF" --stub-env 2>&1)"
+assert_eq "--stub-env substitutes a placeholder for an unset variable" \
+  "<stub:DEMO_SECRET>" "$(jq -r '.demo["user.key"]' <<<"$out_stub")"
+
 echo
 printf '%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
@@ -686,7 +696,7 @@ def _entry(raw):
     return ("" if raw is None else str(raw)), None, "config"
 
 
-def _substitute(value, key, where, context, secrets_dir):
+def _substitute(value, key, where, context, secrets_dir, stub_env=False):
     match = FILE_REF.match(value)
     if match:
         target = secrets_dir / match.group(1)
@@ -705,6 +715,12 @@ def _substitute(value, key, where, context, secrets_dir):
 
     def env(m):
         name = m.group(1)
+        # stub_env is what lets secrets-validate.sh run with NO credentials
+        # configured: it checks structure, not values, so a real PayPal secret
+        # must not be a precondition for validating the tree. Seeding never
+        # uses it — an unset variable there is a hard failure, as it must be.
+        if stub_env:
+            return f"<stub:{name}>"
         if name not in os.environ:
             _fail(where, key, f"environment variable '{name}' is not set")
         return os.environ[name]
@@ -712,7 +728,7 @@ def _substitute(value, key, where, context, secrets_dir):
     return ENV_REF.sub(env, CTX_REF.sub(ctx, value))
 
 
-def resolve_service(secrets_dir, service, env, context):
+def resolve_service(secrets_dir, service, env, context, stub_env=False):
     path = secrets_dir / f"{service}.yaml"
     raw = yaml.safe_load(path.read_text()) or {}
     where = path.name
@@ -723,7 +739,7 @@ def resolve_service(secrets_dir, service, env, context):
             continue
         if owner == "user" and context.get("userCredDelivery") != "backend":
             continue
-        out[key] = _substitute(value, key, where, context, secrets_dir)
+        out[key] = _substitute(value, key, where, context, secrets_dir, stub_env)
     return out
 
 
@@ -731,10 +747,10 @@ def service_names(secrets_dir):
     return sorted(p.stem for p in secrets_dir.glob("*.yaml"))
 
 
-def resolve_all(secrets_dir, env, tf_outputs=None, only=None):
+def resolve_all(secrets_dir, env, tf_outputs=None, only=None, stub_env=False):
     context = load_context(secrets_dir, env, tf_outputs)
     names = [only] if only else service_names(secrets_dir)
-    return {name: resolve_service(secrets_dir, name, env, context)
+    return {name: resolve_service(secrets_dir, name, env, context, stub_env)
             for name in names}
 
 
@@ -744,12 +760,15 @@ def main():
     ap.add_argument("--secrets-dir", default="deploy/secrets", type=pathlib.Path)
     ap.add_argument("--service")
     ap.add_argument("--tf-outputs")
+    ap.add_argument("--stub-env", action="store_true",
+                    help="replace ${VAR} with <stub:VAR> instead of reading the "
+                         "environment; for validation, never for seeding")
     args = ap.parse_args()
 
     try:
         result = resolve_all(
             args.secrets_dir, args.env,
-            load_tf_outputs(args.tf_outputs), args.service,
+            load_tf_outputs(args.tf_outputs), args.service, args.stub_env,
         )
     except ResolveError as exc:
         # stderr only — a failed resolve must emit NOTHING on stdout, so a
@@ -768,7 +787,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `bash deploy/secrets/tests/resolver-test.sh`
-Expected: `11 passed, 0 failed`
+Expected: `15 passed, 0 failed`
 
 - [ ] **Step 5: Commit**
 
@@ -1278,7 +1297,7 @@ problems = []
 # This is the check that would have caught the missing spring.data.mongodb.database.
 for env in ENVS:
     try:
-        resolve_all(secrets, env, tf)
+        resolve_all(secrets, env, tf, stub_env=True)
     except Exception as exc:
         problems.append(f"check 1 ({env}): {exc}")
 
@@ -1318,7 +1337,7 @@ for path in secrets.glob("*.yaml"):
 jwks = {}
 for env in ENVS:
     try:
-        jwks[env] = resolve_all(secrets, env, tf)["authorization-server"].get("application.jwk")
+        jwks[env] = resolve_all(secrets, env, tf, stub_env=True)["authorization-server"].get("application.jwk")
     except Exception:
         jwks[env] = None
 if len(set(jwks.values())) != 1:
@@ -1587,7 +1606,7 @@ bash deploy/secrets/tests/validate-test.sh
 bash deploy/secrets/tests/equivalence-test.sh
 bash deploy/charts/microecom/tests/render-test.sh 2>&1 | tail -3
 ```
-Expected: `11 passed, 0 failed`; `6 passed, 0 failed`; `33 passed, 0 failed, 0 pending`; and the Helm suite still `268 passed, 0 failed` — this phase must not touch the chart.
+Expected: `15 passed, 0 failed`; `6 passed, 0 failed`; `33 passed, 0 failed, 0 pending`; and the Helm suite still `268 passed, 0 failed` — this phase must not touch the chart.
 
 - [ ] **Step 2: Confirm the constraint that defines this phase**
 
@@ -1681,7 +1700,7 @@ AWS transport remains unproven and is explicitly Phase 7's."
 
 ## Acceptance Criteria
 
-- [ ] `bash deploy/secrets/tests/resolver-test.sh` → `11 passed, 0 failed`
+- [ ] `bash deploy/secrets/tests/resolver-test.sh` → `15 passed, 0 failed`
 - [ ] `bash deploy/secrets/tests/validate-test.sh` → `6 passed, 0 failed`
 - [ ] `bash deploy/secrets/tests/equivalence-test.sh` → `33 passed, 0 failed, 0 pending`
 - [ ] `bash deploy/charts/microecom/tests/render-test.sh` → `268 passed, 0 failed`
