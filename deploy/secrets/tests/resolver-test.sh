@@ -28,6 +28,15 @@ assert_contains() {
   fi
 }
 
+# assert_not_contains <description> <needle> <haystack>
+assert_not_contains() {
+  if grep -qF -- "$2" <<<"$3"; then
+    bad "$1"; printf '       must NOT contain: %s\n       in: %s\n' "$2" "$3"
+  else
+    ok "$1"
+  fi
+}
+
 # mktree <dir> — a minimal secrets tree exercising every syntax
 mktree() {
   local d="$1"
@@ -126,6 +135,23 @@ printf 'userCredDelivery: envfrom\n' > "$nofile/contexts/compose.yaml"
 err="$(python3 "$RESOLVER" --secrets-dir "$nofile" --env compose 2>&1)"
 assert_contains "missing <file:> ref names the path" \
   "file ref 'absent.txt' not found" "$err"
+
+# a malformed expanded entry (no 'value' key) names the offending key and
+# file — and must NOT dump the entry's own content into the error, since
+# that content can be an in-progress secret value. Regression test for the
+# leak path where _entry() used to interpolate {raw!r} directly.
+badentry="$TMP/badentry"; mkdir -p "$badentry/contexts"
+cat > "$badentry/demo.yaml" <<'YAML'
+malformed.key:
+  owner: config
+  leaked: "should-never-appear-in-an-error-message"
+YAML
+printf 'userCredDelivery: envfrom\n' > "$badentry/contexts/compose.yaml"
+err="$(python3 "$RESOLVER" --secrets-dir "$badentry" --env compose 2>&1)"
+assert_contains "malformed expanded entry names the key and file" \
+  "demo.yaml: key 'malformed.key': expanded entry is missing 'value'" "$err"
+assert_not_contains "malformed expanded entry error does not leak entry content" \
+  "should-never-appear-in-an-error-message" "$err"
 
 # 11. a failing resolve emits NOTHING on stdout (no partial output)
 outonly="$(python3 "$RESOLVER" --secrets-dir "$missing_ctx" --env compose 2>/dev/null)"

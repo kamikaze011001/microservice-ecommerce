@@ -76,11 +76,11 @@ def load_tf_outputs(path):
             for k, v in data.items()}
 
 
-def _entry(raw):
+def _entry(raw, key, where):
     """Normalise a canonical value into (value, envs_or_None, owner)."""
     if isinstance(raw, dict):
         if "value" not in raw:
-            raise ResolveError(f"expanded entry is missing 'value': {raw!r}")
+            _fail(where, key, "expanded entry is missing 'value'")
         return str(raw["value"]), raw.get("envs"), raw.get("owner", "config")
     return ("" if raw is None else str(raw)), None, "config"
 
@@ -123,7 +123,7 @@ def resolve_service(secrets_dir, service, env, context, stub_env=False):
     where = path.name
     out = {}
     for key, rawval in raw.items():
-        value, envs, owner = _entry(rawval)
+        value, envs, owner = _entry(rawval, key, where)
         if envs is not None and env not in envs:
             continue
         if owner == "user" and context.get("userCredDelivery") != "backend":
