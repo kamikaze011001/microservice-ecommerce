@@ -3,6 +3,13 @@
 #
 #   deploy/scripts/secrets-seed.sh --env compose|k8s|aws [--dry-run]
 #                                  [--service NAME] [--refresh-tf]
+#                                  [--tf-outputs FILE]
+#
+# --tf-outputs FILE overrides the deploy/.run/terraform-outputs.json cache
+# for ENV=aws and skips the terraform block entirely — this is the offline/CI
+# path, and it applies whether or not --dry-run is also given. Without it,
+# behaviour is unchanged: generate the cache when missing, warn past 24h old,
+# never auto-refresh.
 #
 # ALWAYS OVERWRITES. The canonical file is authoritative: a value edited there
 # reaches the backend on the next run, and a value hand-edited in the backend
@@ -17,36 +24,44 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$ROOT/deploy/scripts/lib/colors.sh"
 
-ENV_NAME=""; DRY_RUN=0; SERVICE=""; REFRESH_TF=0
+ENV_NAME=""; DRY_RUN=0; SERVICE=""; REFRESH_TF=0; TF_OUTPUTS_OVERRIDE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --env)        ENV_NAME="$2"; shift 2 ;;
     --dry-run)    DRY_RUN=1; shift ;;
     --service)    SERVICE="$2"; shift 2 ;;
     --refresh-tf) REFRESH_TF=1; shift ;;
+    --tf-outputs) TF_OUTPUTS_OVERRIDE="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 case "$ENV_NAME" in
   compose|k8s|aws) ;;
-  *) echo "usage: secrets-seed.sh --env compose|k8s|aws [--dry-run] [--service NAME] [--refresh-tf]" >&2; exit 2 ;;
+  *) echo "usage: secrets-seed.sh --env compose|k8s|aws [--dry-run] [--service NAME] [--refresh-tf] [--tf-outputs FILE]" >&2; exit 2 ;;
 esac
 
-TF_CACHE="$ROOT/deploy/.run/terraform-outputs.json"
 TF_ARGS=()
 if [ "$ENV_NAME" = "aws" ]; then
-  mkdir -p "$ROOT/deploy/.run"
-  if [ "$REFRESH_TF" -eq 1 ] || [ ! -f "$TF_CACHE" ]; then
-    log_info "generating $TF_CACHE from terraform"
-    terraform -chdir="$ROOT/aws/main" output -json > "$TF_CACHE" \
-      || { log_err "terraform output failed — run 'terraform apply' first"; exit 1; }
-  elif [ -n "$(find "$TF_CACHE" -mmin +1440 2>/dev/null)" ]; then
-    # Warn, never auto-refresh: aws/main keeps state in an S3 remote backend
-    # (aws/main/versions.tf:22), so there is no local file to compare against,
-    # and an implicit terraform call mid-seed is the coupling this design removes.
-    log_warn "$TF_CACHE is over 24h old — pass --refresh-tf if terraform has changed"
+  if [ -n "$TF_OUTPUTS_OVERRIDE" ]; then
+    # Explicit override: the offline/CI path. Use this file verbatim and
+    # never invoke terraform — this is what makes a resolve (dry-run or not)
+    # unconditionally offline instead of depending on a magic cache path.
+    TF_ARGS=(--tf-outputs "$TF_OUTPUTS_OVERRIDE")
+  else
+    TF_CACHE="$ROOT/deploy/.run/terraform-outputs.json"
+    mkdir -p "$ROOT/deploy/.run"
+    if [ "$REFRESH_TF" -eq 1 ] || [ ! -f "$TF_CACHE" ]; then
+      log_info "generating $TF_CACHE from terraform"
+      terraform -chdir="$ROOT/aws/main" output -json > "$TF_CACHE" \
+        || { log_err "terraform output failed — run 'terraform apply' first"; exit 1; }
+    elif [ -n "$(find "$TF_CACHE" -mmin +1440 2>/dev/null)" ]; then
+      # Warn, never auto-refresh: aws/main keeps state in an S3 remote backend
+      # (aws/main/versions.tf:22), so there is no local file to compare against,
+      # and an implicit terraform call mid-seed is the coupling this design removes.
+      log_warn "$TF_CACHE is over 24h old — pass --refresh-tf if terraform has changed"
+    fi
+    TF_ARGS=(--tf-outputs "$TF_CACHE")
   fi
-  TF_ARGS=(--tf-outputs "$TF_CACHE")
 fi
 
 RESOLVED="$(mktemp)"; trap 'rm -f "$RESOLVED"' EXIT
@@ -65,11 +80,14 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 vault_push() {  # vault_push <addr> <token>
-  local addr="$1" token="$2" svc payload
+  # Payload goes to curl over stdin (--data @-), never as a CLI argument —
+  # argv is world-readable via ps/ /proc for the life of the subprocess, and
+  # this whole tool exists to handle secrets.
+  local addr="$1" token="$2" svc
   for svc in $(jq -r 'keys[]' "$RESOLVED"); do
-    payload="$(jq --arg s "$svc" '{data: .[$s]}' "$RESOLVED")"
-    curl -sf -X POST -H "X-Vault-Token: $token" -d "$payload" \
-      "$addr/v1/secret/data/$svc" >/dev/null \
+    jq --arg s "$svc" '{data: .[$s]}' "$RESOLVED" \
+      | curl -sf -X POST -H "X-Vault-Token: $token" --data @- \
+          "$addr/v1/secret/data/$svc" >/dev/null \
       || { log_err "vault write failed for secret/$svc"; return 1; }
     log_ok "secret/$svc"
   done
@@ -78,7 +96,8 @@ vault_push() {  # vault_push <addr> <token>
 case "$ENV_NAME" in
   compose)
     # load_vault_token() lives in scripts/lib/env.sh (NOT a vault-token.sh) and
-    # reads VAULT_TOKEN out of docker/.env, which vault-init.sh keeps in sync.
+    # reads VAULT_TOKEN out of vault-keys.json's root_token. `make bootstrap`
+    # creates that file — the function's own error message says so.
     . "$ROOT/scripts/lib/env.sh" && load_vault_token 2>/dev/null || true
     : "${VAULT_TOKEN:?VAULT_TOKEN not set — run 'make vault-login' or set it}"
     vault_push "${VAULT_ADDR:-http://localhost:8200}" "$VAULT_TOKEN" || exit 1
@@ -100,10 +119,19 @@ case "$ENV_NAME" in
     ;;
   aws)
     region="${AWS_REGION:-ap-southeast-1}"
+    # Per-service payload goes to a mode-600 temp file, read via file:// —
+    # never as a --secret-string CLI argument, which would put the resolved
+    # value in argv for the life of the aws subprocess. Created (mktemp, then
+    # chmod) before anything is written to it; this trap supersedes the one
+    # installed right after $RESOLVED was created, so it now removes both on
+    # every exit path.
+    SVC_FILE="$(mktemp)"; chmod 600 "$SVC_FILE"
+    trap 'rm -f "$RESOLVED" "$SVC_FILE"' EXIT
     for svc in $(jq -r 'keys[]' "$RESOLVED"); do
+      jq -c --arg s "$svc" '.[$s]' "$RESOLVED" > "$SVC_FILE"
       aws secretsmanager put-secret-value --region "$region" \
         --secret-id "app/$svc" \
-        --secret-string "$(jq -c --arg s "$svc" '.[$s]' "$RESOLVED")" >/dev/null \
+        --secret-string "file://$SVC_FILE" >/dev/null \
         || { log_err "secret app/$svc not found — run 'terraform apply' first"; exit 1; }
       log_ok "app/$svc"
     done

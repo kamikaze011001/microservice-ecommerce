@@ -68,6 +68,14 @@ Per-env specifics:
   ```bash
   bash deploy/scripts/secrets-seed.sh --env aws --refresh-tf
   ```
+  Any resolve against `ENV=aws` — including `--dry-run` — needs terraform
+  outputs from somewhere: pass `--tf-outputs FILE` to point at one directly
+  and skip the cache (and terraform) entirely, which is how an offline or CI
+  run avoids touching terraform at all:
+  ```bash
+  bash deploy/scripts/secrets-seed.sh --env aws --dry-run \
+    --tf-outputs deploy/secrets/tests/fixtures/terraform-outputs.json
+  ```
 
 The old paths — `make vault-import`, the `03-vault-seed` Job, and
 `scripts/aws/seed-secrets.sh` — still work today and are **not** being
