@@ -22,6 +22,59 @@ deploy/
 └── images/             # image build definitions
 ```
 
+## Canonical secrets (`deploy/secrets/`)
+
+`deploy/secrets/<service>.yaml` plus `deploy/secrets/contexts/<env>.yaml` are
+the single source of truth for the ~90 Spring config keys previously hand-kept
+in sync across `docker/vault-configs/*.json`, `k8s/infra/jobs/03-vault-seed/`,
+and `scripts/aws/seed-secrets.sh`. Three targets operate on this tree:
+
+```bash
+make secrets-validate              # consistency checks only — no backend,
+                                    # no credentials, safe to run anywhere
+make secrets-render ENV=compose    # resolve only — writes
+                                    # deploy/.run/secrets-<env>.json (mode 600),
+                                    # touches no backend
+make secrets-seed ENV=compose      # resolve, then push to the env's backend
+```
+
+`ENV` is one of `compose`, `k8s`, `aws` (default `compose`).
+
+**`secrets-seed` always overwrites.** This is a deliberate design decision,
+not an oversight: the canonical file is authoritative, so a value hand-edited
+directly in Vault or AWS Secrets Manager does **not** survive the next seed —
+it is silently replaced by whatever `deploy/secrets/` currently resolves to.
+If you need a value to persist, put it in the canonical file, not the
+backend. There is no "skip if exists" mode.
+
+Per-env specifics:
+
+- **`ENV=compose`** pushes to the local Vault (`VAULT_ADDR`, default
+  `http://localhost:8200`) over its HTTP API. It needs `VAULT_TOKEN` in the
+  environment — run `make vault-login` first, or export it yourself.
+- **`ENV=k8s`** opens a temporary `kubectl -n infra port-forward svc/vault
+  18200:8200` for the duration of the push and tears it down on exit
+  (success, failure, or interrupt). The in-cluster Vault runs in dev mode
+  with the fixed root token `root`, so no token lookup is needed unless you
+  override `VAULT_TOKEN` yourself.
+- **`ENV=aws`** reads `deploy/.run/terraform-outputs.json`, a cached copy of
+  `terraform output -json` from `aws/main` (which keeps its real state in an
+  S3 remote backend — there is no local file whose mtime can be trusted
+  automatically). The cache is generated on first use and warned about once
+  it is over 24h old, but never auto-refreshed — an implicit `terraform`
+  call mid-seed is exactly the coupling this design removes. The Makefile
+  target does not expose `--refresh-tf`; call the script directly to force a
+  refresh:
+  ```bash
+  bash deploy/scripts/secrets-seed.sh --env aws --refresh-tf
+  ```
+
+The old paths — `make vault-import`, the `03-vault-seed` Job, and
+`scripts/aws/seed-secrets.sh` — still work today and are **not** being
+removed by this change. They are retired in Phase 8, once both the compose
+and k8s seeding paths have been run against a live backend and proven
+equivalent (Phase 7).
+
 ## Current minikube workflow
 
 ```bash
