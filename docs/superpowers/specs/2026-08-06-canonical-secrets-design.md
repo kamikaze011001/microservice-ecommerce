@@ -373,14 +373,21 @@ alike** — including the path that cannot otherwise be exercised — with no
 cluster, no AWS account, and no spend. Being deterministic, it lands as a
 regression test rather than a one-time manual check.
 
-**Expected non-empty diff.** The first run will not be clean, for two known
-reasons, and each expected difference must be enumerated and justified in the
-task report rather than waved past:
+**The target is an empty diff**, for all three envs. Two caveats that would
+otherwise weaken it are removed by construction:
 
-- `put_if_missing` skips already-seeded paths, so the old k8s capture reflects
-  *intent* rather than what a live Vault holds.
-- The AWS-only keys sourced from `terraform output` are compared against
-  fixture values, not real infrastructure.
+- `put_if_missing` gates each path on a preceding `vault kv get`. The fake
+  `vault` returns **non-zero for every `kv get`**, so every `put` executes and
+  the capture records the script's full intent rather than whatever a
+  partially-seeded Vault happens to hold.
+- The AWS keys sourced from `terraform output` are resolved from the *same*
+  fixture file on both sides, so they compare equal without needing real
+  infrastructure. The fixture proves wiring, not endpoint correctness — real
+  endpoints are Phase 7's business.
+
+Any non-empty diff entry is therefore either a defect in the canonical files or
+a deliberate judgment call, and each one must be enumerated and justified in
+the task report rather than waved past.
 
 ### Transport — live, compose and k8s only
 
