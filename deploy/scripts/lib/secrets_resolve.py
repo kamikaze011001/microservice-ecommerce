@@ -14,6 +14,10 @@ kind of input is missing:
     ${ENV_VAR}         the process environment   — canonical files only
     <file:name>        a file under the secrets dir — canonical files only
     <terraform:name>   the terraform outputs cache — CONTEXT files only
+
+A <file:> ref must resolve to a path INSIDE the secrets dir, and its trailing
+newlines are stripped: the resolved value is a function of the file's content,
+not of whether an editor left a final newline on it. See _substitute().
 """
 import argparse
 import json
@@ -88,11 +92,26 @@ def _entry(raw, key, where):
 def _substitute(value, key, where, context, secrets_dir, stub_env=False):
     match = FILE_REF.match(value)
     if match:
-        target = secrets_dir / match.group(1)
+        rel = match.group(1)
+        base = secrets_dir.resolve()
+        target = (secrets_dir / rel).resolve()
+        # Containment: a canonical file is maintainer-authored, but nothing in
+        # the syntax stops '<file:../../etc/passwd>' from reaching outside the
+        # tree this tool is supposed to be a closed function of. Refuse it.
+        if not target.is_relative_to(base):
+            _fail(where, key,
+                  f"file ref '{rel}' escapes the secrets dir {base}")
         if not target.exists():
             _fail(where, key,
-                  f"file ref '{match.group(1)}' not found under {secrets_dir}")
-        return target.read_text()
+                  f"file ref '{rel}' not found under {secrets_dir}")
+        # rstrip('\n'), not read_text(): a lone trailing newline appended by an
+        # editor-on-save or an `echo >>` would otherwise change the resolved
+        # value in ALL THREE envs at once. secrets-validate.sh check 4 — the
+        # guard for exactly this key — only compares the envs against each
+        # other, so it would stay green while every issued token became
+        # unverifiable (the gateway caches JWKS by kid). Newline-insensitive
+        # here means the invariant cannot be broken by whitespace at all.
+        return target.read_text().rstrip("\n")
 
     def ctx(m):
         name = m.group(1)
@@ -119,6 +138,13 @@ def _substitute(value, key, where, context, secrets_dir, stub_env=False):
 
 def resolve_service(secrets_dir, service, env, context, stub_env=False):
     path = secrets_dir / f"{service}.yaml"
+    if not path.exists():
+        # --service typo'd or pointed at a service with no canonical file yet:
+        # fail through the normal error path (stderr, empty stdout, exit 1)
+        # rather than as an uncaught FileNotFoundError traceback.
+        raise ResolveError(
+            f"no canonical file for service '{service}': "
+            f"{path.name} does not exist under {secrets_dir}")
     raw = yaml.safe_load(path.read_text()) or {}
     where = path.name
     out = {}

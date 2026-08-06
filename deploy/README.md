@@ -40,6 +40,13 @@ make secrets-seed ENV=compose      # resolve, then push to the env's backend
 
 `ENV` is one of `compose`, `k8s`, `aws` (default `compose`).
 
+A `<file:…>` reference (used by `application.jwk`) must point inside
+`deploy/secrets/`, and its **trailing newlines are stripped**. That is
+deliberate: the gateway caches JWKS by `kid`, so a single newline appended by
+an editor-on-save would invalidate every token in the system — and it would do
+so in all three envs at once, which is exactly the case `secrets-validate.sh`
+check 4 (envs compared against each other) cannot see.
+
 **`secrets-seed` always overwrites.** This is a deliberate design decision,
 not an oversight: the canonical file is authoritative, so a value hand-edited
 directly in Vault or AWS Secrets Manager does **not** survive the next seed —
@@ -57,6 +64,26 @@ Per-env specifics:
   (success, failure, or interrupt). The in-cluster Vault runs in dev mode
   with the fixed root token `root`, so no token lookup is needed unless you
   override `VAULT_TOKEN` yourself.
+
+  **You must name the target cluster.** Seeding writes to whatever cluster
+  kubectl points at, and an ambient `current-context` left over from
+  unrelated work is a real hazard — during this branch's own verification it
+  happened to be a production-adjacent managed cluster. So the context is
+  never inferred: pass `--context NAME` or set `KUBE_CONTEXT`, and if it does
+  not match `kubectl config current-context` the seed refuses and exits
+  non-zero before touching anything. There is no default — no context name
+  this repo could assume would be safe. The same name is passed to
+  `kubectl port-forward`, so the context checked and the context written to
+  cannot diverge.
+
+  ```bash
+  make secrets-seed ENV=k8s KUBE_CONTEXT=microecom
+  # or
+  bash deploy/scripts/secrets-seed.sh --env k8s --context microecom
+  ```
+
+  `--dry-run` (`make secrets-render ENV=k8s`) touches no cluster and is
+  exempt.
 - **`ENV=aws`** reads `deploy/.run/terraform-outputs.json`, a cached copy of
   `terraform output -json` from `aws/main` (which keeps its real state in an
   S3 remote backend — there is no local file whose mtime can be trusted

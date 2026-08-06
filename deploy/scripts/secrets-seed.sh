@@ -3,7 +3,11 @@
 #
 #   deploy/scripts/secrets-seed.sh --env compose|k8s|aws [--dry-run]
 #                                  [--service NAME] [--refresh-tf]
-#                                  [--tf-outputs FILE]
+#                                  [--tf-outputs FILE] [--context NAME]
+#
+# --context NAME (or KUBE_CONTEXT=NAME) is REQUIRED for --env k8s and names the
+# kubectl context this seed is allowed to write to. See the k8s branch below
+# for why an ambient current-context is not good enough.
 #
 # --tf-outputs FILE overrides the deploy/.run/terraform-outputs.json cache
 # for ENV=aws and skips the terraform block entirely — this is the offline/CI
@@ -25,6 +29,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$ROOT/deploy/scripts/lib/colors.sh"
 
 ENV_NAME=""; DRY_RUN=0; SERVICE=""; REFRESH_TF=0; TF_OUTPUTS_OVERRIDE=""
+KUBE_CONTEXT="${KUBE_CONTEXT:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --env)        ENV_NAME="$2"; shift 2 ;;
@@ -32,13 +37,36 @@ while [ $# -gt 0 ]; do
     --service)    SERVICE="$2"; shift 2 ;;
     --refresh-tf) REFRESH_TF=1; shift ;;
     --tf-outputs) TF_OUTPUTS_OVERRIDE="$2"; shift 2 ;;
+    --context)    KUBE_CONTEXT="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 case "$ENV_NAME" in
   compose|k8s|aws) ;;
-  *) echo "usage: secrets-seed.sh --env compose|k8s|aws [--dry-run] [--service NAME] [--refresh-tf] [--tf-outputs FILE]" >&2; exit 2 ;;
+  *) echo "usage: secrets-seed.sh --env compose|k8s|aws [--dry-run] [--service NAME] [--refresh-tf] [--tf-outputs FILE] [--context NAME]" >&2; exit 2 ;;
 esac
+
+# ENV=k8s writes to whichever cluster kubectl happens to point at, and there is
+# nothing in a `kubectl port-forward svc/vault -n infra` that says which one.
+# An ambient current-context left over from unrelated work (a production-
+# adjacent managed cluster, say) is a live footgun, so the target is never
+# inferred: name it with --context/KUBE_CONTEXT and it is checked against
+# current-context before a single byte moves. Refusing is the correct default —
+# there is no context name this repo can safely assume. --dry-run touches no
+# cluster, so it is exempt.
+if [ "$ENV_NAME" = "k8s" ] && [ "$DRY_RUN" -eq 0 ]; then
+  if [ -z "$KUBE_CONTEXT" ]; then
+    log_err "ENV=k8s needs an explicit kubectl context: pass --context NAME or set KUBE_CONTEXT"
+    log_err "current context is '$(kubectl config current-context 2>/dev/null || echo '<none>')' — seeding refuses to guess"
+    exit 1
+  fi
+  CURRENT_CONTEXT="$(kubectl config current-context 2>/dev/null || true)"
+  if [ "$CURRENT_CONTEXT" != "$KUBE_CONTEXT" ]; then
+    log_err "refusing to seed: requested context '$KUBE_CONTEXT' but kubectl's current context is '${CURRENT_CONTEXT:-<none>}'"
+    log_err "run 'kubectl config use-context $KUBE_CONTEXT' first, or correct --context/KUBE_CONTEXT"
+    exit 1
+  fi
+fi
 
 TF_ARGS=()
 if [ "$ENV_NAME" = "aws" ]; then
@@ -73,7 +101,12 @@ python3 "$ROOT/deploy/scripts/lib/secrets_resolve.py" \
 
 if [ "$DRY_RUN" -eq 1 ]; then
   out="$ROOT/deploy/.run/secrets-$ENV_NAME.json"
-  mkdir -p "$ROOT/deploy/.run"; cp "$RESOLVED" "$out"; chmod 600 "$out"
+  mkdir -p "$ROOT/deploy/.run"
+  # umask BEFORE the copy, not chmod after it: this file holds every resolved
+  # secret, and a create-then-chmod leaves a window where it is world-readable.
+  # The chmod still runs, to also narrow a pre-existing file cp would inherit
+  # the mode of.
+  (umask 077; cp "$RESOLVED" "$out") && chmod 600 "$out"
   # The path, never the content — this file holds resolved secrets.
   log_ok "resolved map written to $out ($(jq -r 'keys | length' "$out") services)"
   exit 0
@@ -109,7 +142,11 @@ case "$ENV_NAME" in
     # The in-cluster Vault runs in dev mode with the literal root token `root`
     # (k8s/infra/jobs/03-vault-seed/job.yaml:19), so this needs no lookup.
     : "${VAULT_TOKEN:=root}"
-    kubectl -n infra port-forward svc/vault 18200:8200 >/dev/null 2>&1 &
+    # --context is passed explicitly, so the context that was checked above and
+    # the context actually written to cannot diverge (a concurrent
+    # `kubectl config use-context` between the check and here would otherwise
+    # redirect the push).
+    kubectl --context "$KUBE_CONTEXT" -n infra port-forward svc/vault 18200:8200 >/dev/null 2>&1 &
     pf=$!; trap 'kill $pf 2>/dev/null; rm -f "$RESOLVED"' EXIT
     for _ in $(seq 1 30); do
       curl -sf "http://127.0.0.1:18200/v1/sys/health" >/dev/null 2>&1 && break
@@ -129,10 +166,17 @@ case "$ENV_NAME" in
     trap 'rm -f "$RESOLVED" "$SVC_FILE"' EXIT
     for svc in $(jq -r 'keys[]' "$RESOLVED"); do
       jq -c --arg s "$svc" '.[$s]' "$RESOLVED" > "$SVC_FILE"
-      aws secretsmanager put-secret-value --region "$region" \
+      # Capture stderr and report it. ResourceNotFound is only ONE way this
+      # fails — AccessDenied, expired credentials, a wrong region and
+      # throttling all land here too, and "run terraform apply first" sends
+      # you the wrong way at exactly the moment of an AWS cutover. The payload
+      # is passed as file://, so nothing aws echoes back carries a value.
+      aws_err="$(aws secretsmanager put-secret-value --region "$region" \
         --secret-id "app/$svc" \
-        --secret-string "file://$SVC_FILE" >/dev/null \
-        || { log_err "secret app/$svc not found — run 'terraform apply' first"; exit 1; }
+        --secret-string "file://$SVC_FILE" 2>&1 >/dev/null)" \
+        || { log_err "put-secret-value failed for app/$svc in $region: ${aws_err:-<no stderr>}"
+             log_err "if the secret does not exist yet, run 'terraform apply' first"
+             exit 1; }
       log_ok "app/$svc"
     done
     ;;

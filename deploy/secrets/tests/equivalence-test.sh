@@ -26,7 +26,18 @@ for env in compose k8s aws; do
   actual="$(python3 "$RESOLVER" --secrets-dir "$SECRETS" --env "$env" --tf-outputs "$TF" 2>&1)" || {
     printf '  \033[31mFAIL\033[0m resolver errored: %s\n' "$actual"; fail=$((fail + 1)); continue
   }
-  for svc in $(jq -r 'keys[]' "$HERE/golden/$env.json"); do
+  # Iterate the UNION of both key sets, not the golden's alone. Iterating the
+  # golden made a canonical file with no golden entry invisible: never diffed,
+  # never reported, silently zero coverage. Both directions are now visible —
+  # golden-only is PENDING (canonical file not written yet, never a pass),
+  # canonical-only is a hard FAIL (nothing to prove it against).
+  golden_svcs="$(jq -r 'keys[]' "$HERE/golden/$env.json" | sort)"
+  canonical_svcs="$(cd "$SECRETS" && ls -1 ./*.yaml | sed 's#^\./##; s/\.yaml$//' | sort)"
+  for svc in $(printf '%s\n%s\n' "$golden_svcs" "$canonical_svcs" | sort -u); do
+    if ! grep -qxF -- "$svc" <<<"$golden_svcs"; then
+      printf '  \033[31mFAIL\033[0m %s (canonical file has no golden entry — nothing to diff it against)\n' "$svc"
+      fail=$((fail + 1)); continue
+    fi
     if [ ! -f "$SECRETS/$svc.yaml" ]; then
       printf '  \033[33m..\033[0m   %s (no canonical file yet)\n' "$svc"; pending=$((pending + 1)); continue
     fi

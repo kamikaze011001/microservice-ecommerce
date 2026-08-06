@@ -91,15 +91,72 @@ for key, val in aws_ctx.items():
             f"check 5 (contexts/aws.yaml): key '{key}' references terraform "
             f"output '{m.group(1)}', which is not among the known outputs")
 
-# Check 6 — gateway.routes.<svc>.uri and feign.client.<svc>.url embed a port
-# number as a literal (deliberately, since it is identical in every env — see
-# the comments in gateway.yaml and bff-service.yaml). That literal must still
-# equal the target service's own listening port, or a renamed server.port
-# silently strands every caller. Resolved per env with stub_env=True, like
-# every other check, so this never needs a backend or credentials.
+# Check 6 — a caller that embeds a peer's port as a literal must still agree
+# with the peer's own listening port, or a renamed port silently strands every
+# caller. Ports are literals deliberately: they are identical in every env, so
+# only the host moves (see the comments in gateway.yaml and bff-service.yaml).
+#
+# Two shapes carry such a literal, and both are bound here:
+#
+#   6a  a URL:   gateway.routes.<svc>.uri, feign.client.<svc>.url
+#                → trailing :<port> must equal <svc>.yaml's server.port.
+#   6b  a PAIR:  any <prefix>.port whose sibling <prefix>.host resolves from a
+#                {{svc.<target>.host}} ref — that sibling is what proves the
+#                key is an OUTBOUND target rather than the service's own
+#                listener. Covers order-service's grpc.server.port and
+#                bff-service's inventory.grpc.port, the two keys carrying the
+#                9090 gRPC literal, neither of which matches a URL pattern.
+#                A gRPC-flavoured prefix binds to the target's
+#                grpc.server.port; anything else to its server.port.
+#
+# inventory-service's own grpc.server.port has no sibling .host, so it is read
+# only as the authority, never as a caller — which is what makes 6b directional.
+#
+# Resolved per env with stub_env=True, like every other check, so this never
+# needs a backend or credentials.
 ROUTE_KEY = re.compile(r"^gateway\.routes\.([^.]+)\.uri$")
 FEIGN_KEY = re.compile(r"^feign\.client\.([^.]+)\.url$")
 PORT_IN_URL = re.compile(r":(\d+)$")
+SVC_HOST_REF = re.compile(r"^\{\{svc\.(.+)\.host\}\}$")
+
+# Raw, UNRESOLVED templates, keyed by service. Two uses: finding a sibling
+# .host ref without re-resolving, and reporting a key by what the canonical
+# file says rather than by what it resolved to — no resolved value reaches
+# stdout or a message anywhere in this script.
+def _raw_value(entry):
+    # Tolerates a malformed expanded entry (no 'value'): check 1 owns that
+    # diagnosis, and check 6 must not crash the whole script ahead of it.
+    if isinstance(entry, dict):
+        entry = entry.get("value")
+    return "" if entry is None else str(entry)
+
+
+raw_templates = {}
+for path in sorted(secrets.glob("*.yaml")):
+    entries = yaml.safe_load(path.read_text()) or {}
+    raw_templates[path.stem] = {k: _raw_value(v) for k, v in entries.items()}
+
+
+def check_port_agrees(service_name, key, target, port_key, port, resolved):
+    """<service_name>.<key> embeds <port>; assert <target>.<port_key> matches."""
+    if target not in raw_templates:
+        problems.append(
+            f"check 6 ({service_name}.yaml): key '{key}' points at "
+            f"service '{target}', but {target}.yaml does not exist")
+        return
+    target_port = resolved.get(target, {}).get(port_key)
+    if target_port is None:
+        problems.append(
+            f"check 6 ({service_name}.yaml): key '{key}' points at "
+            f"'{target}', but {target}.yaml declares no {port_key}")
+        return
+    if port != target_port:
+        problems.append(
+            f"check 6 ({service_name}.yaml): key '{key}' embeds port "
+            f"{port}, but {target}.yaml's {port_key} is "
+            f"{target_port} — {service_name}.yaml and {target}.yaml "
+            f"have drifted")
+
 
 checked = set()
 for env in ENVS:
@@ -110,49 +167,40 @@ for env in ENVS:
         continue
     for service_name, kv in resolved.items():
         for key, value in kv.items():
-            m = ROUTE_KEY.match(key) or FEIGN_KEY.match(key)
-            if not m:
-                continue
             ident = (service_name, key)
             if ident in checked:
                 continue
+
+            # -- 6a: a URL with a trailing :<port> ------------------------
+            m = ROUTE_KEY.match(key) or FEIGN_KEY.match(key)
+            if m:
+                checked.add(ident)
+                port_match = PORT_IN_URL.search(value)
+                if not port_match:
+                    problems.append(
+                        f"check 6 ({service_name}.yaml): key '{key}' has no "
+                        f"trailing :<port> to check — its template is "
+                        f"'{raw_templates.get(service_name, {}).get(key, '')}'")
+                    continue
+                check_port_agrees(service_name, key, m.group(1),
+                                  "server.port", port_match.group(1), resolved)
+                continue
+
+            # -- 6b: an outbound <prefix>.host / <prefix>.port pair -------
+            if not key.endswith(".port"):
+                continue
+            prefix = key[: -len(".port")]
+            host_tmpl = raw_templates.get(service_name, {}).get(prefix + ".host")
+            if host_tmpl is None:
+                continue  # no sibling host → a listener, not a caller
+            host_match = SVC_HOST_REF.match(host_tmpl.strip())
+            if not host_match:
+                continue  # sibling host is infra (mysql, redis, …), not a peer
             checked.add(ident)
-
-            target = m.group(1)
-            target_path = secrets / f"{target}.yaml"
-            if not target_path.exists():
-                problems.append(
-                    f"check 6 ({service_name}.yaml): key '{key}' points at "
-                    f"service '{target}', but {target}.yaml does not exist")
-                continue
-
-            port_match = PORT_IN_URL.search(value)
-            if not port_match:
-                problems.append(
-                    f"check 6 ({service_name}.yaml): key '{key}' resolved to "
-                    f"'{value}', which has no trailing :<port> to check")
-                continue
-            route_port = port_match.group(1)
-
-            target_kv = resolved.get(target, {})
-            target_port = target_kv.get("server.port")
-            port_key = "server.port"
-            if target_port is None:
-                target_port = target_kv.get("grpc.server.port")
-                port_key = "grpc.server.port"
-            if target_port is None:
-                problems.append(
-                    f"check 6 ({service_name}.yaml): key '{key}' points at "
-                    f"'{target}', but {target}.yaml declares neither "
-                    f"server.port nor grpc.server.port")
-                continue
-
-            if route_port != target_port:
-                problems.append(
-                    f"check 6 ({service_name}.yaml): key '{key}' embeds port "
-                    f"{route_port}, but {target}.yaml's {port_key} is "
-                    f"{target_port} — {service_name}.yaml and {target}.yaml "
-                    f"have drifted")
+            port_key = ("grpc.server.port" if "grpc" in prefix.split(".")
+                        else "server.port")
+            check_port_agrees(service_name, key, host_match.group(1),
+                              port_key, value, resolved)
 
 for p in problems:
     print(f"FAIL: {p}", file=sys.stderr)

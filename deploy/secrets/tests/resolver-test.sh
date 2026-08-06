@@ -113,6 +113,37 @@ assert_eq "aws <terraform:> ref resolves from --tf-outputs" \
 assert_eq "<file:> ref reads the file's bytes" \
   "BLOBBYTES" "$(jq -r '.demo["file.key"]' <<<"$out")"
 
+# 6b. a <file:> target's TRAILING NEWLINE must not change the resolved value.
+#     jwk.private.json has none today; a single `echo >>` or an editor's
+#     save-with-final-newline would otherwise silently change application.jwk
+#     in all three envs at once, and validate's check 4 (which only compares
+#     the envs against each other) would stay green while every issued token
+#     became unverifiable.
+nl="$TMP/newline"; mkdir -p "$nl/contexts"
+printf 'k: "<file:blob.txt>"\n' > "$nl/demo.yaml"
+printf 'userCredDelivery: envfrom\n' > "$nl/contexts/compose.yaml"
+printf 'BLOBBYTES' > "$nl/blob.txt"
+without="$(python3 "$RESOLVER" --secrets-dir "$nl" --env compose 2>&1 | jq -r '.demo.k')"
+printf 'BLOBBYTES\n' > "$nl/blob.txt"
+with="$(python3 "$RESOLVER" --secrets-dir "$nl" --env compose 2>&1 | jq -r '.demo.k')"
+assert_eq "<file:> target with a trailing newline resolves identically" "$without" "$with"
+printf 'BLOBBYTES\n\n\n' > "$nl/blob.txt"
+many="$(python3 "$RESOLVER" --secrets-dir "$nl" --env compose 2>&1 | jq -r '.demo.k')"
+assert_eq "<file:> target with several trailing newlines resolves identically" "$without" "$many"
+
+# 6c. a <file:> ref may not escape the secrets dir. Canonical files are
+#     maintainer-authored, so this is a containment invariant rather than an
+#     attack surface — but nothing in the syntax enforced it.
+esc="$TMP/escape"; mkdir -p "$esc/contexts"
+printf 'k: "<file:../outside.txt>"\n' > "$esc/demo.yaml"
+printf 'userCredDelivery: envfrom\n' > "$esc/contexts/compose.yaml"
+printf 'OUTSIDE' > "$TMP/outside.txt"
+err="$(python3 "$RESOLVER" --secrets-dir "$esc" --env compose 2>&1)"
+assert_contains "<file:> ref escaping the secrets dir is refused" \
+  "file ref '../outside.txt' escapes the secrets dir" "$err"
+assert_not_contains "refused <file:> escape does not emit the file's bytes" \
+  "OUTSIDE" "$err"
+
 # 7-10. every failure mode names its own kind of input
 missing_ctx="$TMP/missing-ctx"; mkdir -p "$missing_ctx/contexts"
 printf 'k: "{{nope.here}}"\n' > "$missing_ctx/demo.yaml"
@@ -135,6 +166,14 @@ printf 'userCredDelivery: envfrom\n' > "$nofile/contexts/compose.yaml"
 err="$(python3 "$RESOLVER" --secrets-dir "$nofile" --env compose 2>&1)"
 assert_contains "missing <file:> ref names the path" \
   "file ref 'absent.txt' not found" "$err"
+
+# --service naming a service with no canonical file fails through the normal
+# error path (one line on stderr), not as a FileNotFoundError traceback.
+err="$(DEMO_SECRET=s python3 "$RESOLVER" --secrets-dir "$TMP" --env compose --service ghost 2>&1)"
+assert_contains "--service for a nonexistent service names the service" \
+  "no canonical file for service 'ghost'" "$err"
+assert_not_contains "--service for a nonexistent service does not traceback" \
+  "Traceback" "$err"
 
 # a malformed expanded entry (no 'value' key) names the offending key and
 # file — and must NOT dump the entry's own content into the error, since

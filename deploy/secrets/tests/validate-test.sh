@@ -132,6 +132,16 @@ assert_contains "check 6 catches a route URL with no trailing port" \
 assert_contains "check 6 catches a route URL with no trailing port" \
   "no trailing :<port>" "$out"
 assert_contains "check 6 catches a route URL with no trailing port (check-6 prefix)" "check 6 (" "$out"
+# …and it reports the RAW template, never the resolved value — the branch's
+# global constraint is that no resolved value reaches stdout or test output.
+assert_contains "check 6 reports the raw template, not the resolved value" \
+  "its template is 'http://{{svc.product-service.host}}'" "$out"
+if grep -qF -- "http://product-service.apps" <<<"$out"; then
+  bad "check 6 does not leak a resolved value"
+  printf '       resolved host appeared in the message\n'
+else
+  ok "check 6 does not leak a resolved value"
+fi
 rm -rf "$T"
 
 # 6d. a route points at a real service whose canonical file declares neither
@@ -145,11 +155,50 @@ gateway.routes.core-s3.uri:
   envs: [k8s, aws]
 YAML
 out="$(bash "$VALIDATE" --secrets-dir "$T" 2>&1)"
-assert_contains "check 6 catches a target with neither server.port nor grpc.server.port" \
+assert_contains "check 6 catches a target with no server.port" \
   "gateway.routes.core-s3.uri" "$out"
-assert_contains "check 6 catches a target with neither server.port nor grpc.server.port" \
-  "declares neither server.port nor grpc.server.port" "$out"
-assert_contains "check 6 catches a target with neither server.port nor grpc.server.port (check-6 prefix)" "check 6 (" "$out"
+assert_contains "check 6 catches a target with no server.port" \
+  "declares no server.port" "$out"
+assert_contains "check 6 catches a target with no server.port (check-6 prefix)" "check 6 (" "$out"
+rm -rf "$T"
+
+# 6e. the gRPC literal in order-service.yaml's OUTBOUND grpc.server.port drifts
+# from inventory-service.yaml's own grpc.server.port. This port matches no
+# route/feign URL pattern, so before the host/port-pair rule the whole gRPC
+# drift class was unguarded.
+T="$(mktemp -d)"; copy_tree "$T"
+python3 - "$T/order-service.yaml" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+text = p.read_text()
+assert 'grpc.server.port: "9090"' in text, "fixture assumption broken: order-service.yaml no longer has grpc.server.port 9090"
+p.write_text(text.replace('grpc.server.port: "9090"', 'grpc.server.port: "9091"'))
+PY
+out="$(bash "$VALIDATE" --secrets-dir "$T" 2>&1)"
+assert_contains "check 6 catches an outbound grpc.server.port drifted from the listener" \
+  "order-service.yaml): key 'grpc.server.port'" "$out"
+assert_contains "check 6 catches an outbound grpc.server.port drifted from the listener" \
+  "inventory-service.yaml's grpc.server.port is 9090" "$out"
+assert_contains "check 6 catches an outbound grpc.server.port drifted (check-6 prefix)" "check 6 (" "$out"
+rm -rf "$T"
+
+# 6f. the same class from the other spelling: bff-service.yaml's
+# inventory.grpc.port. Corrupting the LISTENER this time, so both callers must
+# be caught at once by the one edit that would really cause this in practice.
+T="$(mktemp -d)"; copy_tree "$T"
+python3 - "$T/inventory-service.yaml" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+text = p.read_text()
+assert 'grpc.server.port: "9090"' in text, "fixture assumption broken: inventory-service.yaml no longer has grpc.server.port 9090"
+p.write_text(text.replace('grpc.server.port: "9090"', 'grpc.server.port: "9099"'))
+PY
+out="$(bash "$VALIDATE" --secrets-dir "$T" 2>&1)"
+assert_contains "check 6 catches a renamed gRPC listener port (bff caller)" \
+  "bff-service.yaml): key 'inventory.grpc.port'" "$out"
+assert_contains "check 6 catches a renamed gRPC listener port (order caller)" \
+  "order-service.yaml): key 'grpc.server.port'" "$out"
+assert_contains "check 6 catches a renamed gRPC listener port (check-6 prefix)" "check 6 (" "$out"
 rm -rf "$T"
 
 echo; printf '%d passed, %d failed\n' "$pass" "$fail"
