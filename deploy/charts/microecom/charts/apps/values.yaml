@@ -1,0 +1,182 @@
+# deploy/charts/microecom/charts/apps/values.yaml
+#
+# One shared template renders all ten workloads. Per-service blocks under `apps:`
+# are merged OVER `defaults:` at render time. Read templates/_helpers.tpl for the
+# three load-bearing merge rules before changing anything here.
+#
+# NOTE ON PATHS: from the umbrella chart these keys are `apps.defaults.…` and
+# `apps.apps.<service>.…`. The doubled `apps.apps` is correct — the first is the
+# subchart name, the second is this file's `apps:` map. Do not "fix" it.
+
+# Applied to every service, then overridden per service.
+defaults:
+  replicas: 1
+  imagePullPolicy: Always
+  resources:
+    requests: { cpu: 100m, memory: 512Mi }
+    limits:   { cpu: 1000m, memory: 768Mi }
+  probes:
+    liveness:
+      path: /actuator/health/liveness
+      port: management
+      initialDelaySeconds: 60
+      periodSeconds: 15
+      failureThreshold: 4
+    readiness:
+      path: /actuator/health/readiness
+      port: management
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      failureThreshold: 6
+  # A MAP, not a list: YAML lists cannot merge element-wise. The
+  # list-of-{name,value} shape appears only at render time, emitted by a sorted
+  # `range`, so renders are deterministic and diffs are stable.
+  env:
+    MALLOC_ARENA_MAX: "2"
+    JAVA_OPTS: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+    VAULT_TOKEN: root
+    SPRING_CLOUD_VAULT_URI: http://vault.infra.svc.cluster.local:8200
+
+# S3 IRSA role for the two services that presign uploads. Stamped by the deploy
+# script from `terraform output s3_irsa_role_arn`; only read when
+# global.secret.backend == externalSecrets AND a service sets `irsa: true`.
+irsa:
+  s3RoleArn: ""
+
+apps:
+  authorization-server:
+    enabled: true
+    port: 6666
+    # NOT 16666. Transcribed from application.yml — see the Global Constraints.
+    managementPort: 19091
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits:   { cpu: 2000m, memory: 768Mi }
+    env:
+      JAVA_OPTS: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+UseStringDeduplication"
+    envFrom:
+      - secretRef: { name: app-secrets, optional: true }
+    s3: true
+    hpa: { maxReplicas: 3, scaleUpPods: 2 }
+
+  bff-service:
+    enabled: true
+    port: 8087
+    managementPort: 18087
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: 1000m, memory: 384Mi }
+
+  frontend:
+    enabled: true
+    # Caddy serving a static Vite build. `static: true` is the sentinel that
+    # switches off everything JVM-shaped: no actuator port, no app-config volume,
+    # no ExternalSecret. A truthy sentinel, not a `null` one, because mergo skips
+    # nil source values and could not unset a default of `true`.
+    static: true
+    port: 8080
+    servicePort: 80
+    env: {}
+    resources:
+      requests: { cpu: 20m, memory: 32Mi }
+      limits:   { cpu: 200m, memory: 64Mi }
+    probes:
+      # failureThreshold is inherited (4 liveness / 6 readiness). The base
+      # manifest omits it on both probes and relies on the Kubernetes default of
+      # 3 for liveness / 3 for readiness; an explicit inherited value is a
+      # deliberate, stated change (design spec §5).
+      liveness:  { path: /, port: http, initialDelaySeconds: 10, periodSeconds: 30 }
+      readiness: { path: /, port: http, initialDelaySeconds: 2,  periodSeconds: 5 }
+    ingress:
+      host: microecom.local
+
+  gateway:
+    enabled: true
+    port: 6868
+    # NOT 16868. Transcribed from application.yml — see the Global Constraints.
+    managementPort: 19093
+    serviceAccountName: gateway
+    rbac: true
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits:   { cpu: 1500m, memory: 768Mi }
+    probes:
+      liveness:  { initialDelaySeconds: 45 }
+      readiness: { initialDelaySeconds: 25 }
+    env:
+      SPRING_PROFILES_ACTIVE: k8s
+    hpa: { maxReplicas: 2, scaleUpPods: 1 }
+    ingress:
+      host: api.microecom.local
+      annotations:
+        # 120s, not the nginx default 60s: k6 bursts push gateway p99 past 60s.
+        nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+        nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+        nginx.ingress.kubernetes.io/use-regex: "false"
+
+  inventory-service:
+    enabled: true
+    port: 6969
+    managementPort: 16969
+    extraPorts:
+      - { name: grpc, containerPort: 9090 }
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits:   { cpu: 1500m, memory: 768Mi }
+    s3: true
+    hpa: { maxReplicas: 2, scaleUpPods: 1 }
+
+  mock-paypal-service:
+    enabled: true
+    port: 8585
+    managementPort: 18585
+    resources:
+      requests: { cpu: 50m,  memory: 256Mi }
+      limits:   { cpu: 500m, memory: 384Mi }
+    probes:
+      liveness:  { initialDelaySeconds: 30 }
+      readiness: { initialDelaySeconds: 15 }
+    env:
+      MOCK_PUBLIC_BASE_URL: http://api.microecom.local/mock-paypal-service
+      JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"
+      # Not a Spring Cloud Vault client — unset both inherited Vault vars.
+      VAULT_TOKEN: null
+      SPRING_CLOUD_VAULT_URI: null
+
+  orchestrator-service:
+    enabled: true
+    port: 9999
+    managementPort: 19999
+    resources:
+      requests: { cpu: 100m,  memory: 512Mi }
+      limits:   { cpu: 1000m, memory: 768Mi }
+
+  order-service:
+    enabled: true
+    port: 9696
+    managementPort: 19696
+    resources:
+      requests: { cpu: 200m,  memory: 512Mi }
+      limits:   { cpu: 1500m, memory: 768Mi }
+    hpa: { maxReplicas: 3, scaleUpPods: 2 }
+
+  payment-service:
+    enabled: true
+    port: 8484
+    managementPort: 18484
+    # 512Mi requests, not 256Mi: 512Mi OOMKilled at startup (JVM non-heap).
+    resources:
+      requests: { cpu: 100m,  memory: 512Mi }
+      limits:   { cpu: 1000m, memory: 768Mi }
+    envFrom:
+      - secretRef: { name: app-secrets, optional: true }
+
+  product-service:
+    enabled: true
+    port: 7777
+    managementPort: 17777
+    resources:
+      requests: { cpu: 200m,  memory: 512Mi }
+      limits:   { cpu: 1500m, memory: 768Mi }
+    s3: true
+    hpa: { maxReplicas: 2, scaleUpPods: 1 }

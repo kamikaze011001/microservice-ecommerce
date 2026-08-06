@@ -1,0 +1,6 @@
+apiVersion: v2
+name: apps
+description: The ten microecom application workloads (9 JVM services + the storefront SPA)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

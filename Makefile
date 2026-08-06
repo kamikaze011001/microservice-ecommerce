@@ -371,7 +371,7 @@ k8s-seed-perftest:
 k8s-seed-images:
 	@scripts/seed/k8s-product-images.sh
 
-.PHONY: k8s-apps k8s-apps-down k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs k8s-storefront-smoke k8s-storefront-soak k8s-storefront-stress k8s-storefront-run k8s-storefront-logs k9s
+.PHONY: k8s-apps k8s-apps-down k8s-apps-helm k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs k8s-storefront-smoke k8s-storefront-soak k8s-storefront-stress k8s-storefront-run k8s-storefront-logs k9s
 
 # Apply all 8 service Deployments via the local overlay.
 # k8s-app-secrets: build the `app-secrets` Secret in the apps namespace from
@@ -379,7 +379,36 @@ k8s-seed-images:
 # payment-service envFrom it. Kept out of git (k8s/.env is gitignored) and out
 # of Vault. If k8s/.env is missing we create an empty Secret so the optional
 # secretRef resolves (mail/PayPal just stay unset). Idempotent (apply).
+#
+# Ensures the `apps` namespace exists FIRST, idempotently, rather than assuming
+# some other target already created it. This makes the target self-sufficient
+# regardless of which bring-up path (kubectl `k8s-infra` or Helm
+# `k8s-infra-helm`) created the namespace, or whether either has run yet —
+# which is what lets `k8s-apps-helm` below declare this as a real prerequisite.
+# `kubectl apply` on a namespace that already carries another owner's labels
+# (e.g. Helm's) is safe: with no prior last-applied-configuration annotation,
+# the merge only ADDS fields, it never deletes the existing owner's labels.
+#
+# The ownership stamp is load-bearing, not decoration. The umbrella chart also
+# renders this namespace (deploy/charts/microecom/templates/namespaces.yaml,
+# deliberately NOT gated on apps.enabled), and Helm REFUSES to adopt a
+# pre-existing object that lacks these three keys — it aborts the whole install
+# with "cannot be imported into the current release: invalid ownership
+# metadata". Without the stamp, creating the namespace here would break
+# `make k8s-apps-helm` on any cluster where the microecom release does not
+# exist yet. Verified both directions against a live cluster: plain
+# kubectl-created namespace => install aborts; same namespace with these keys
+# => install and a subsequent upgrade both succeed.
+#
+# On the pure kubectl path (`k8s-apps`) no Helm release exists and the keys are
+# inert — Helm deletes what its release manifest lists, never what merely
+# carries a label, so this does not change `helm uninstall` blast radius.
 k8s-app-secrets:
+	@kubectl create namespace apps --dry-run=client -o yaml | kubectl apply -f -
+	@kubectl label namespace apps app.kubernetes.io/managed-by=Helm --overwrite >/dev/null
+	@kubectl annotate namespace apps \
+	  meta.helm.sh/release-name=microecom \
+	  meta.helm.sh/release-namespace=infra --overwrite >/dev/null
 	@if [ -f k8s/.env ]; then \
 	  kubectl create secret generic app-secrets --namespace apps \
 	    --from-env-file=k8s/.env --dry-run=client -o yaml | kubectl apply -f - ; \
@@ -395,6 +424,36 @@ k8s-apps: k8s-app-secrets
 
 k8s-apps-down:
 	@kubectl delete -k k8s/apps/overlays/local --ignore-not-found
+
+# Helm path for the apps, alongside `make k8s-apps` (kubectl/kustomize).
+# Both bring-up paths stay in the tree this phase; rolling back is reverting this
+# target. They are NOT composable on one cluster — the Helm chart selects on
+# app.kubernetes.io/name while the base manifests use a bare `app:` key, and
+# spec.selector is immutable on a Deployment. Pick one path per cluster.
+#
+# --timeout stays 30m. The drift guard in tests/render-test.sh only parses the
+# k8s-infra-helm recipe (activeDeadlineSeconds + 330s); this target's --timeout
+# is unguarded and could drift with no test failing.
+#
+# ENV=aws additionally REQUIRES the S3 IRSA role ARN, or the render fails by
+# design (see charts/apps/templates/irsa-serviceaccounts.yaml):
+#   make k8s-apps-helm ENV=aws \
+#     HELM_EXTRA='--set apps.irsa.s3RoleArn=$$(terraform output -raw s3_irsa_role_arn)'
+# Phase 7 moves that into the AWS deploy script; this phase only ever runs local.
+#
+# k8s-app-secrets prerequisite: the apps chart mounts app-secrets with
+# envFrom.secretRef.optional: true, so a missing Secret doesn't crash pods — it
+# silently drops mail and PayPal config. `k8s-apps` (the kubectl path) already
+# declares this; it was missing here. Order-independent now that
+# k8s-app-secrets creates its own namespace (see its recipe above) instead of
+# assuming k8s-infra-helm's templates/namespaces.yaml ran first.
+k8s-apps-helm: k8s-app-secrets
+	@helm upgrade --install microecom deploy/charts/microecom \
+	  --namespace infra --create-namespace \
+	  -f deploy/charts/microecom/envs/$(or $(ENV),local-k8s).yaml \
+	  --set apps.enabled=true $(HELM_EXTRA) \
+	  --wait --timeout 30m
+	@kubectl -n apps rollout status deployment --timeout=10m
 
 # Quick health dashboard for the cluster.
 k8s-status:

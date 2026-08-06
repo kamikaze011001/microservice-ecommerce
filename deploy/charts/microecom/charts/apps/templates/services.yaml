@@ -1,0 +1,45 @@
+{{- range $name, $svc := .Values.apps }}
+{{/*
+  Raw $svc, no merge. Every key a Service reads — port, servicePort, extraPorts,
+  managementPort, serviceAnnotations — is per-service by nature and absent from
+  `defaults`, so a merge would copy five keys that can never differ from their
+  source. If you ever add one of these to `defaults`, add the merge preamble from
+  deployments.yaml here at the same time, or the Service's targetPort and the
+  container's containerPort will silently disagree.
+*/}}
+{{- if $svc.enabled }}
+{{- $s := $svc }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.global.namespaces.apps }}
+  labels:
+    {{- include "apps.labels" (dict "name" $name "root" $) | nindent 4 }}
+  {{- with $s.serviceAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "apps.selectorLabels" (dict "name" $name "root" $) | nindent 4 }}
+  ports:
+    # Named `http` on every service, including the frontend's 80 → 8080. Both
+    # ingress blocks bind backends by port NAME, so renaming this breaks routing.
+    - name: http
+      port: {{ $s.servicePort | default $s.port }}
+      targetPort: http
+    {{- range $p := $s.extraPorts }}
+    - name: {{ $p.name }}
+      port: {{ $p.containerPort }}
+      targetPort: {{ $p.name }}
+    {{- end }}
+    {{- if $s.managementPort }}
+    - name: management
+      port: {{ $s.managementPort }}
+      targetPort: management
+    {{- end }}
+{{- end }}
+{{- end }}

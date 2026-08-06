@@ -1,0 +1,44 @@
+{{- $gw := .Values.apps.gateway }}
+{{- if and $gw.enabled $gw.rbac }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $gw.serviceAccountName }}
+  namespace: {{ .Values.global.namespaces.apps }}
+  labels:
+    {{- include "apps.labels" (dict "name" "gateway" "root" $) | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gateway-discovery
+  namespace: {{ .Values.global.namespaces.apps }}
+  labels:
+    {{- include "apps.labels" (dict "name" "gateway" "root" $) | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    # `pods` get is required even in SERVICE discovery mode — Spring Cloud
+    # Kubernetes reads its own pod at startup. Removing it looks harmless and
+    # breaks the gateway's boot.
+    resources: [services, endpoints, pods]
+    verbs: [get, list, watch]
+  - apiGroups: [discovery.k8s.io]
+    resources: [endpointslices]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gateway-discovery
+  namespace: {{ .Values.global.namespaces.apps }}
+  labels:
+    {{- include "apps.labels" (dict "name" "gateway" "root" $) | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: gateway-discovery
+subjects:
+  - kind: ServiceAccount
+    name: {{ $gw.serviceAccountName }}
+    namespace: {{ .Values.global.namespaces.apps }}
+{{- end }}

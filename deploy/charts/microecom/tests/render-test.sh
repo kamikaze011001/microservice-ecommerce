@@ -66,6 +66,99 @@ assert_ok() {
 
 section() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
+# ── Phase 3 helpers ─────────────────────────────────────────────────────────
+
+# The apps subchart is gated off by default (side-by-side phase). Every apps
+# assertion renders through this instead of render().
+apps_render() { render --set apps.enabled=true "$@"; }
+
+# doc_named <kind> <name> <text> — one object, by kind AND metadata.name.
+# docs_of_kind alone is not enough here: ten Deployments in one stream means an
+# unscoped probe assertion could be satisfied by any of the other nine.
+doc_named() {
+  docs_of_kind "$1" <<<"$3" | awk -v RS='\n---\n' -v n="$2" '$0 ~ ("(^|\n)  name: " n "([ \t]*$|\n)")'
+}
+
+# probe_block <deployment-doc> <liveness|readiness>
+# Slices one probe out of a rendered container. The container block's key order
+# is fixed by apps.container: ... livenessProbe / readinessProbe / resources.
+probe_block() {
+  case "$2" in
+    liveness)  awk '/livenessProbe:/{f=1} /readinessProbe:/{f=0} f' <<<"$1" ;;
+    readiness) awk '/readinessProbe:/{f=1} /resources:/{f=0} f' <<<"$1" ;;
+  esac
+}
+
+# selector_block <doc> — slices `spec.selector:` out of one rendered Service or
+# Deployment document (Service: `selector: <labels>`; Deployment: `selector:
+# matchLabels: <labels>`). Both forms start with the sole line indented exactly
+# 2 spaces reading `selector:` and end at the next 2-space-indented sibling key
+# in `spec` (`ports:` / `template:`), so this generalizes across kinds without
+# caring which key follows next.
+#
+# Needed because `apps.labels` (metadata.labels, and for Deployments also
+# spec.template.metadata.labels) and `apps.selectorLabels` (spec.selector)
+# render the byte-identical `app.kubernetes.io/name: <svc>` line. An assertion
+# scoped only to the object document — not to this block specifically — is
+# satisfied by the labels block no matter what the selector actually says.
+# RED-proven against a scratch copy: replacing spec.selector's content with
+# `app.kubernetes.io/name: BROKEN-SELECTOR-DOES-NOT-MATCH-DEPLOYMENT` while
+# leaving metadata.labels untouched still passed the old, document-scoped
+# assertion — which in a live cluster means a Service with zero endpoints.
+selector_block() {
+  awk '
+    /^  selector:/ { f=1; print; next }
+    f && /^  [A-Za-z]/ { exit }
+    f
+  ' <<<"$1"
+}
+
+# assert_selector_matches_template <service-name> <deployment-doc>
+#
+# A Deployment whose spec.selector.matchLabels disagrees with its own pod
+# template's labels manages ZERO pods — and spec.selector is immutable, so
+# repair means delete + recreate, not a rolling update. Nothing in
+# render-test.sh asserted this before (confirmed by grep: zero occurrences of
+# `matchLabels` in any assertion). Both fields are correctly templated today;
+# this closes the coverage gap, not a bug.
+#
+# Compares selector_block's matchLabels lines (via the `app.kubernetes.io/`
+# grep, which drops the `selector:`/`matchLabels:` header lines) against the
+# pod template's own labels block. The pod-template labels line is the sole
+# `      labels:` at EXACTLY 6-space indent in a Deployment doc — top-level
+# metadata.labels sits at 2-space indent, so this can't be confused with it —
+# nested under spec.template.metadata; it ends at the next 4-space sibling key
+# (`    spec:`).
+assert_selector_matches_template() {
+  local name="$1" doc="$2"
+  local sel tmpl line trimmed missing=""
+  sel="$(selector_block "$doc" | grep 'app\.kubernetes\.io/')"
+  tmpl="$(awk '/^      labels:$/ { f=1; next } f && /^    [A-Za-z]/ { exit } f' <<<"$doc")"
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    trimmed="$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//')"
+    grep -qF -- "$trimmed" <<<"$tmpl" || missing="$missing [$trimmed]"
+  done <<<"$sel"
+  if [ -z "$missing" ]; then
+    ok  "$name Deployment: matchLabels is contained in its own pod template labels"
+  else
+    bad "$name Deployment: matchLabels has entries NOT in its pod template labels —$missing"
+  fi
+}
+
+# assert_probe <deployment-name> <liveness|readiness> <field> <expected> <text>
+assert_probe() {
+  local doc block actual
+  doc="$(doc_named Deployment "$1" "$5")"
+  block="$(probe_block "$doc" "$2")"
+  actual="$(awk -v f="$3:" '$1 == f { print $2; exit }' <<<"$block")"
+  if [ "$actual" = "$4" ]; then
+    ok   "$1 $2 $3 = $4"
+  else
+    bad  "$1 $2 $3 is '${actual:-<none>}', expected '$4'"
+  fi
+}
+
 # ── Task 1: scaffold and gating ─────────────────────────────────────────────
 section "scaffold and dependency gating"
 
@@ -124,9 +217,15 @@ assert_lacks "alias did not leak into the KSM name label"       'app\.kubernetes
 # image registry. No infra workload should ever carry the local registry — each
 # pins its upstream image explicitly.
 #
-# PHASE 3: the apps subchart's images legitimately ARE localhost:5000/... —
-# scope this assertion to the infra documents then, do not delete it.
-assert_lacks "no infra image is rewritten to the local registry"  'image: .*localhost:5000/' "$out"
+# PHASE 3 (done): the apps subchart's images legitimately ARE localhost:5000/...,
+# so this assertion is now scoped to an apps-DISABLED render. `$out` above comes
+# from render(), and the umbrella defaults apps.enabled=false — that IS the
+# scoping, and it is enforced rather than incidental by the paired assertion in
+# the apps section below, which requires apps images TO carry the registry. If
+# apps.enabled ever flips to true by default, that pairing makes the conflict
+# fail loudly instead of quietly weakening this check.
+assert_lacks "no infra image is rewritten to the local registry (apps off)" \
+                                                                  'image: .*localhost:5000/' "$out"
 assert_has   "vmsingle keeps its upstream image registry"         'image: victoriametrics/victoria-metrics:' "$out"
 
 out="$(render --set infra.vault.enabled=false)"
@@ -497,6 +596,428 @@ if [ -n "$timeout_token" ] && [ -n "$active_deadline_s" ] && [ "$helm_timeout_s"
 else
   bad "Makefile k8s-infra-helm --timeout (${helm_timeout_s:-0}s, parsed '${timeout_token:-<none>}') is LESS THAN hook activeDeadlineSeconds (${active_deadline_s:-<none>}s) + ${cold_pull_margin_s}s cold-pull margin (need >= ${required_s}s) -- raise the Makefile's --timeout or lower mysqlReplica.replicas/waitTimeout so they stay in sync"
 fi
+
+# ── Phase 3 / Task 1: apps subchart gating and Deployments ──────────────────
+section "apps subchart — gating and Deployments"
+
+infra_only="$(render)"
+assert_lacks "apps subchart is OFF by default (side-by-side phase)" \
+             '^  name: order-service$' "$(docs_of_kind Deployment <<<"$infra_only")"
+
+apps_out="$(apps_render)"
+assert_ok    "apps.enabled=true renders"                          "$apps_out"
+
+apps_deploys="$(docs_of_kind Deployment <<<"$apps_out")"
+# Asserted by NAME, not by count: the stream also carries infra Deployments, so a
+# count would flip to a false red the day infra gains or loses one.
+for s in authorization-server bff-service frontend gateway inventory-service \
+         mock-paypal-service orchestrator-service order-service payment-service \
+         product-service; do
+  assert_has "Deployment rendered: $s" "^  name: ${s}\$" "$apps_deploys"
+done
+
+# Pairs with the infra-only assertion above: apps images MUST carry the local
+# registry. Together the two pin the scoping in both directions.
+gw="$(doc_named Deployment gateway "$apps_out")"
+assert_has   "gateway image comes from the local registry" \
+             'image: localhost:5000/gateway:dev' "$gw"
+# imagePullPolicy has ONE source of truth: charts/apps/values.yaml's
+# defaults.imagePullPolicy. There used to be a second, dead knob
+# (global.appImage.pullPolicy, set here and overridden in envs/aws.yaml) that
+# no template ever read (Important #2) — pin the effective value so a future
+# reader can't reintroduce that confusion without a test noticing.
+assert_has   "local-k8s: gateway imagePullPolicy is Always" \
+             'imagePullPolicy: Always' "$gw"
+
+# ── deepCopy contamination guard (design spec §3 rule 1) ────────────────────
+# `range` over a map iterates in SORTED KEY ORDER, so without deepCopy each
+# service's overrides mutate .Values.defaults in place and leak into every
+# service sorting after it — and each later override compounds on the last.
+# gateway (4th of 10) leaks initialDelaySeconds:45; mock-paypal-service (6th)
+# then overwrites that with 30; so order-service (8th) inherits 30, NOT 45.
+# Asserting order-service still gets its own 60 fails the moment deepCopy is
+# dropped, whichever value happens to be the one that leaks.
+assert_probe order-service liveness initialDelaySeconds 60 "$apps_out"
+assert_probe gateway       liveness initialDelaySeconds 45 "$apps_out"
+assert_probe gateway       readiness initialDelaySeconds 25 "$apps_out"
+
+# Per-service transcription checks (design spec §3 table).
+assert_probe mock-paypal-service liveness  initialDelaySeconds 30 "$apps_out"
+assert_probe mock-paypal-service readiness initialDelaySeconds 15 "$apps_out"
+assert_probe frontend            liveness  initialDelaySeconds 10 "$apps_out"
+assert_probe frontend            readiness initialDelaySeconds 2  "$apps_out"
+# The base frontend readinessProbe omits failureThreshold; the merge supplies an
+# explicit inherited 6 (design spec §5, a deliberate stated change).
+assert_probe frontend            readiness failureThreshold    6  "$apps_out"
+
+# managementPort is listed per service, never derived. authorization-server and
+# gateway break the `port + 10000` pattern; deriving would point their probes at
+# dead ports and both would fail readiness forever with a clean-looking values file.
+auth="$(doc_named Deployment authorization-server "$apps_out")"
+assert_has   "authorization-server management port is 19091, not 16991" \
+             'containerPort: 19091' "$auth"
+assert_lacks "authorization-server management port was not derived" \
+             'containerPort: 16666' "$auth"
+assert_has   "gateway management port is 19093, not 16868" 'containerPort: 19093' "$gw"
+assert_lacks "gateway management port was not derived"     'containerPort: 16868' "$gw"
+
+# env: null semantics — mergo would have silently kept these.
+mock="$(doc_named Deployment mock-paypal-service "$apps_out")"
+assert_lacks "mock-paypal-service does not inherit VAULT_TOKEN (null unset)" \
+             'VAULT_TOKEN' "$mock"
+assert_lacks "mock-paypal-service does not inherit SPRING_CLOUD_VAULT_URI" \
+             'SPRING_CLOUD_VAULT_URI' "$mock"
+assert_has   "mock-paypal-service keeps its own JAVA_OPTS (no G1GC)" \
+             'value: "-XX:MaxRAMPercentage=75.0"' "$mock"
+fe="$(doc_named Deployment frontend "$apps_out")"
+assert_lacks "frontend has no env block at all"            '^          - name: JAVA_OPTS$' "$fe"
+assert_lacks "frontend has no management port"             'name: management' "$fe"
+
+# gateway is the only service with SPRING_PROFILES_ACTIVE. Check the KEY AND ITS
+# VALUE together, not just the key: a bare key match stays green even if the
+# value were changed to the wrong string or emptied. BSD `grep -qE` cannot match
+# a literal newline across lines, so squash the two-line env entry
+#   - name: SPRING_PROFILES_ACTIVE
+#     value: "k8s"
+# onto one line first, exactly as the SPRING_CLOUD_VAULT_ENABLED (Task 5) and
+# PAYPAL_TUNNEL_URL (Task 6 / local env) fixes do, then assert on that.
+spa_pair="$(awk '/- name: SPRING_PROFILES_ACTIVE$/ { n = $0; getline; print n " " $0 }' <<<"$gw")"
+assert_has   "gateway sets SPRING_PROFILES_ACTIVE=k8s" \
+             'name: SPRING_PROFILES_ACTIVE +value: "k8s"' "$spa_pair"
+assert_lacks "order-service does not set SPRING_PROFILES_ACTIVE" \
+             'SPRING_PROFILES_ACTIVE' "$(doc_named Deployment order-service "$apps_out")"
+
+# extraPorts, envFrom, serviceAccountName hatches.
+inv="$(doc_named Deployment inventory-service "$apps_out")"
+assert_has   "inventory-service exposes grpc 9090"         'containerPort: 9090' "$inv"
+assert_has   "authorization-server has envFrom app-secrets" 'name: app-secrets' "$auth"
+assert_lacks "order-service has no envFrom"                'envFrom' "$(doc_named Deployment order-service "$apps_out")"
+assert_has   "gateway uses the gateway ServiceAccount"     'serviceAccountName: gateway' "$gw"
+
+# Resources, sampled across the spread of the §3 table.
+assert_has   "authorization-server cpu limit is 2000m"     'cpu: 2000m' "$auth"
+assert_has   "frontend memory request is 32Mi"             'memory: 32Mi' "$fe"
+
+# Labels and namespace.
+assert_has   "apps objects land in the apps namespace"     '^  namespace: apps$' "$gw"
+# Any indent, not just 4: pod-template labels sit at 8 spaces, and a bare `app:`
+# there would be just as wrong as one in metadata.
+assert_lacks "no bare app: label anywhere in apps"         '^ +app: ' "$apps_deploys"
+
+# matchLabels coverage (Important #3): a Deployment whose selector disagrees
+# with its own pod template manages zero pods, silently, with no error — and
+# the fix is delete + recreate because spec.selector is immutable. Covers two
+# services, not just one.
+assert_selector_matches_template gateway              "$gw"
+assert_selector_matches_template authorization-server  "$auth"
+
+# Vault backend (default) renders no app-config volume.
+assert_lacks "backend=vault renders no app-config volume"  'app-config' "$apps_deploys"
+
+# ── Phase 3 / Task 2: Services and HPAs ─────────────────────────────────────
+section "apps subchart — Services and HPAs"
+
+apps_svcs="$(docs_of_kind Service <<<"$apps_out")"
+for s in authorization-server bff-service frontend gateway inventory-service \
+         mock-paypal-service orchestrator-service order-service payment-service \
+         product-service; do
+  assert_has "Service rendered: $s" "^  name: ${s}\$" "$apps_svcs"
+done
+
+gw_svc="$(doc_named Service gateway "$apps_out")"
+assert_has   "gateway Service exposes 6868"                'port: 6868' "$gw_svc"
+assert_has   "gateway Service exposes management 19093"    'port: 19093' "$gw_svc"
+# Scoped to spec.selector specifically, not the whole Service doc: metadata.labels
+# renders the identical `app.kubernetes.io/name: gateway` line via the same
+# apps.labels helper, so a document-scoped assertion here stays green even if
+# spec.selector is wrong or missing entirely (RED-proven — see selector_block).
+gw_svc_selector="$(selector_block "$gw_svc")"
+assert_has   "gateway Service selects by app.kubernetes.io/name" \
+             'app\.kubernetes\.io/name: gateway' "$gw_svc_selector"
+
+fe_svc="$(doc_named Service frontend "$apps_out")"
+# 80 → containerPort 8080, matching the base manifest. The port is NAMED http on
+# purpose: ingress.yaml binds both gateway and frontend by port name.
+assert_has   "frontend Service listens on 80"              'port: 80$' "$fe_svc"
+assert_has   "frontend Service port is named http"         'name: http' "$fe_svc"
+assert_lacks "frontend Service has no management port"     'name: management' "$fe_svc"
+
+inv_svc="$(doc_named Service inventory-service "$apps_out")"
+assert_has   "inventory-service Service exposes grpc"      'name: grpc' "$inv_svc"
+assert_has   "inventory-service grpc port is 9090"         'port: 9090' "$inv_svc"
+
+# HPAs: exactly the five that have one today. Assert both directions — the
+# services that must have one, and a representative that must not.
+apps_hpas="$(docs_of_kind HorizontalPodAutoscaler <<<"$apps_out")"
+for s in authorization-server gateway inventory-service order-service product-service; do
+  assert_has "HPA rendered: $s" "^  name: ${s}\$" "$apps_hpas"
+done
+for s in bff-service frontend mock-paypal-service orchestrator-service payment-service; do
+  assert_lacks "no HPA for $s" "^  name: ${s}\$" "$apps_hpas"
+done
+
+auth_hpa="$(doc_named HorizontalPodAutoscaler authorization-server "$apps_out")"
+assert_has   "authorization-server HPA maxReplicas 3"      'maxReplicas: 3' "$auth_hpa"
+assert_has   "authorization-server HPA scales up 2 pods"   'value: 2' "$auth_hpa"
+gw_hpa="$(doc_named HorizontalPodAutoscaler gateway "$apps_out")"
+assert_has   "gateway HPA maxReplicas 2"                   'maxReplicas: 2' "$gw_hpa"
+assert_has   "gateway HPA targets 60% CPU"                 'averageUtilization: 60' "$gw_hpa"
+assert_has   "gateway HPA scaleDown window is 300s"        'stabilizationWindowSeconds: 300' "$gw_hpa"
+
+# scaleTargetRef.name coverage (Important #3): an HPA whose scaleTargetRef.name
+# is wrong scales NOTHING and reports no error — the failure is silent. Anchored
+# to the 4-space indent under spec.scaleTargetRef specifically (metadata.name
+# sits at 2-space, metrics.resource.name at 8-space, so this can't be confused
+# with either). Covers three of the five HPAs, not just one.
+assert_has   "authorization-server HPA scaleTargetRef names its own Deployment" \
+             '^    name: authorization-server$' "$auth_hpa"
+assert_has   "gateway HPA scaleTargetRef names its own Deployment" \
+             '^    name: gateway$' "$gw_hpa"
+ps_hpa="$(doc_named HorizontalPodAutoscaler product-service "$apps_out")"
+assert_has   "product-service HPA scaleTargetRef names its own Deployment" \
+             '^    name: product-service$' "$ps_hpa"
+
+# ── Phase 3 / Task 3: gateway RBAC ──────────────────────────────────────────
+section "apps subchart — gateway RBAC"
+
+apps_sas="$(docs_of_kind ServiceAccount <<<"$apps_out")"
+assert_has   "gateway ServiceAccount exists"               '^  name: gateway$' "$apps_sas"
+assert_lacks "no ServiceAccount for order-service"         '^  name: order-service$' "$apps_sas"
+
+gw_role="$(doc_named Role gateway-discovery "$apps_out")"
+# Match the whole flow list, not the bare resource names. A bare 'endpoints'
+# ALSO matches inside 'endpointslices', so dropping `endpoints` from the core
+# rule would leave that assertion green while gateway discovery breaks. `pods`
+# get is required even in SERVICE discovery mode: Spring Cloud Kubernetes reads
+# its OWN pod at startup. Dropping it looks harmless and breaks boot.
+assert_has   "gateway Role grants services+endpoints+pods" \
+             'resources: \[services, endpoints, pods\]' "$gw_role"
+assert_has   "gateway Role covers endpointslices"          'resources: \[endpointslices\]' "$gw_role"
+gw_rb="$(doc_named RoleBinding gateway-discovery "$apps_out")"
+# Anchored to the 4-space subjects indent. An unanchored 'name: gateway' also
+# matches this doc's own `  name: gateway-discovery` (metadata AND roleRef, both
+# 2-space), so it stays green even with the ServiceAccount subject wrong or
+# missing — which is the one thing this assertion exists to prove.
+assert_has   "RoleBinding targets the gateway SA"          '^    name: gateway$' "$gw_rb"
+
+no_rbac="$(apps_render --set apps.apps.gateway.rbac=null)"
+assert_lacks "gateway.rbac unset removes the Role" \
+             'gateway-discovery' "$(docs_of_kind Role <<<"$no_rbac")"
+
+# ── Phase 3 / Task 4: Ingress ───────────────────────────────────────────────
+section "apps subchart — Ingress (nginx | alb)"
+
+apps_ings="$(docs_of_kind Ingress <<<"$apps_out")"
+assert_has   "nginx: gateway Ingress exists"               '^  name: gateway$' "$apps_ings"
+assert_has   "nginx: frontend Ingress exists"              '^  name: frontend$' "$apps_ings"
+assert_lacks "nginx: no ALB Ingress"                       'gateway-alb' "$apps_ings"
+gw_ing="$(doc_named Ingress gateway "$apps_out")"
+assert_has   "nginx: gateway host"                         'host: api\.microecom\.local' "$gw_ing"
+# 120s, not nginx's default 60s: k6 bursts push gateway p99 past 60s and the
+# proxy would return 504 before the service answered.
+assert_has   "nginx: gateway keeps the 120s proxy-read-timeout" \
+             'proxy-read-timeout: "120"' "$gw_ing"
+assert_has   "nginx: gateway keeps the 120s proxy-send-timeout" \
+             'proxy-send-timeout: "120"' "$gw_ing"
+fe_ing="$(doc_named Ingress frontend "$apps_out")"
+assert_has   "nginx: frontend host"                        'host: microecom\.local' "$fe_ing"
+assert_lacks "nginx: frontend carries no proxy timeouts"   'proxy-read-timeout' "$fe_ing"
+
+# ALB. `global.appImage.registry` is empty in envs/aws.yaml (the deploy script
+# stamps it), so pass one here — otherwise every image renders as `/name:`.
+ALB_ARGS=(-f "$CHART_DIR/envs/aws.yaml"
+          --set global.appImage.registry=583178372344.dkr.ecr.ap-southeast-1.amazonaws.com
+          --set global.appImage.tag=testsha
+          --set apps.irsa.s3RoleArn=arn:aws:iam::583178372344:role/microecom-s3)
+aws_out="$(apps_render "${ALB_ARGS[@]}")"
+assert_ok    "aws values render"                           "$aws_out"
+# Same single source of truth as the local-k8s pin above (Important #2): AWS
+# gets no separate imagePullPolicy override, so this must render identically.
+assert_has   "aws: gateway imagePullPolicy is Always (no per-env override exists)" \
+             'imagePullPolicy: Always' "$(doc_named Deployment gateway "$aws_out")"
+aws_ings="$(docs_of_kind Ingress <<<"$aws_out")"
+assert_has   "alb: the ALB Ingress exists"                 '^  name: gateway-alb$' "$aws_ings"
+assert_lacks "alb: no nginx gateway Ingress"               '^  name: gateway$' "$aws_ings"
+assert_lacks "alb: no nginx frontend Ingress"              '^  name: frontend$' "$aws_ings"
+alb="$(doc_named Ingress gateway-alb "$aws_out")"
+assert_has   "alb: internet-facing"                        'scheme: internet-facing' "$alb"
+assert_has   "alb: target-type ip"                         'target-type: ip' "$alb"
+# Assert the VALUE, not just the annotation key — a bare 'listen-ports' passes
+# on any listener config at all, including one that dropped 443.
+assert_has   "alb: listens on 80 and 443" \
+             'listen-ports: .\[\{"HTTP": 80\}, \{"HTTPS": 443\}\]' "$alb"
+assert_has   "alb: host is the storefront domain"          'host: shop\.microecom\.click' "$alb"
+# The 8 service prefixes are DERIVED from the service list (range, skipping
+# gateway and frontend), so adding a service can no longer leave it invisible on
+# AWS — the failure mode that motivated this phase.
+paths="$(grep -c '^          - path: /' <<<"$alb")"
+if [ "$paths" = "9" ]; then
+  ok  "alb: 8 service prefixes + the / catch-all"
+else
+  bad "alb: expected 9 paths (8 services + catch-all), got $paths"
+fi
+assert_has   "alb: order-service prefix is derived"        '- path: /order-service$' "$alb"
+assert_lacks "alb: gateway is not its own prefix"          '- path: /gateway$' "$alb"
+assert_lacks "alb: frontend is not a prefix"               '- path: /frontend$' "$alb"
+
+# alb_backend <alb-doc> <path> — the backend Service name serving ONE ALB path.
+# Which path routes where is the whole point of this Ingress, and an unscoped
+# `name: frontend` proves only that frontend is a backend SOMEWHERE in the doc:
+# swap the / and /order-service backends and it stays green while the storefront
+# serves API traffic. Read the first `name:` under the matching path instead.
+alb_backend() {
+  awk -v p="          - path: $2" '
+    $0 == p             { f = 1; next }
+    f && /^ +name: /    { print $2; exit }
+  ' <<<"$1"
+}
+assert_backend() {
+  local actual; actual="$(alb_backend "$3" "$2")"
+  if [ "$actual" = "$1" ]; then ok "alb: $2 routes to $1"
+  else bad "alb: $2 routes to '${actual:-<none>}', expected '$1'"; fi
+}
+assert_backend frontend /              "$alb"
+assert_backend gateway  /order-service "$alb"
+
+# ── Phase 3 / Task 5: ExternalSecrets, app-config, IRSA ─────────────────────
+section "apps subchart — secret backend"
+
+# backend=vault (default) — none of this renders. Scoped to the apps documents:
+# $apps_out also carries infra, and an unscoped match there would be noise.
+assert_lacks "vault: no ExternalSecrets"        'kind: ExternalSecret' "$apps_out"
+assert_lacks "vault: no app-config volume"      'app-config' "$apps_deploys"
+# The annotation is only ever stamped on a ServiceAccount (irsa-serviceaccounts.yaml),
+# never on a Deployment — scope to the ServiceAccount stream ($apps_sas, from the
+# gateway-RBAC section above) so this can actually fail if that template regresses.
+assert_lacks "vault: no IRSA annotation"        'eks\.amazonaws\.com/role-arn' "$apps_sas"
+assert_has   "vault: services still get VAULT_TOKEN" 'VAULT_TOKEN' "$(doc_named Deployment order-service "$apps_out")"
+
+# backend=externalSecrets.
+aws_es="$(docs_of_kind ExternalSecret <<<"$aws_out")"
+for s in authorization-server bff-service gateway inventory-service \
+         mock-paypal-service orchestrator-service order-service payment-service \
+         product-service; do
+  assert_has "eso: ExternalSecret for $s" "^  name: ${s}\$" "$aws_es"
+done
+assert_lacks "eso: no ExternalSecret for the static frontend" '^  name: frontend$' "$aws_es"
+
+ps_es="$(doc_named ExternalSecret product-service "$aws_out")"
+assert_has   "eso: product-service pulls app/ecommerce"    'key: app/ecommerce' "$ps_es"
+assert_has   "eso: product-service pulls app/core-s3"      'key: app/core-s3' "$ps_es"
+assert_has   "eso: product-service pulls its own secret"   'key: app/product-service' "$ps_es"
+assert_has   "eso: target Secret is <name>-config"         'name: product-service-config' "$ps_es"
+os_es="$(doc_named ExternalSecret order-service "$aws_out")"
+assert_lacks "eso: order-service does NOT pull core-s3"    'key: app/core-s3' "$os_es"
+
+# The configtree mount and the Vault switch-off are pure data in envs/aws.yaml —
+# applied once to `defaults`, not nine times via a JSON6902 component.
+aws_os="$(doc_named Deployment order-service "$aws_out")"
+assert_has   "eso: app-config volume is mounted"           'mountPath: /etc/app-config' "$aws_os"
+assert_has   "eso: volume comes from <name>-config"        'secretName: order-service-config' "$aws_os"
+assert_has   "eso: SPRING_CONFIG_IMPORT points at the configtree" \
+             'optional:configtree:/etc/app-config/' "$aws_os"
+# Check the key AND its value together — a bare key-name match stays green even
+# if the value flips to "true" (reproduced with
+# --set apps.defaults.env.SPRING_CLOUD_VAULT_ENABLED=true, which still renders
+# `value: "true"`). The env entry renders as two lines:
+#   - name: SPRING_CLOUD_VAULT_ENABLED
+#     value: "false"
+# BSD grep (this repo's `grep -qE`) does not match a literal `\n` across lines,
+# so squash the name/value pair onto one line first, then assert on that line.
+scv_pair="$(awk '/- name: SPRING_CLOUD_VAULT_ENABLED$/ { n = $0; getline; print n " " $0 }' <<<"$aws_os")"
+assert_has   "eso: Spring Cloud Vault is switched off" \
+             'name: SPRING_CLOUD_VAULT_ENABLED +value: "false"' "$scv_pair"
+# Helm deletes a key whose override value is null. If that ever stops holding,
+# every pod would try to reach a Vault that does not exist on EKS.
+assert_lacks "eso: VAULT_TOKEN is deleted, not just disabled" 'VAULT_TOKEN' "$aws_os"
+assert_lacks "eso: SPRING_CLOUD_VAULT_URI is deleted"      'vault\.infra\.svc' "$aws_os"
+aws_fe="$(doc_named Deployment frontend "$aws_out")"
+assert_lacks "eso: the static frontend gets no app-config volume" \
+             'app-config' "$aws_fe"
+
+# IRSA. This file exists today at k8s/apps/overlays/aws/s3-irsa-serviceaccounts.yaml
+# referenced by NO kustomization, applied imperatively by a script with a
+# sed-stamped placeholder. As a chart object the "present but not wired in" state
+# stops being representable.
+aws_sas="$(docs_of_kind ServiceAccount <<<"$aws_out")"
+assert_has   "irsa: product-service ServiceAccount"        '^  name: product-service$' "$aws_sas"
+assert_has   "irsa: authorization-server ServiceAccount"   '^  name: authorization-server$' "$aws_sas"
+assert_lacks "irsa: no ServiceAccount for order-service"   '^  name: order-service$' "$aws_sas"
+# Scoped to ONE ServiceAccount. Against the whole ServiceAccount stream this
+# proves only that SOME SA carries the ARN — three services set irsa: true, and
+# the annotation going missing on two of them would stay green.
+assert_has   "irsa: the role ARN is stamped, not a placeholder" \
+             'role-arn: arn:aws:iam::583178372344:role/microecom-s3' \
+             "$(doc_named ServiceAccount product-service "$aws_out")"
+assert_has   "irsa: authorization-server carries the ARN too" \
+             'role-arn: arn:aws:iam::583178372344:role/microecom-s3' \
+             "$(doc_named ServiceAccount authorization-server "$aws_out")"
+assert_lacks "irsa: no PLACEHOLDER survives"               'PLACEHOLDER' "$aws_sas"
+assert_has   "irsa: product-service Deployment uses its SA" \
+             'serviceAccountName: product-service' "$(doc_named Deployment product-service "$aws_out")"
+
+# ALB per-target-group health checks live on the Services, not the Ingress.
+aws_gw_svc="$(doc_named Service gateway "$aws_out")"
+assert_has   "alb: gateway healthcheck targets the management port" \
+             'healthcheck-port: "19093"' "$aws_gw_svc"
+assert_has   "alb: gateway healthcheck path is readiness" \
+             'healthcheck-path: /actuator/health/readiness' "$aws_gw_svc"
+aws_fe_svc="$(doc_named Service frontend "$aws_out")"
+assert_has   "alb: frontend healthcheck is / on the traffic port" \
+             'healthcheck-port: traffic-port' "$aws_fe_svc"
+
+# ── Task 5 (mandatory extra): backend=externalSecrets discriminates on `static`
+# The existing "backend=vault renders no app-config volume" assertion above can
+# never fail: global.secret.backend defaults to vault, so the `static` sentinel
+# gate in deployments.yaml/_helpers.tpl is never exercised at all. Prove the
+# gate is load-bearing by rendering backend=externalSecrets together with a
+# service that sets static: true, and showing the static service gets NO
+# app-config volume while a non-static sibling in the SAME render DOES.
+static_probe_out="$(apps_render --set global.secret.backend=externalSecrets \
+                                 --set apps.apps.bff-service.static=true \
+                                 --set apps.irsa.s3RoleArn=arn:aws:iam::583178372344:role/microecom-s3)"
+static_probe_deploys="$(docs_of_kind Deployment <<<"$static_probe_out")"
+bff_static="$(doc_named Deployment bff-service "$static_probe_out")"
+order_sibling="$(doc_named Deployment order-service "$static_probe_out")"
+assert_lacks "eso+static: the forced-static bff-service gets NO app-config volume" \
+             'app-config' "$bff_static"
+assert_has   "eso+static: a non-static sibling in the SAME render DOES get one" \
+             'app-config' "$order_sibling"
+# And bff-service must also lose its ExternalSecret under the same forced flag —
+# the two gates (deployments.yaml's volume, externalsecrets.yaml's `not $svc.static`)
+# must agree, or a pod ends up mounting a Secret that ESO never creates.
+static_probe_es="$(docs_of_kind ExternalSecret <<<"$static_probe_out")"
+assert_lacks "eso+static: no ExternalSecret is created for the forced-static service" \
+             '^  name: bff-service$' "$static_probe_es"
+assert_has   "eso+static: the non-static sibling still gets its ExternalSecret" \
+             '^  name: order-service$' "$static_probe_es"
+
+# ── Phase 3 / Task 6: local env data ────────────────────────────────────────
+section "apps subchart — local env"
+
+local_out="$(apps_render -f "$CHART_DIR/envs/local-k8s.yaml")"
+assert_ok    "local-k8s values render"                     "$local_out"
+pay="$(doc_named Deployment payment-service "$local_out")"
+# The local Kustomize overlay injects these two into payment-service so checkout
+# talks to mock-paypal instead of real PayPal. Missing them, local checkout
+# silently calls api-m.paypal.com and fails.
+assert_has   "local: payment-service points at mock-paypal" \
+             'mock-paypal-service\.apps\.svc\.cluster\.local:8585' "$pay"
+# Assert the key AND its value together. A bare 'PAYPAL_TUNNEL_URL' match proves
+# only that the key exists — the value carries all the meaning, and a blank or
+# wrong host stays green. This is the same value-blind shape that Task 5's review
+# caught on SPRING_CLOUD_VAULT_ENABLED. BSD `grep -qE` cannot match a literal
+# newline across lines, so squash the two-line env entry
+#   - name: PAYPAL_TUNNEL_URL
+#     value: "http://api.microecom.local"
+# onto one line first, exactly as the Task 5 fix does, then assert on that.
+ptu_pair="$(awk '/- name: PAYPAL_TUNNEL_URL$/ { n = $0; getline; print n " " $0 }' <<<"$pay")"
+assert_has   "local: PAYPAL_TUNNEL_URL points at the local ingress host" \
+             'name: PAYPAL_TUNNEL_URL +value: "http://api\.microecom\.local"' "$ptu_pair"
+# Not on AWS, where real PayPal is used.
+assert_lacks "aws: payment-service does NOT point at mock-paypal" \
+             'mock-paypal-service\.apps\.svc\.cluster\.local:8585' \
+             "$(doc_named Deployment payment-service "$aws_out")"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

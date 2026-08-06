@@ -4,11 +4,26 @@ global:
   appImage:
     registry: ""            # filled from terraform output (ECR registry) by the deploy script
     tag: ""                 # filled from the build's git sha
-    pullPolicy: IfNotPresent
+    # No pullPolicy override here (previously IfNotPresent): nothing in the
+    # apps subchart ever read global.appImage.pullPolicy — imagePullPolicy is
+    # sourced from charts/apps/values.yaml's defaults.imagePullPolicy (Always),
+    # hardcoded, on every env. That single source of truth is deliberate:
+    # k8s/apps/base/*/deployment.yaml all hardcode `imagePullPolicy: Always`
+    # and k8s/apps/overlays/aws/* patches NONE of them, so Always is the
+    # Kustomize source of truth's actual AWS behavior too — this chart just
+    # matches it. Switching AWS to IfNotPresent (correct once ECR tags are
+    # immutable git-shas) is a real, deliberate improvement but belongs to the
+    # later AWS cut-over phase, not this transcription branch.
   secret:
     backend: externalSecrets
   ingress:
     className: alb
+    hosts:
+      # ONE host feeds two things: the AWS LB Controller auto-discovers the ACM
+      # cert matching it for the :443 listener, and external-dns reads it to
+      # create the Route 53 A-alias. Consequence: the raw *.elb.amazonaws.com
+      # hostname 404s, because every rule requires this Host header.
+      storefront: shop.microecom.click
 
 infra:
   # Managed AWS services replace these in-cluster workloads.
@@ -32,3 +47,44 @@ infra:
   victoriaMetrics:  { enabled: true }
   grafana:          { enabled: true }
   kubeStateMetrics: { enabled: true }
+
+apps:
+  # Three of the AWS overlay's four jobs need NO template branch — they are pure
+  # data, applied ONCE to defaults rather than nine times via a JSON6902 component.
+  defaults:
+    env:
+      # An explicit null in an override values file makes Helm DELETE the key.
+      # Not merely disabling Vault: on EKS there is no Vault to reach.
+      VAULT_TOKEN: null
+      SPRING_CLOUD_VAULT_URI: null
+      SPRING_CLOUD_VAULT_ENABLED: "false"
+      SPRING_CONFIG_IMPORT: optional:configtree:/etc/app-config/
+
+  # Stamped by the deploy script:
+  #   --set apps.irsa.s3RoleArn="$(terraform output -raw s3_irsa_role_arn)"
+  # Left empty here so a forgotten stamp fails the render instead of the pod.
+  irsa:
+    s3RoleArn: ""
+
+  apps:
+    # The two services that presign direct-to-S3 uploads. `irsa: true` alone is
+    # enough — the Deployment template derives serviceAccountName from it, so
+    # there is no second place to forget.
+    authorization-server:
+      irsa: true
+    product-service:
+      irsa: true
+
+    # Per-target-group ALB health checks. The AWS Load Balancer Controller reads
+    # these from the BACKING SERVICE and applies them to that Service's target
+    # group only — an Ingress-level check would apply the gateway's actuator
+    # probe to the static SPA too, and fail it.
+    gateway:
+      serviceAnnotations:
+        alb.ingress.kubernetes.io/healthcheck-port: "19093"
+        alb.ingress.kubernetes.io/healthcheck-path: /actuator/health/readiness
+    frontend:
+      serviceAnnotations:
+        # Caddy answers 200 on "/" the moment it starts.
+        alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+        alb.ingress.kubernetes.io/healthcheck-path: /

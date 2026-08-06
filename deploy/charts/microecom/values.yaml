@@ -26,15 +26,26 @@ global:
   appImage:
     registry: localhost:5000
     tag: dev
-    pullPolicy: Always
   secret:
     backend: vault          # vault | externalSecrets
   ingress:
     className: nginx
     hosts:
       storefront: microecom.local
-      api: api.microecom.local
       media: media.microecom.local
+      # No `.api` key: nothing reads it. The nginx-path gateway host is
+      # `apps.apps.gateway.ingress.host` (charts/apps/values.yaml, hardcoded
+      # api.microecom.local); the ALB path has no per-service host at all (one
+      # ALB, path-based routing — see charts/apps/templates/ingress.yaml). A
+      # `global.ingress.hosts.api` key existed here but was dead: deleted
+      # rather than wired through, since wiring it would touch the ingress
+      # template for a value this branch doesn't need to change (Minor 1).
+
+# Phase 3 is side by side, not a cut-over: `make k8s-apps` (kubectl) stays the
+# default path. Off here so `make k8s-infra-helm` keeps rendering exactly what it
+# rendered in Phase 2; `make k8s-apps-helm` passes --set apps.enabled=true.
+apps:
+  enabled: false
 
 infra:
   enabled: true
@@ -61,5 +72,3 @@ infra:
   victoriaMetrics:  { enabled: true }
   grafana:          { enabled: true }
   kubeStateMetrics: { enabled: true }
-
-apps: {}   # stub — Phase 3 populates this

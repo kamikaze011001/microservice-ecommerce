@@ -1,0 +1,44 @@
+{{- range $name, $svc := .Values.apps }}
+{{- if and $svc.enabled $svc.hpa }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.global.namespaces.apps }}
+  labels:
+    {{- include "apps.labels" (dict "name" $name "root" $) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $name }}
+  minReplicas: {{ $svc.hpa.minReplicas | default 1 }}
+  # maxReplicas is 2 for most services, not 3: minikube has ~3 GiB of headroom
+  # after baseline replicas, and four services × one extra replica × 512Mi = 2 GiB.
+  # Going higher OOMKills the node under a k6 ramp. authorization-server and
+  # order-service get 3 because login (bcrypt) and checkout are the hot paths.
+  maxReplicas: {{ $svc.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # A percentage of requests.cpu, not of the node.
+          averageUtilization: {{ $svc.hpa.targetCPUUtilization | default 60 }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: {{ $svc.hpa.scaleUpPods }}
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+{{- end }}
+{{- end }}

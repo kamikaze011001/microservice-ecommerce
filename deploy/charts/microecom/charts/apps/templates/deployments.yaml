@@ -1,0 +1,60 @@
+{{- range $name, $svc := .Values.apps }}
+{{/*
+  MERGE PREAMBLE — three load-bearing rules. Repeated verbatim in services.yaml
+  because a Helm `define` cannot return a value.
+
+  1. `enabled` is read from the RAW $svc. Mergo treats falsy values as absent, so
+     `enabled: false` cannot survive a merge against a default of `true`.
+  2. `deepCopy` is mandatory. Sprig's mergeOverwrite wraps mergo's in-place API
+     and MUTATES its destination. Without deepCopy the first service's overrides
+     permanently contaminate $.Values.defaults, and because `range` over a map
+     iterates in sorted key order, every service sorting after it inherits them.
+     Contamination COMPOUNDS: each later service overriding the same field
+     clobbers the previous leak, so what a service inherits comes from the
+     NEAREST PRECEDING overrider. gateway (4th) leaks initialDelaySeconds:45,
+     mock-paypal-service (6th) then overwrites it with 30, so order-service
+     (8th) observes 30. render-test.sh asserts order-service still gets 60.
+  3. `env` is merged OUTSIDE mergo, key by key. Mergo skips nil source values, so
+     a per-key `null` (mock-paypal's VAULT_TOKEN) could not unset an inherited
+     value, and `env: {}` could not clear the map. The explicit loop can store a
+     nil; apps.container's `{{ if $v }}` then drops it.
+*/}}
+{{- if $svc.enabled }}
+{{- $s := mergeOverwrite (deepCopy $.Values.defaults) (omit $svc "env") }}
+{{- $env := deepCopy (default (dict) $.Values.defaults.env) }}
+{{- if hasKey $svc "env" }}{{- range $k, $v := $svc.env }}{{- $_ := set $env $k $v }}{{- end }}{{- end }}
+{{- if and (hasKey $svc "env") (not $svc.env) }}{{- $env = dict }}{{- end }}
+{{- $_ := set $s "env" $env }}
+{{- $sa := $s.serviceAccountName }}
+{{- if and (not $sa) $s.irsa }}{{- $sa = $name }}{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.global.namespaces.apps }}
+  labels:
+    {{- include "apps.labels" (dict "name" $name "root" $) | nindent 4 }}
+spec:
+  replicas: {{ $s.replicas }}
+  selector:
+    matchLabels:
+      {{- include "apps.selectorLabels" (dict "name" $name "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "apps.labels" (dict "name" $name "root" $) | nindent 8 }}
+    spec:
+      {{- with $sa }}
+      serviceAccountName: {{ . }}
+      {{- end }}
+      containers:
+        {{- include "apps.container" (dict "name" $name "svc" $s "root" $) | nindent 8 }}
+      {{- if and (eq $.Values.global.secret.backend "externalSecrets") (not $s.static) }}
+      volumes:
+        - name: app-config
+          secret:
+            secretName: {{ $name }}-config
+      {{- end }}
+{{- end }}
+{{- end }}
