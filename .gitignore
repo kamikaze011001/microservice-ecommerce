@@ -29,3 +29,7 @@ deploy/.run/
 
 # Helm vendored subchart tarballs — rebuilt from Chart.lock by `helm dependency build`
 deploy/charts/microecom/charts/infra/charts/
+
+# Python bytecode — deploy/scripts/lib/ is imported by the secrets tooling
+__pycache__/
+*.pyc

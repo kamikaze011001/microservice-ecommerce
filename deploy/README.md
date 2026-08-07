@@ -22,6 +22,143 @@ deploy/
 └── images/             # image build definitions
 ```
 
+## Canonical secrets (`deploy/secrets/`)
+
+`deploy/secrets/<service>.yaml` plus `deploy/secrets/contexts/<env>.yaml` are
+the single source of truth for the ~90 Spring config keys previously hand-kept
+in sync across `docker/vault-configs/*.json`, `k8s/infra/jobs/03-vault-seed/`,
+and `scripts/aws/seed-secrets.sh`. Three targets operate on this tree:
+
+```bash
+make secrets-validate              # consistency checks only — no backend,
+                                    # no credentials, safe to run anywhere
+make secrets-render ENV=compose    # resolve only — writes
+                                    # deploy/.run/secrets-<env>.json (mode 600),
+                                    # touches no backend
+make secrets-seed ENV=compose      # resolve, then push to the env's backend
+```
+
+`ENV` is one of `compose`, `k8s`, `aws` (default `compose`).
+
+Each env that delivers user-owned credentials by env file
+(`userCredDelivery: envfrom` — `compose` and `k8s`) must document every
+`owner: user` variable in **its own** `.env.example`: `docker/.env.example` for
+compose, `k8s/.env.example` for k8s. `secrets-validate.sh` check 3 enforces
+this per-env rather than against the union of both files, because a variable
+documented in only one of them is not documented for the other — that union is
+what let the mail credentials ship missing from `docker/.env.example`. `aws` is
+exempt: `userCredDelivery: backend` means the value reaches the pod through AWS
+Secrets Manager and no env file is involved.
+
+A `<file:…>` reference (used by `application.jwk`) must point inside
+`deploy/secrets/`, and its **trailing newlines are stripped**. That is
+deliberate: the gateway caches JWKS by `kid`, so a single newline appended by
+an editor-on-save would invalidate every token in the system — and it would do
+so in all three envs at once, which is exactly the case `secrets-validate.sh`
+check 4 (envs compared against each other) cannot see.
+
+**`secrets-seed` always overwrites.** This is a deliberate design decision,
+not an oversight: the canonical file is authoritative, so a value hand-edited
+directly in Vault or AWS Secrets Manager does **not** survive the next seed —
+it is silently replaced by whatever `deploy/secrets/` currently resolves to.
+If you need a value to persist, put it in the canonical file, not the
+backend. There is no "skip if exists" mode.
+
+Per-env specifics:
+
+- **`ENV=compose`** pushes to the local Vault (`VAULT_ADDR`, default
+  `http://localhost:8200`) over its HTTP API. It needs `VAULT_TOKEN` in the
+  environment — run `make vault-login` first, or export it yourself.
+- **`ENV=k8s`** opens a temporary `kubectl -n infra port-forward svc/vault
+  18200:8200` for the duration of the push and tears it down on exit
+  (success, failure, or interrupt). The in-cluster Vault runs in dev mode
+  with the fixed root token `root`, so no token lookup is needed unless you
+  override `VAULT_TOKEN` yourself.
+
+  **You must name the target cluster.** Seeding writes to whatever cluster
+  kubectl points at, and an ambient `current-context` left over from
+  unrelated work is a real hazard — during this branch's own verification it
+  happened to be a production-adjacent managed cluster. So the context is
+  never inferred: pass `--context NAME` or set `KUBE_CONTEXT`, and if it does
+  not match `kubectl config current-context` the seed refuses and exits
+  non-zero before touching anything. There is no default — no context name
+  this repo could assume would be safe. The same name is passed to
+  `kubectl port-forward`, so the context checked and the context written to
+  cannot diverge.
+
+  ```bash
+  make secrets-seed ENV=k8s KUBE_CONTEXT=microecom
+  # or
+  bash deploy/scripts/secrets-seed.sh --env k8s --context microecom
+  ```
+
+  `--dry-run` (`make secrets-render ENV=k8s`) touches no cluster and is
+  exempt.
+- **`ENV=aws`** reads `deploy/.run/terraform-outputs.json`, a cached copy of
+  `terraform output -json` from `aws/main` (which keeps its real state in an
+  S3 remote backend — there is no local file whose mtime can be trusted
+  automatically). The cache is generated on first use and warned about once
+  it is over 24h old, but never auto-refreshed — an implicit `terraform`
+  call mid-seed is exactly the coupling this design removes. The Makefile
+  target does not expose `--refresh-tf`; call the script directly to force a
+  refresh:
+  ```bash
+  bash deploy/scripts/secrets-seed.sh --env aws --refresh-tf
+  ```
+  Any resolve against `ENV=aws` — including `--dry-run` — needs terraform
+  outputs from somewhere: pass `--tf-outputs FILE` to point at one directly
+  and skip the cache (and terraform) entirely, which is how an offline or CI
+  run avoids touching terraform at all:
+  ```bash
+  bash deploy/scripts/secrets-seed.sh --env aws --dry-run \
+    --tf-outputs deploy/secrets/tests/fixtures/terraform-outputs.json
+  ```
+
+The old paths — `make vault-import`, the `03-vault-seed` Job, and
+`scripts/aws/seed-secrets.sh` — still work today and are **not** being
+removed by this change. They are retired in Phase 8, once both the compose
+and k8s seeding paths have been run against a live backend and proven
+equivalent (Phase 7).
+
+### Verification status
+
+**Offline, all three envs — equivalence proven.** `equivalence-test.sh`
+resolves every service in every env and diffs it against a capture of what
+each old path would write, taken by running the real old scripts with fake
+`vault` / `aws` / `terraform` binaries on `PATH`. 33 passed, 0 failed,
+0 pending. This covers `aws` too, which cannot otherwise be exercised
+without an account.
+
+**Live, compose — transport and content proven end to end.** Seeded with
+`make secrets-seed ENV=compose` against a running dev Vault, then every path
+read back over the HTTP API and compared:
+
+- all 11 paths byte-identical to the golden capture (90 keys);
+- and, because Vault KV v2 keeps versions, a direct comparison of what the
+  **old** `make vault-import` actually wrote (v1) against what the **new**
+  seeder wrote (v2) on the same live backend: **zero value differences, zero
+  keys added, exactly four keys removed** — `_comment`,
+  `_comment_mail_creds`, `_comment_mock_paypal`, `_comment_paypal_creds`.
+
+Those four are inert JSON pseudo-comments. `docker/vault-configs/*.json` has
+no comment syntax, so documentation was written as `_comment`-prefixed keys,
+and `import-secrets.sh` POSTs the file verbatim — so they have always been
+seeded into Vault as properties nothing reads. The canonical YAML carries
+that documentation as real YAML comments instead. This is the one intended
+behavioural difference in the whole phase.
+
+**Not yet proven, deliberately:**
+
+- **`make up` after a compose seed** was not run. The seeded bytes are
+  identical to the old path's apart from four properties no code reads, so
+  service startup cannot differ — but that is an inference, not a
+  measurement.
+- **The k8s transport** (`make secrets-seed ENV=k8s`, which port-forwards to
+  the in-cluster Vault) has not been run against a live cluster.
+- **The aws transport** has never written to AWS Secrets Manager. It is
+  verified only against fixture terraform outputs with a shimmed `aws` CLI.
+  Live AWS seeding is Phase 7.
+
 ## Current minikube workflow
 
 ```bash

@@ -125,6 +125,24 @@ vault-login:
 	@bash scripts/vault/login.sh
 
 # ============================================================================
+# Canonical Secrets (deploy/secrets/)
+# ============================================================================
+
+.PHONY: secrets-seed secrets-validate secrets-render
+# Canonical secrets (deploy/secrets/). ENV=compose|k8s|aws, default compose.
+# ALWAYS OVERWRITES the backend — the canonical file is authoritative.
+secrets-seed:
+	@bash deploy/scripts/secrets-seed.sh --env $(or $(ENV),compose)
+
+# Resolve only. Writes deploy/.run/secrets-<env>.json; touches no backend.
+secrets-render:
+	@bash deploy/scripts/secrets-seed.sh --env $(or $(ENV),compose) --dry-run
+
+# Consistency checks. No backend, no credentials — safe to run anywhere.
+secrets-validate:
+	@bash deploy/scripts/secrets-validate.sh
+
+# ============================================================================
 # Kafka
 # ============================================================================
 
