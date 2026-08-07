@@ -429,6 +429,21 @@ k8s-seed-images:
 # (2026-08-07) — the 268 render tests cannot catch it, because the conflict is
 # between the chart and pre-existing cluster state, not inside the rendered YAML.
 #
+# NECESSARY BUT NOT SUFFICIENT. This unblocks the namespaces only. On a cluster
+# brought up the kubectl way (`make k8s-bootstrap`), `make k8s-apps-helm` still
+# aborts afterwards, because it does NOT set infra.enabled=false — the umbrella
+# renders the whole infra subchart, which vendors grafana
+# (charts/infra/charts/grafana), while `k8s-platform` has already installed
+# grafana as its OWN standalone Helm release. Helm then refuses to adopt
+# ServiceAccount/grafana out of release "grafana" into release "microecom".
+# Same applies to the other standalone platform releases.
+#
+# So the Helm app path is only reachable on a cluster brought up the Helm way:
+#   make k8s-cluster-up && make k8s-infra-helm && make k8s-apps-helm
+# It is NOT a drop-in after `make k8s-bootstrap`. Verified live 2026-08-07:
+# k8s-apps-down + k8s-apps-helm aborted on ServiceAccount/grafana, and
+# `make k8s-apps` restored the kustomize path cleanly (10/10 pods, catalog 200).
+#
 # On the pure kubectl path (`k8s-apps`) no Helm release exists and the keys are
 # inert — Helm deletes what its release manifest lists, never what merely
 # carries a label, so this does not change `helm uninstall` blast radius.
