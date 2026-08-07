@@ -398,17 +398,17 @@ k8s-seed-images:
 # of Vault. If k8s/.env is missing we create an empty Secret so the optional
 # secretRef resolves (mail/PayPal just stay unset). Idempotent (apply).
 #
-# Ensures the `apps` namespace exists FIRST, idempotently, rather than assuming
-# some other target already created it. This makes the target self-sufficient
+# Ensures the namespaces exist FIRST, idempotently, rather than assuming some
+# other target already created them. This makes the target self-sufficient
 # regardless of which bring-up path (kubectl `k8s-infra` or Helm
-# `k8s-infra-helm`) created the namespace, or whether either has run yet —
+# `k8s-infra-helm`) created them, or whether either has run yet —
 # which is what lets `k8s-apps-helm` below declare this as a real prerequisite.
 # `kubectl apply` on a namespace that already carries another owner's labels
 # (e.g. Helm's) is safe: with no prior last-applied-configuration annotation,
 # the merge only ADDS fields, it never deletes the existing owner's labels.
 #
 # The ownership stamp is load-bearing, not decoration. The umbrella chart also
-# renders this namespace (deploy/charts/microecom/templates/namespaces.yaml,
+# renders these namespaces (deploy/charts/microecom/templates/namespaces.yaml,
 # deliberately NOT gated on apps.enabled), and Helm REFUSES to adopt a
 # pre-existing object that lacks these three keys — it aborts the whole install
 # with "cannot be imported into the current release: invalid ownership
@@ -418,15 +418,28 @@ k8s-seed-images:
 # kubectl-created namespace => install aborts; same namespace with these keys
 # => install and a subsequent upgrade both succeed.
 #
+# Stamp ALL THREE namespaces the chart renders, not just `apps`. namespaces.yaml
+# ranges over global.namespaces and skips only `infra` (the release namespace),
+# so it emits apps + bootstrap + monitoring — and Helm checks ownership on every
+# one of them. Stamping `apps` alone moved the abort rather than removing it:
+# on a cluster brought up with `make k8s-bootstrap` (which creates `bootstrap`
+# via the seed Jobs and `monitoring` via k8s-platform, both unstamped),
+# `make k8s-apps-helm` still failed with the same "invalid ownership metadata"
+# error, naming `bootstrap` instead. Measured on a live 4-node minikube
+# (2026-08-07) — the 268 render tests cannot catch it, because the conflict is
+# between the chart and pre-existing cluster state, not inside the rendered YAML.
+#
 # On the pure kubectl path (`k8s-apps`) no Helm release exists and the keys are
 # inert — Helm deletes what its release manifest lists, never what merely
 # carries a label, so this does not change `helm uninstall` blast radius.
 k8s-app-secrets:
-	@kubectl create namespace apps --dry-run=client -o yaml | kubectl apply -f -
-	@kubectl label namespace apps app.kubernetes.io/managed-by=Helm --overwrite >/dev/null
-	@kubectl annotate namespace apps \
-	  meta.helm.sh/release-name=microecom \
-	  meta.helm.sh/release-namespace=infra --overwrite >/dev/null
+	@for ns in apps bootstrap monitoring; do \
+	  kubectl create namespace $$ns --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
+	  kubectl label namespace $$ns app.kubernetes.io/managed-by=Helm --overwrite >/dev/null; \
+	  kubectl annotate namespace $$ns \
+	    meta.helm.sh/release-name=microecom \
+	    meta.helm.sh/release-namespace=infra --overwrite >/dev/null; \
+	done
 	@if [ -f k8s/.env ]; then \
 	  kubectl create secret generic app-secrets --namespace apps \
 	    --from-env-file=k8s/.env --dry-run=client -o yaml | kubectl apply -f - ; \
