@@ -26,6 +26,15 @@ Compose infra was stopped (`make infra-down`, volumes kept) to free ~5GB for the
   booted** against the canonical secrets — the functional proof, since a missing key is what
   caused the 3 documented crashloops. The comparison was itself validated with a planted decoy
   (detected, named, then removed — asserted 0 occurrences across all current paths).
+- **Phase 1 ingress CLOSED** — the tunnel ran (`deploy/.run/tunnel.pid`) and all four checks pass:
+  the 3 hosts resolve to 127.0.0.1; an unknown Host gets nginx's own 404; `http://microecom.local`
+  returns 200 (`<title>Issue Nº01 — Storefront</title>`); `http://api.microecom.local/
+  product-service/v1/products` returns 200 with 30 products whose `image_url` points at
+  `media.microecom.local` — and that host serves the real JPEG (200, image/jpeg, 144978 bytes).
+  Gateway `/actuator/**` via the ingress is **404 by design**; liveness+readiness are UP on the
+  management port, which is **19093**, not 9091.
+  Note `lsof -nP -iTCP:80` shows nothing even when the tunnel is healthy — it cannot see the
+  root-owned listener. Test with a request. See [[minikube-tunnel-external-ip-is-sticky]].
 - **Two real defects found and fixed**, both only findable live:
   - `835c558` — kafka-connect rollout wait 10m → 15m. See
     [[cold-cluster-image-pulls-outgrow-rollout-timeouts]].
@@ -33,12 +42,7 @@ Compose infra was stopped (`make infra-down`, volumes kept) to free ~5GB for the
     [[helm-and-kubectl-deploy-paths-are-exclusive]].
 
 ## In progress — Next
-1. **NEEDS THE USER, still outstanding:** `sudo -v && make k8s-tunnel` (one command, one terminal —
-   macOS `tty_tickets` scopes the credential). Nothing is listening on :80 yet. This blocks the
-   **4 Phase-1 ingress checkboxes**: `/etc/hosts` resolves (all 5 entries already present),
-   ingress 404s from nginx, `http://microecom.local` 200, `http://api.microecom.local/...` serves
-   gateway health + product JSON.
-2. **Finish the branch** — 3 commits, no PR yet.
+1. **Finish the branch** — 4 commits, no PR yet.
 3. `make k8s-down` still unticked from Phase 1 (cluster deliberately left running).
 4. Then **Phase 5** (seed consolidation). Note its acceptance criterion needs this cluster:
    `make seed ENV=k8s` must produce the same DB state as `k8s-seed` + `-mysql` + `-inventory`.
