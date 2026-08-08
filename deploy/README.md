@@ -195,6 +195,22 @@ Both default to `compose`/`pre-apps`.
   `information_schema.tables` and refuses to write a single row if any is
   missing, naming the first missing one.
 
+### `post-apps` is safe to re-run
+
+`make seed ENV=… STAGE=post-apps` is idempotent. `account`, `inventory_product`,
+and `product_quantity_history` are each gated on their **own** row-count check
+(`SELECT COUNT(*) FROM <table>`) and the import for that table is skipped with
+a warning if it already holds rows — a re-run never double-inserts. The three
+gates are deliberately **per-table**, not one shared gate: an earlier version
+of this script gated `inventory_product` and `product_quantity_history`
+together, which had a silent-failure window — if the connection dropped after
+`inventory_product` committed but before `product_quantity_history` did, a
+retry would see `inventory_product` already populated, skip **both** imports,
+and leave the ledger permanently half-empty while every command up to and
+including the reconcile still reported success. Splitting the gate closes that
+window: a retry after a partial failure imports exactly the table that's still
+missing.
+
 ### `--replace`
 
 `deploy/scripts/seed.sh --replace` (a `pre-apps`-only concept) opts into the
@@ -225,6 +241,22 @@ make seed ENV=k8s STAGE=pre-apps KUBE_CONTEXT=microecom
 bash deploy/scripts/seed.sh --env k8s --stage pre-apps --context microecom
 ```
 
+### `ENV=aws` and `--tf-outputs`
+
+Same mechanism as `secrets-seed.sh`: `ENV=aws` resolves against a cached
+`terraform output -json` from `aws/main` (`deploy/.run/terraform-outputs.json`
+by default, generated on first use). Pass `--tf-outputs FILE` to point at a
+different outputs file directly — the Makefile target doesn't expose this
+flag, so call the script itself:
+
+```bash
+bash deploy/scripts/seed.sh --env aws --stage pre-apps --dry-run \
+  --tf-outputs deploy/secrets/tests/fixtures/terraform-outputs.json
+```
+
+This is how the offline equivalence suite exercises `aws` without touching
+real terraform state, and how a CI run would too.
+
 ### Reconcile
 
 `seed_render.py`'s reconcile signal is a single env-invariant token
@@ -234,9 +266,36 @@ per-env action: `kubectl rollout restart deploy/inventory-service` (+
 `start.sh inventory-service` on compose. Compose has no `restart.sh` and
 none is added — inventory-service there is a JVM process under
 `scripts/services/*`, not a container, so there is nothing for a
-`docker restart`-style command to target. The reconcile is skipped (a
-warning, not a failure) when the inventory-service workload doesn't exist
-yet, so running `post-apps` standalone before the apps exist stays valid.
+`docker restart`-style command to target.
+
+**Skip vs. failure — these are different outcomes, not the same "nothing
+happened":**
+
+- **Skipped (a warning, exit 0 as far as this step is concerned):** the
+  inventory-service workload genuinely isn't there yet — no k8s/aws
+  Deployment, or (compose) no pidfile *and* `lsof` confirms nothing is
+  listening on `:6969`. This is the expected shape of running `post-apps`
+  standalone before the apps exist, and is not treated as an error.
+- **Failure (`FAIL=1`, `make seed` exits non-zero):** the restart/rollout
+  itself fails or times out. `kubectl rollout restart` + `rollout status
+  --timeout=300s` on k8s/aws, or `stop.sh` + `start.sh inventory-service` on
+  compose — either leg's exit code is checked, and a failure there prints
+  the actual consequence: *"Redis productAvailable:\* counters were NOT
+  rebuilt; every order will fail 'Insufficient available stock' until this
+  is fixed and the seed is re-run."* The precondition/import steps ahead of
+  the reconcile can all have succeeded; only the reconcile itself failed.
+- **Failure, compose only — status genuinely unknown:** if there's no
+  pidfile *and* `lsof` isn't installed, compose has no way to tell running
+  from not-running. Rather than guess (and risk silently skipping a real
+  reconcile that was needed), this case also sets `FAIL=1` and prints
+  "install lsof, or ensure logs/pids/inventory-service.pid is current, then
+  re-run" — a deliberately loud refusal, not folded into the ordinary skip
+  path above.
+
+In every failure case, re-running `post-apps` is the fix: the precondition
+and the per-table import gates (above) make it safe to retry, and a
+successful retry's reconcile rebuilds the counters from the ledger that's
+already there.
 
 ### Verification status
 

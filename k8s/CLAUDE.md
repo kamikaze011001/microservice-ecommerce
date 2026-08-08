@@ -285,7 +285,7 @@ applies the Job with plain **`kubectl apply -f job.yaml`**, NOT `apply -k`. The
 `apply -k` for them. The other 3 Jobs (vault/minio/kafka-connect) have no
 out-of-tree refs and still use `apply -k`.
 
-### SCAR (resolved): mysql seed used to run before any schema existed
+### SCAR (resolved 2026-08-08): mysql seed used to run before any schema existed
 
 **Symptom:** `docker/ecommerce.sql` is **data-only** (0 `CREATE TABLE`;
 INSERTs only). The schema is created by Hibernate `ddl-auto` when the JPA
