@@ -541,8 +541,15 @@ echo
 echo -e "\033[1mlive-verify — $ENV_NAME\033[0m"
 
 if [ "$ENV_NAME" = "k8s" ]; then
-  log_err "the k8s leg is written but this run target is compose-only in this environment (no live cluster) — refusing to proceed"
-  log_err "if a cluster exists, re-run with --context <name>; the k8s functions above are otherwise untested"
+  # NOTE: this refuses unconditionally, even when --context/KUBE_CONTEXT was
+  # given and matched the earlier guard above — passing --context cannot
+  # unblock this leg, because no live cluster exists in this phase to run it
+  # against (see .superpowers/sdd/progress.md, "ENVIRONMENT CHANGE"). The k8s
+  # functions above (mongo_docs/mongo_drop/redis_dump's k8s branches,
+  # run_old_way/run_new_way's k8s branches) are code-reviewed only, never
+  # executed. This is a scope statement, not a flag-usage error.
+  log_err "the k8s leg is written but code-reviewed only — unverified in this phase, and cannot be run here because no live cluster exists"
+  log_err "running it for real requires provisioning a live k8s cluster and re-running with a valid --context/KUBE_CONTEXT; that has not happened yet"
   exit 1
 fi
 
@@ -597,7 +604,8 @@ log_info "step 6/8: per-product Redis check against the freshly-seeded ledger (n
 # aggregate, so a compensating error (one key short, another key long)
 # can't hide behind a matching total.
 LEDGER="$WORKDIR/ledger.tsv"
-mysql_query "SELECT product_id, SUM(quantity) FROM product_quantity_history GROUP BY product_id;" > "$LEDGER"
+mysql_query "SELECT product_id, SUM(quantity) FROM product_quantity_history GROUP BY product_id;" > "$LEDGER" \
+  || { log_err "step 6/8: ledger query failed — refusing to compare against it"; exit 1; }
 if assert_nonempty_counters "$NEW_REDIS" "new-way (post reconcile)"; then
   python3 - "$LEDGER" "$NEW_REDIS" <<'PY'
 import sys
@@ -675,6 +683,28 @@ log_info "step 8/8: second declared asymmetry — inventory_product.stock, backf
 # it, so it lands NULL for every row. New way's restart backfills it to
 # match the ledger. Same declared-difference contract as step 7: assert the
 # direction, fail if it ever reverses.
+#
+# Own non-empty guard: $label.stock is a separate query from the
+# $label.mysql.inventory_product capture, so capture_snapshot's "refuse to
+# hash an empty table" guard (in its python block) never covers this file —
+# it was, until now, guarded only INDIRECTLY, by the unrelated fact that
+# step 5's diff_snapshots already failed loudly if inventory_product itself
+# came back empty. An empty old.stock/new.stock on its own would make
+# read_stock() return {}, every "count == 0" comparison below trivially
+# pass, and the python block print "0 rows, 0 non-NULL (want 0)" as if that
+# were the expected all-NULL result — a vacuous PASS over nothing. Refuse
+# before that can happen.
+for f in "$WORKDIR/old.stock" "$WORKDIR/new.stock"; do
+  if [ ! -s "$f" ]; then
+    log_err "step 8/8: $(basename "$f") is EMPTY — refusing to compare an empty inventory_product.stock capture (proves nothing)"
+    FAIL=1
+  fi
+done
+if [ "$FAIL" -ne 0 ]; then
+  echo
+  echo -e "${RED}FAIL${NC} — see above"
+  exit 1
+fi
 python3 - "$WORKDIR/old.stock" "$WORKDIR/new.stock" "$LEDGER" <<'PY'
 import sys
 
@@ -722,7 +752,7 @@ if [ $? -ne 0 ]; then FAIL=1; fi
 
 echo
 if [ "$FAIL" -eq 0 ]; then
-  echo -e "${GREEN}PASS${NC} — mysql/mongo seed content identical old vs new; redis counters + inventory_product.stock both absent/NULL old, present+correct new (578 across 27 keys, as documented)"
+  echo -e "${GREEN}PASS${NC} — mysql/mongo seed content identical old vs new; redis counters + inventory_product.stock both absent/NULL old, present+correct new (measured this run: sum=$NEW_REDIS_SUM across $NEW_REDIS_COUNT keys)"
 else
   echo -e "${RED}FAIL${NC} — see above"
 fi

@@ -297,23 +297,58 @@ and the per-table import gates (above) make it safe to retry, and a
 successful retry's reconcile rebuilds the counters from the ledger that's
 already there.
 
+### Test suites
+
+Three suites cover this tree, each named by full path — `deploy/seed/tests/`
+has its own `equivalence-test.sh`, and `deploy/secrets/tests/` (Canonical
+Secrets, above) has a **different, unrelated** suite with the same basename;
+always disambiguate by path, never say "run equivalence-test.sh" alone.
+
+```bash
+make seed-test-render        # renderer unit tests + the compose/product.json
+                              # byte-for-byte invariant. No backend, no
+                              # credentials, no cluster.
+make seed-test-equivalence   # Layer A — offline equivalence across all three
+                              # envs against captured goldens. No backend, no
+                              # credentials, no cluster; the only verification
+                              # `aws` gets.
+make seed-live-verify ENV=compose   # Layer B — live state diff, old way vs
+                              # new way, by content hash. Re-seeds the target
+                              # backend; takes several minutes. ENV=compose|k8s,
+                              # default compose. See "Verification status" below.
+```
+
 ### Verification status
 
 **Proven live on compose — both stages end to end.** `make seed ENV=compose
 STAGE=pre-apps` then `make seed ENV=compose STAGE=post-apps` against a
-running dev stack. The headline fix was measured directly, not inferred:
-after flushing Redis and re-running `post-apps`, 27 `productAvailable:*`
-keys landed, summing to **578** — exactly matching
-`SELECT SUM(quantity) FROM product_quantity_history`.
+running dev stack, and independently via `make seed-live-verify ENV=compose`
+(`deploy/seed/tests/live-verify.sh`), which reseeds old-way vs new-way and
+diffs live content. The headline fix was measured directly, not inferred, and
+it has **two** manifestations, both asserted as declared asymmetries:
 
-**Proven offline for all three envs.** `equivalence-test.sh` resolves every
-env x stage combination and diffs it against a capture of what the three OLD
-seed paths actually wrote: **13 matched, 2 declared-different, 0
-unexplained**. The two declared differences are both compose-only and both
-intentional (the `--replace`-gated drop behaviour and the new reconcile
-step, neither of which the old compose scripts had) — this suite needs no
-backend, no credentials, and no cluster, and is the only verification `aws`
-gets at all.
+- **Redis `productAvailable:*` counters** — absent under the old path
+  (compose never restarts inventory-service); after flushing Redis and
+  re-running `post-apps`, 27 keys landed, summing to **578** — exactly
+  matching `SELECT SUM(quantity) FROM product_quantity_history`.
+- **`inventory_product.stock`** — `NULL` for every row under the old path
+  (the column has no `DEFAULT` and the seed `INSERT` never mentions it); the
+  same inventory-service restart that rebuilds the Redis counters also
+  backfills this column via `AvailableStockSeeder`
+  (`GREATEST(0, SUM(product_quantity_history.quantity))`), verified to match
+  the ledger for all 30 rows on live compose.
+
+**Proven offline for all three envs.** `make seed-test-equivalence`
+(`deploy/seed/tests/equivalence-test.sh`) resolves every env and diffs it
+against a capture of what the three OLD seed paths actually wrote — it has no
+stage concept of its own; the equivalence is keyed on the rendered artifact
+set, and both stages' artifacts (mongo/objects for pre-apps; mysql for
+post-apps) are covered because `render_all()` produces all of them together
+in one pass: **13 matched, 2 declared-different, 0 unexplained**. The two
+declared differences are both compose-only and both intentional (the
+`--replace`-gated drop behaviour and the new reconcile step, neither of which
+the old compose scripts had) — this suite needs no backend, no credentials,
+and no cluster, and is the only verification `aws` gets at all.
 
 **NOT proven, and this is stated plainly rather than left to be inferred:
 the k8s and aws transports have never been executed.** The minikube cluster

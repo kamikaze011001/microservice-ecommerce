@@ -119,7 +119,7 @@ echo -e "\033[1mrender_all — quote-escaping and NULL-imageUrl match the old jq
 
 t3_dir="$(mktemp -d)"
 cp -R "$SEED_DIR" "$t3_dir/seed"
-t3_result="$(python3 - "$t3_dir/seed" <<'PY'
+t3_result="$(cd "$ROOT" && python3 - "$t3_dir/seed" <<'PY'
 import json, pathlib, sys
 sys.path.insert(0, "deploy/scripts/lib")
 import seed_render as sr

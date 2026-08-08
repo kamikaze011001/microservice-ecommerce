@@ -128,7 +128,10 @@ if [ "$ENV_NAME" = "aws" ]; then
     mkdir -p "$ROOT/deploy/.run"
     if [ ! -f "$TF_CACHE" ]; then
       log_info "generating $TF_CACHE from terraform"
-      terraform -chdir="$ROOT/aws/main" output -json > "$TF_CACHE" \
+      # $TF_CACHE holds db_master_password (see the post-apps RDS_PASS read
+      # below) — write it under a restrictive umask, same discipline as
+      # secrets-seed.sh's secrets-<env>.json cache.
+      (umask 077; terraform -chdir="$ROOT/aws/main" output -json > "$TF_CACHE") \
         || { log_err "terraform output failed — run 'terraform apply' first, or pass --tf-outputs"; exit 1; }
     fi
   fi
@@ -469,6 +472,17 @@ mysql_run() {
 REQUIRED_TABLES="$(jq -r '.mysql[]' "$RENDERED" \
   | grep -oiE 'INSERT( IGNORE)? INTO `?[A-Za-z_]+`?' \
   | grep -oE '[A-Za-z_]+`?$' | tr -d '`' | sort -u)"
+# Vacuous-pass guard: if the regex above matches nothing, REQUIRED_TABLES is
+# empty, IN_LIST becomes '', the information_schema query returns nothing,
+# `comm` compares empty-against-empty, MISSING stays empty, and the
+# precondition below would print "all 0 target tables exist" and proceed —
+# exactly the ERROR-1146 half-import this precondition exists to prevent,
+# just with the guard itself silently disabled instead of removed. Six is the
+# real count today (account, account_role, role, user, inventory_product,
+# product_quantity_history) — refuse below that rather than assume the
+# parser is still matching correctly.
+REQUIRED_COUNT="$(printf '%s\n' "$REQUIRED_TABLES" | grep -c .)"
+[ "$REQUIRED_COUNT" -ge 6 ] || { log_err "precondition: derived $REQUIRED_COUNT target tables from the SQL — the table-name parser is broken, refusing to proceed"; exit 1; }
 IN_LIST="$(printf '%s\n' "$REQUIRED_TABLES" | awk '{printf "%s%s", (NR>1?",":""), "\x27" $0 "\x27"}')"
 EXISTING_TABLES="$(printf "SELECT table_name FROM information_schema.tables WHERE table_schema='%s' AND table_name IN (%s);\n" "$MYSQL_DB" "$IN_LIST" | mysql_run)"
 precheck_rc=$?
@@ -534,11 +548,27 @@ fi
 INV_PRODUCT_SQL="$(jq -r '.mysql[] | select(contains("INTO inventory_product "))' "$RENDERED")"
 QTY_SQL="$(jq -r '.mysql[] | select(contains("INTO product_quantity_history "))' "$RENDERED")"
 
+# Vacuous-pass guard, same class as ECOMMERCE_SQL's check above (which IS
+# already asserted non-empty) — these two are jq substring filters, not
+# counted anywhere else. If either ever matched nothing, an empty stream
+# piped to `mysql` still exits 0 just like a real import, "importing … (0
+# rows)" would print as if that were expected, the reconcile below would
+# still run, and AvailableStockSeeder would rebuild the Redis counters /
+# inventory_product.stock from an empty ledger — "0 available" returning
+# silently with everything reporting green.
+INV_ROWS="$(printf '%s\n' "$INV_PRODUCT_SQL" | grep -c INSERT || true)"
+QTY_ROWS="$(printf '%s\n' "$QTY_SQL" | grep -c INSERT || true)"
+[ "$INV_ROWS" -gt 0 ] || { log_err "post-apps: derived 0 inventory_product INSERT statements from the rendered SQL — refusing to import an empty ledger (the jq filter above may be broken)"; FAIL=1; }
+[ "$QTY_ROWS" -gt 0 ] || { log_err "post-apps: derived 0 product_quantity_history INSERT statements from the rendered SQL — refusing to import an empty ledger (the jq filter above may be broken)"; FAIL=1; }
+if [ "$FAIL" -ne 0 ]; then
+  log_err "seed post-apps for $ENV_NAME finished WITH ERRORS — see above (reconcile NOT attempted)"
+  exit 1
+fi
+
 INV_COUNT="$(printf 'SELECT COUNT(*) FROM inventory_product;\n' | mysql_run)"
 if [ "${INV_COUNT:-0}" -gt 0 ] 2>/dev/null; then
   log_warn "inventory_product already seeded ($INV_COUNT rows) — skipping"
 else
-  INV_ROWS="$(printf '%s\n' "$INV_PRODUCT_SQL" | grep -c INSERT || true)"
   log_info "importing inventory_product ($INV_ROWS rows)"
   if ! printf '%s\n' "$INV_PRODUCT_SQL" | mysql_run >/dev/null; then
     log_err "inventory_product import failed"
@@ -550,7 +580,6 @@ QTY_DB_COUNT="$(printf 'SELECT COUNT(*) FROM product_quantity_history;\n' | mysq
 if [ "${QTY_DB_COUNT:-0}" -gt 0 ] 2>/dev/null; then
   log_warn "product_quantity_history already seeded ($QTY_DB_COUNT rows) — skipping"
 else
-  QTY_ROWS="$(printf '%s\n' "$QTY_SQL" | grep -c INSERT || true)"
   log_info "importing product_quantity_history ($QTY_ROWS rows)"
   if ! printf '%s\n' "$QTY_SQL" | mysql_run >/dev/null; then
     log_err "product_quantity_history import failed"
