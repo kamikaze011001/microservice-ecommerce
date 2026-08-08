@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+"""Fake `mc` — used only where a script calls the client bare, i.e.
+k8s/infra/jobs/05-minio-bootstrap/seed.sh (run directly; it only sets up the
+bucket + anonymous-read policy, no object uploads, so nothing here needs the
+/seed-path workaround the mysql/mongo Jobs need).
+
+Everything else (`mc cp` for actual product images) reaches this same logic
+through the docker shim (compose's `docker run --entrypoint mc` wrapper) or
+the kubectl shim (k8s-product-images.sh's `kubectl exec ... -- mc cp`).
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _lib import handle_mc_args, log_record, redact_argv  # noqa: E402
+
+LOG = "mc"
+
+
+def main():
+    argv = sys.argv[1:]
+    log_record(LOG, {"kind": "raw", "argv": redact_argv(argv)})
+    return handle_mc_args(LOG, argv)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

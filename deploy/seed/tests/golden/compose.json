@@ -1,0 +1,1632 @@
+{
+  "drop": [
+    "product",
+    "productQuantityHistory"
+  ],
+  "mongo": {
+    "api_role": [
+      {
+        "_id": {
+          "$oid": "67a4c904f5b8bc1b957eeba4"
+        },
+        "path": "/v3/api-docs/**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a4c925f5b8bc1b957eeba8"
+        },
+        "path": "/v3/api-docs**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a4c925f5b8bc1b957eeba9"
+        },
+        "path": "/swagger-ui**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a4c925f5b8bc1b957eebaa"
+        },
+        "path": "/swagger-ui/**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a4da5ef5b8bc1b957eebb2"
+        },
+        "path": "/webjars**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a4da8df5b8bc1b957eebb7"
+        },
+        "path": "/webjars/**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a4dba3f5b8bc1b957eebb9"
+        },
+        "path": "/inventory-service/v3/api-docs/**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a4dbaef5b8bc1b957eebbb"
+        },
+        "path": "/product-service/v3/api-docs/**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a4dbbdf5b8bc1b957eebbd"
+        },
+        "path": "/authorization-server/v3/api-docs/**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a4e118f5b8bc1b957eebbf"
+        },
+        "path": "/authorization-server/v1/users/**",
+        "roles": [
+          "AUTHORIZED"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a4e128f5b8bc1b957eebc1"
+        },
+        "path": "/authorization-server/v1/admin/**",
+        "roles": [
+          "ADMIN"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a4e13cf5b8bc1b957eebc3"
+        },
+        "path": "/authorization-server/v1/auth/**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a4e156f5b8bc1b957eebc5"
+        },
+        "path": "/authorization-server/v1/auth**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a4e164f5b8bc1b957eebc7"
+        },
+        "path": "/authorization-server/v1/admin**",
+        "roles": [
+          "ADMIN"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a4e18df5b8bc1b957eebc9"
+        },
+        "path": "/authorization-server/.well-known/jwks.json/**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a6df0d44ff8d44e59559bb"
+        },
+        "method": [
+          "POST",
+          "PUT"
+        ],
+        "path": "/product-service/v1/products/**",
+        "roles": [
+          "ADMIN"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a6df2244ff8d44e59559bd"
+        },
+        "method": [
+          "GET"
+        ],
+        "path": "/product-service/v1/products/**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67a6e1f744ff8d44e59559c0"
+        },
+        "method": [
+          "POST",
+          "PUT"
+        ],
+        "path": "/product-service/v1/products**",
+        "roles": [
+          "ADMIN"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67b741615dbb2d7c65775386"
+        },
+        "method": [
+          "GET"
+        ],
+        "path": "/inventory-service/v1/inventories/**",
+        "roles": [
+          "AUTHORIZED"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67b741625dbb2d7c65775387"
+        },
+        "method": [
+          "PATCH"
+        ],
+        "path": "/inventory-service/v1/inventories/**",
+        "roles": [
+          "ADMIN"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67b741625dbb2d7c65775388"
+        },
+        "method": [
+          "GET",
+          "POST",
+          "PUT",
+          "PATCH",
+          "DELETE"
+        ],
+        "path": "/order-service/v1/shopping-carts/**",
+        "roles": [
+          "AUTHORIZED"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67bdd5f4159bec37d09bb69f"
+        },
+        "method": [
+          "GET",
+          "POST",
+          "PUT",
+          "PATCH",
+          "DELETE"
+        ],
+        "path": "/order-service/v1/shopping-carts**",
+        "roles": [
+          "AUTHORIZED"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67bdd5f4159bec37d09bb6a0"
+        },
+        "path": "/order-service/v3/api-docs/**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67bdd5f4159bec37d09bb6a1"
+        },
+        "method": [
+          "GET",
+          "POST",
+          "PATCH",
+          "DELETE"
+        ],
+        "path": "/order-service/v1/orders/**",
+        "roles": [
+          "AUTHORIZED"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67bdd5f4159bec37d09bb6a2"
+        },
+        "method": [
+          "GET",
+          "POST",
+          "PATCH",
+          "DELETE"
+        ],
+        "path": "/order-service/v1/orders**",
+        "roles": [
+          "AUTHORIZED"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67bdd5f4159bec37d09bb6a3"
+        },
+        "path": "/payment-service/v3/api-docs/**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67bdd5f4159bec37d09bb6a4"
+        },
+        "method": [
+          "GET",
+          "POST"
+        ],
+        "path": "/payment-service/v1/payments/**",
+        "roles": [
+          "AUTHORIZED"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67bdd5f4159bec37d09bb6a5"
+        },
+        "method": [
+          "GET",
+          "POST"
+        ],
+        "path": "/payment-service/v1/payments**",
+        "roles": [
+          "AUTHORIZED"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67bdd5f4159bec37d09bb6a6"
+        },
+        "method": [
+          "GET"
+        ],
+        "path": "/payment-service/v1/paypal:success",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67bdd5f4159bec37d09bb6a7"
+        },
+        "method": [
+          "GET"
+        ],
+        "path": "/payment-service/v1/paypal:cancel",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67bdd5f4159bec37d09bb6a8"
+        },
+        "method": [
+          "GET"
+        ],
+        "path": "/mock-paypal-service/**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67bdd5f4159bec37d09bb6b0"
+        },
+        "path": "/bff-service/v3/api-docs/**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67bdd5f4159bec37d09bb6b1"
+        },
+        "path": "/bff-service/v3/api-docs**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67f00100000000000000bf01"
+        },
+        "method": [
+          "GET"
+        ],
+        "path": "/bff-service/v1/products/**",
+        "roles": [
+          "PERMIT_ALL"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67ff000000000000000c0001"
+        },
+        "method": [
+          "GET"
+        ],
+        "path": "/bff-service/v1/cart",
+        "roles": [
+          "AUTHORIZED"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67ff000000000000000c0002"
+        },
+        "method": [
+          "POST"
+        ],
+        "path": "/bff-service/v1/cart:add-item",
+        "roles": [
+          "AUTHORIZED"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67ff000000000000000c0003"
+        },
+        "method": [
+          "PATCH"
+        ],
+        "path": "/bff-service/v1/cart:update-item",
+        "roles": [
+          "AUTHORIZED"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67ff000000000000000c0004"
+        },
+        "method": [
+          "DELETE"
+        ],
+        "path": "/bff-service/v1/cart:delete-item",
+        "roles": [
+          "AUTHORIZED"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67ff000000000000000c0010"
+        },
+        "method": [
+          "GET"
+        ],
+        "path": "/bff-service/v1/orders/**",
+        "roles": [
+          "AUTHORIZED"
+        ]
+      },
+      {
+        "_id": {
+          "$oid": "67ff000000000000000c0011"
+        },
+        "method": [
+          "GET"
+        ],
+        "path": "/bff-service/v1/orders**",
+        "roles": [
+          "AUTHORIZED"
+        ]
+      }
+    ],
+    "product": [
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000001"
+        },
+        "attributes": {
+          "color": "Blue",
+          "material": "cotton",
+          "size": [
+            "S",
+            "M",
+            "L",
+            "XL"
+          ]
+        },
+        "category": "apparel",
+        "description": "A cotton shirt in a blue, black, and white check, cut for everyday wear through the body and sleeve. The gingham-scale check holds a crisp line at the collar and cuff without feeling stiff. Layer it under a coat or wear it alone on a mild day.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000001/broadsheet-check-shirt.jpg",
+        "name": "Broadsheet Check Shirt",
+        "price": 58,
+        "tags": [
+          "shirt",
+          "cotton",
+          "check",
+          "blue",
+          "everyday"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000002"
+        },
+        "attributes": {
+          "color": "Red/Black",
+          "material": "cotton",
+          "size": [
+            "S",
+            "M",
+            "L",
+            "XL"
+          ]
+        },
+        "category": "apparel",
+        "description": "A brushed cotton buffalo check cut for layering, in bold red and black. The collar holds its shape without starch, and the body is roomy enough to wear open over a tee. Warm enough for a cold newsroom, bold enough to be seen across it.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000002/broadsheet-plaid-shirt.jpg",
+        "name": "Broadsheet Plaid Shirt",
+        "price": 62,
+        "tags": [
+          "shirt",
+          "cotton",
+          "buffalo-check",
+          "red",
+          "black",
+          "layering"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000003"
+        },
+        "attributes": {
+          "color": "Navy",
+          "material": "cotton",
+          "size": [
+            "S",
+            "M",
+            "L",
+            "XL"
+          ]
+        },
+        "category": "apparel",
+        "description": "A short-sleeve shirt in navy cotton, covered edge-to-edge in a pale-blue tropical floral print. The lightweight weave breathes in warm weather, and the collar sits flat under a jacket if the evening turns cool. Built for the last hot week of the season.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000003/dispatch-floral-shirt.jpg",
+        "name": "Dispatch Floral Shirt",
+        "price": 45,
+        "tags": [
+          "shirt",
+          "cotton",
+          "floral",
+          "navy",
+          "short-sleeve",
+          "summer"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000004"
+        },
+        "attributes": {
+          "color": "Teal/Olive",
+          "material": "cotton",
+          "size": [
+            "S",
+            "M",
+            "L",
+            "XL"
+          ]
+        },
+        "category": "apparel",
+        "description": "A cotton check shirt in teal and olive, buttoned through with a spread collar. The multi-colour plaid has enough weight to hold a crease but stays soft against the skin. Reads sharp at a desk, easy after hours.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000004/gazette-check-shirt.jpg",
+        "name": "Gazette Check Shirt",
+        "price": 58,
+        "tags": [
+          "shirt",
+          "cotton",
+          "check",
+          "teal",
+          "olive"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000005"
+        },
+        "attributes": {
+          "color": "White/Blue",
+          "material": "cotton",
+          "size": [
+            "XS",
+            "S",
+            "M",
+            "L"
+          ]
+        },
+        "category": "apparel",
+        "description": "A fit-and-flare frock in white cotton, printed with a scatter of blue polka dots in different sizes. The cap sleeves and flared skirt keep it light for a warm afternoon. An easy piece for the parts of the day spent on your feet.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000005/dot-matrix-frock.jpg",
+        "name": "Dot Matrix Frock",
+        "price": 78,
+        "tags": [
+          "dress",
+          "cotton",
+          "polka-dot",
+          "blue",
+          "white",
+          "daywear"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000006"
+        },
+        "attributes": {
+          "color": "Off-White/Black",
+          "material": "cotton-blend",
+          "size": [
+            "XS",
+            "S",
+            "M",
+            "L"
+          ]
+        },
+        "category": "apparel",
+        "description": "An off-shoulder maxi dress in off-white cotton-blend, printed with a scatter of black tropical leaves. Thin straps hold the flounced neckline in place, and the skirt falls to the floor with room to move. Made for warm evenings, not the beach.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000006/summer-issue-dress.jpg",
+        "name": "Summer Issue Dress",
+        "price": 68,
+        "tags": [
+          "dress",
+          "cotton-blend",
+          "leaf-print",
+          "off-white",
+          "black",
+          "maxi"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000007"
+        },
+        "attributes": {
+          "color": "Sage Green",
+          "material": "crepe",
+          "size": [
+            "XS",
+            "S",
+            "M",
+            "L"
+          ]
+        },
+        "category": "apparel",
+        "description": "A sleeveless button-through dress in sage-green crepe, belted at the waist with a self tie. The A-line skirt falls below the knee and moves well. Reads as tailored, wears as easy.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000007/column-dress-sage.jpg",
+        "name": "Column Dress, Sage",
+        "price": 84,
+        "tags": [
+          "dress",
+          "crepe",
+          "sage-green",
+          "belted",
+          "tailored"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000008"
+        },
+        "attributes": {
+          "color": "Dusty Teal",
+          "material": "cotton-blend",
+          "size": [
+            "XS",
+            "S",
+            "M",
+            "L"
+          ]
+        },
+        "category": "apparel",
+        "description": "A strapless mini dress in dusty-teal cotton-blend, fitted through the bodice with a tiered ruffle skirt that stops above the knee. A matching bow sits at the waist where the bodice meets the skirt. A compact piece for an evening out.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000008/quarto-short-frock.jpg",
+        "name": "Quarto Short Frock",
+        "price": 72,
+        "tags": [
+          "dress",
+          "cotton-blend",
+          "teal",
+          "strapless",
+          "ruffle",
+          "evening"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000009"
+        },
+        "attributes": {
+          "color": "Black/White",
+          "material": "cotton-blend",
+          "size": [
+            "XS",
+            "S",
+            "M",
+            "L"
+          ]
+        },
+        "category": "apparel",
+        "description": "A sleeveless dress in black-and-white tartan, cinched at the waist with a black bow. The plaid is crisp rather than heavy, and the skirt flares full from the waist. A dress built for a proper occasion, not an errand.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000009/tartan-folio-dress.jpg",
+        "name": "Tartan Folio Dress",
+        "price": 92,
+        "tags": [
+          "dress",
+          "cotton-blend",
+          "tartan",
+          "black",
+          "white",
+          "bow"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c00000000000000000000a"
+        },
+        "attributes": {
+          "color": "Black Floral",
+          "material": "lace",
+          "size": [
+            "XS",
+            "S",
+            "M",
+            "L"
+          ]
+        },
+        "category": "apparel",
+        "description": "A floor-length gown in black georgette, printed with a garden of pink, blue, and violet roses beneath a sheer lace overlay. The off-shoulder neckline sits fitted through the bodice before the skirt falls loose to the hem. Built for a single long evening.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000a/nocturne-gown.jpg",
+        "name": "Nocturne Gown",
+        "price": 210,
+        "tags": [
+          "gown",
+          "lace",
+          "black",
+          "floral",
+          "evening",
+          "formal"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c00000000000000000000b"
+        },
+        "attributes": {
+          "color": "Red",
+          "material": "leather",
+          "size": [
+            "XS",
+            "S",
+            "M",
+            "L"
+          ]
+        },
+        "category": "apparel",
+        "description": "A boned corset top in red leather, laced up the front, paired with a matching red leather skirt. The corset structures the waist without a zipper up the back, and the skirt holds its shape through a night of standing. Two pieces built to be worn together.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000b/letterpress-corset-leather-skirt.jpg",
+        "name": "Letterpress Corset & Leather Skirt",
+        "price": 165,
+        "tags": [
+          "corset",
+          "leather",
+          "red",
+          "skirt",
+          "structured"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c00000000000000000000c"
+        },
+        "attributes": {
+          "color": "Black",
+          "material": "leather",
+          "size": [
+            "XS",
+            "S",
+            "M",
+            "L"
+          ]
+        },
+        "category": "apparel",
+        "description": "A fitted corset and matching skirt set in matte black, boned through the bodice and laced up the front. The skirt falls to a full length in a heavier fabric that holds its shape through the night. A set built for an evening that runs late.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000c/inkblack-corset-skirt.jpg",
+        "name": "Inkblack Corset & Skirt",
+        "price": 145,
+        "tags": [
+          "corset",
+          "leather",
+          "black",
+          "skirt",
+          "evening"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c00000000000000000000d"
+        },
+        "attributes": {
+          "color": "White/Red",
+          "material": "cotton",
+          "size": [
+            "XS",
+            "S",
+            "M",
+            "L"
+          ]
+        },
+        "category": "apparel",
+        "description": "A strapless dress in white cotton, printed with red polka dots and finished with a scalloped hem and neckline. A matching bow sits at the natural waist, and the full skirt holds its shape without a crinoline. A dress built for a party, not a desk.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000d/redline-dot-dress.jpg",
+        "name": "Redline Dot Dress",
+        "price": 128,
+        "tags": [
+          "dress",
+          "cotton",
+          "polka-dot",
+          "red",
+          "white",
+          "strapless",
+          "party"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c00000000000000000000e"
+        },
+        "attributes": {
+          "color": "Black/Brown",
+          "gender": "FEMALE",
+          "size": [
+            "6",
+            "7",
+            "8",
+            "9"
+          ]
+        },
+        "category": "footwear",
+        "description": "A pointed-toe pump in matte black leather, lined in cognac brown, set on a slim stiletto heel. The leather holds a clean line from toe to heel, built for a night on your feet rather than a walk to the car. A closed-toe pump for whenever heels are required.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000e/boldface-pump-black-brown.jpg",
+        "name": "Boldface Pump, Black & Brown",
+        "price": 48,
+        "tags": [
+          "shoe",
+          "leather",
+          "black",
+          "pump",
+          "heel"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c00000000000000000000f"
+        },
+        "attributes": {
+          "color": "Rose Gold",
+          "gender": "FEMALE",
+          "size": [
+            "6",
+            "7",
+            "8",
+            "9"
+          ]
+        },
+        "category": "footwear",
+        "description": "A pointed-toe pump in rose-gold metallic leather, set on a slim stiletto heel. The mirror finish reflects light without flaking, built to survive one long night rather than daily wear. A shoe for the one evening you want to be seen.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000000f/gilt-edition-shoe.jpg",
+        "name": "Gilt Edition Shoe",
+        "price": 115,
+        "tags": [
+          "shoe",
+          "leather",
+          "rose-gold",
+          "metallic",
+          "stiletto",
+          "evening"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000010"
+        },
+        "attributes": {
+          "color": "Black",
+          "gender": "FEMALE",
+          "size": [
+            "6",
+            "7",
+            "8",
+            "9"
+          ]
+        },
+        "category": "footwear",
+        "description": "A pointed-toe pump in glossy black leather, set on a high stiletto heel. The finish holds a mirror shine through a full evening without scuffing at the toe. Built for standing out, not for distance.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000010/broadside-pump.jpg",
+        "name": "Broadside Pump",
+        "price": 95,
+        "tags": [
+          "shoe",
+          "leather",
+          "black",
+          "pump",
+          "stiletto",
+          "evening"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000011"
+        },
+        "attributes": {
+          "color": "Red",
+          "gender": "FEMALE",
+          "size": [
+            "6",
+            "7",
+            "8",
+            "9"
+          ]
+        },
+        "category": "footwear",
+        "description": "A pump in red patent-finish leather, cut with a pointed toe and a slim heel. The glossy finish holds its shine through a full day without scuffing, and the heel is slim enough to walk city blocks in. A red shoe that still goes with everything else.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000011/red-press-shoe.jpg",
+        "name": "Red Press Shoe",
+        "price": 105,
+        "tags": [
+          "shoe",
+          "leather",
+          "red",
+          "patent",
+          "heel"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000012"
+        },
+        "attributes": {
+          "color": "Tortoiseshell",
+          "material": "acetate"
+        },
+        "category": "accessories",
+        "description": "A half-rim sunglass in tortoiseshell acetate, with a thin gold-tone wire along the bottom of each lens and dark green glass. The clubmaster shape sits high on the brow and works for a narrow or wide face alike. An everyday pair for a desk drawer or a jacket pocket.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000012/folio-frame-sunglasses.jpg",
+        "name": "Folio Frame Sunglasses",
+        "price": 85,
+        "tags": [
+          "sunglasses",
+          "acetate",
+          "tortoiseshell",
+          "green",
+          "clubmaster"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000013"
+        },
+        "attributes": {
+          "color": "Gold/Blue",
+          "material": "metal"
+        },
+        "category": "accessories",
+        "description": "A classic aviator in gold-tone metal, with teardrop lenses in a blue gradient. The double bridge sits high on the nose, and the frame is light enough to forget you're wearing it. An everyday pair from morning commute to afternoon glare.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000013/classic-frame-sunglasses.jpg",
+        "name": "Classic Frame Sunglasses",
+        "price": 75,
+        "tags": [
+          "sunglasses",
+          "metal",
+          "gold",
+          "aviator",
+          "blue"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000014"
+        },
+        "attributes": {
+          "color": "Clear",
+          "material": "acetate"
+        },
+        "category": "accessories",
+        "description": "An oversized flat-top sunglass in clear acetate, with a squared frame and clear lenses. A small gold star sits at each hinge, the only note of colour against the transparent frame. Built to be seen through as much as looked at.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000014/proof-frame-sunglasses.jpg",
+        "name": "Proof Frame Sunglasses",
+        "price": 88,
+        "tags": [
+          "sunglasses",
+          "acetate",
+          "clear",
+          "transparent",
+          "oversized"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000015"
+        },
+        "attributes": {
+          "color": "Black/Red",
+          "material": "acetate"
+        },
+        "category": "accessories",
+        "description": "A bold rectangular sunglass in matte black, with red lenses and a graphic white pixel-block inlay at each corner. The frame is heavier than a typical pair and reads as a statement rather than a squint-blocker. A loud pair for whoever wants to be noticed.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000015/halftone-sunglasses.jpg",
+        "name": "Halftone Sunglasses",
+        "price": 42,
+        "tags": [
+          "sunglasses",
+          "black",
+          "red",
+          "graphic",
+          "statement"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000016"
+        },
+        "attributes": {
+          "color": "Cobalt Blue",
+          "material": "leather"
+        },
+        "category": "accessories",
+        "description": "A structured tote in cobalt-blue leather, carried by two rolled top handles. The leather holds its shape without slouching through a full workday, and the seamed front panel gives the body its tapered silhouette. A saturated blue built to be the brightest thing in the room.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000016/cobalt-handbag.jpg",
+        "name": "Cobalt Handbag",
+        "price": 130,
+        "tags": [
+          "handbag",
+          "leather",
+          "blue",
+          "structured",
+          "tote",
+          "work"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000017"
+        },
+        "attributes": {
+          "color": "Chalk",
+          "material": "faux leather"
+        },
+        "category": "accessories",
+        "description": "A backpack in chalk-white faux leather, closed with a flap and a pair of drawstring cords finished in gold-tone metal. A short top handle sits above the straps for a quick carry between rooms. The pale colour wipes clean of most everyday marks.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000017/offset-backpack-chalk.jpg",
+        "name": "Offset Backpack, Chalk",
+        "price": 110,
+        "tags": [
+          "backpack",
+          "faux-leather",
+          "white",
+          "gold-hardware",
+          "commute"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000018"
+        },
+        "attributes": {
+          "color": "Black",
+          "material": "leather"
+        },
+        "category": "accessories",
+        "description": "A structured tote in black leather, carried by two top handles with a buckled tab at the front. The winged silhouette holds its shape empty, and the gold-tone hardware is the only bright note against the black. A bag built to be the only one you carry.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000018/colophon-handbag-black.jpg",
+        "name": "Colophon Handbag, Black",
+        "price": 150,
+        "tags": [
+          "handbag",
+          "leather",
+          "black",
+          "structured",
+          "tote",
+          "everyday"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c000000000000000000019"
+        },
+        "attributes": {
+          "color": "Emerald",
+          "material": "brass"
+        },
+        "category": "accessories",
+        "description": "A faceted emerald crystal drop suspended from gold-tone brass. Light catches the facets at every angle, so it carries a plain outfit on its own. Weighs almost nothing on the ear.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c000000000000000000019/colophon-drop-earring-emerald.jpg",
+        "name": "Colophon Drop Earring, Emerald",
+        "price": 65,
+        "tags": [
+          "earring",
+          "brass",
+          "emerald",
+          "drop",
+          "statement"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c00000000000000000001a"
+        },
+        "attributes": {
+          "color": "Sage/Cream",
+          "material": "resin"
+        },
+        "category": "accessories",
+        "description": "An open hoop earring in a sage-and-cream checkerboard pattern, finished matte. The ring shape sits flat against the shoulder and catches the eye without a single stone. A graphic pick for an outfit that's otherwise plain.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001a/harlequin-hoop-earring.jpg",
+        "name": "Harlequin Hoop Earring",
+        "price": 58,
+        "tags": [
+          "earring",
+          "hoop",
+          "green",
+          "cream",
+          "checkerboard",
+          "statement"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c00000000000000000001b"
+        },
+        "attributes": {
+          "color": "Mustard",
+          "material": "resin"
+        },
+        "category": "accessories",
+        "description": "A leaf-shaped drop earring in matte mustard resin, cut like a monstera leaf with a gold-tone stud at the top. The piece is light despite its size and hangs still rather than swinging. A warm note for a plain outfit.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001b/tropic-edition-earring.jpg",
+        "name": "Tropic Edition Earring",
+        "price": 52,
+        "tags": [
+          "earring",
+          "mustard",
+          "leaf",
+          "gold",
+          "statement"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c00000000000000000001c"
+        },
+        "attributes": {
+          "color": "Cognac",
+          "material": "leather"
+        },
+        "category": "accessories",
+        "description": "A slouchy shoulder bag in cognac leather, with a rounded body and twin rolled top handles. Antique-gold hardware runs through the straps, and a zip pocket sits flush against the front. Built to carry the day's contents without structure getting in the way.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001c/byline-shoulder-bag.jpg",
+        "name": "Byline Shoulder Bag",
+        "price": 180,
+        "tags": [
+          "bag",
+          "leather",
+          "cognac",
+          "shoulder-bag",
+          "everyday"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c00000000000000000001d"
+        },
+        "attributes": {
+          "color": "Black/Silver",
+          "material": "steel"
+        },
+        "category": "accessories",
+        "description": "A wristwatch with a polished stainless case and a black dial, set with silver hour markers and a date window. The link bracelet matches the case in a bright steel finish. A watch that reads formal without trying, day to day.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001d/masthead-wrist-watch.jpg",
+        "name": "Masthead Wrist Watch",
+        "price": 195,
+        "tags": [
+          "watch",
+          "steel",
+          "black",
+          "bracelet",
+          "formal"
+        ]
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.Product",
+        "_id": {
+          "$oid": "67c00000000000000000001e"
+        },
+        "attributes": {
+          "color": "Gold/Blue",
+          "material": "steel"
+        },
+        "category": "accessories",
+        "description": "A wristwatch in gold-tone stainless steel, with a blue dial marked in white Roman numerals and a red accent second hand. The chronograph-style case carries extra pushers at the side, and the bracelet adjusts with a hidden clasp. Suited to evening wear rather than a daily rotation.",
+        "imageUrl": "http://localhost:9000/ecommerce-media/products/67c00000000000000000001e/gilt-masthead-watch.jpg",
+        "name": "Gilt Masthead Watch",
+        "price": 420,
+        "tags": [
+          "watch",
+          "steel",
+          "gold",
+          "blue",
+          "chronograph",
+          "formal"
+        ]
+      }
+    ],
+    "productQuantityHistory": [
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000001",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000001",
+        "quantity": 30
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000002",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000002",
+        "quantity": 18
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000003",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000003",
+        "quantity": 12
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000004",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000004",
+        "quantity": 0
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000005",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000005",
+        "quantity": 8
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000006",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000006",
+        "quantity": 25
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000007",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000007",
+        "quantity": 22
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000008",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000008",
+        "quantity": 2
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000009",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000009",
+        "quantity": 35
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc00000000000000000000a",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c00000000000000000000a",
+        "quantity": 40
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc00000000000000000000b",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c00000000000000000000b",
+        "quantity": 28
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc00000000000000000000c",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c00000000000000000000c",
+        "quantity": 14
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc00000000000000000000d",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c00000000000000000000d",
+        "quantity": 22
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc00000000000000000000e",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c00000000000000000000e",
+        "quantity": 10
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc00000000000000000000f",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c00000000000000000000f",
+        "quantity": 0
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000010",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000010",
+        "quantity": 30
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000011",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000011",
+        "quantity": 6
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000012",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000012",
+        "quantity": 1
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000013",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000013",
+        "quantity": 18
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000014",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000014",
+        "quantity": 24
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000015",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000015",
+        "quantity": 50
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000016",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000016",
+        "quantity": 18
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000017",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000017",
+        "quantity": 32
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000018",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000018",
+        "quantity": 14
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc000000000000000000019",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c000000000000000000019",
+        "quantity": 0
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc00000000000000000001a",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c00000000000000000001a",
+        "quantity": 40
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc00000000000000000001b",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c00000000000000000001b",
+        "quantity": 10
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc00000000000000000001c",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c00000000000000000001c",
+        "quantity": 45
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc00000000000000000001d",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c00000000000000000001d",
+        "quantity": 16
+      },
+      {
+        "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+        "_id": "qhc00000000000000000001e",
+        "createdAt": {
+          "$date": "2026-05-03T00:00:00Z"
+        },
+        "productId": "67c00000000000000000001e",
+        "quantity": 8
+      }
+    ]
+  },
+  "mysql": [
+    "/*!40000 ALTER TABLE `account_role` DISABLE KEYS */;",
+    "/*!40000 ALTER TABLE `account_role` ENABLE KEYS */;",
+    "/*!40000 ALTER TABLE `account` DISABLE KEYS */;",
+    "/*!40000 ALTER TABLE `account` ENABLE KEYS */;",
+    "/*!40000 ALTER TABLE `role` DISABLE KEYS */;",
+    "/*!40000 ALTER TABLE `role` ENABLE KEYS */;",
+    "/*!40000 ALTER TABLE `user` DISABLE KEYS */;",
+    "/*!40000 ALTER TABLE `user` ENABLE KEYS */;",
+    "/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;",
+    "/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;",
+    "/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;",
+    "/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;",
+    "/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;",
+    "/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;",
+    "/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;",
+    "/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;",
+    "/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;",
+    "/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;",
+    "/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;",
+    "/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;",
+    "/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;",
+    "/*!40103 SET TIME_ZONE='+00:00' */;",
+    "/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;",
+    "/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;",
+    "/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;",
+    "/*!50503 SET NAMES utf8 */;",
+    "INSERT INTO `account_role` (id, account_id, role_id) VALUES ('b10cbf78-81ca-4812-b1b8-421cbb4eba5b','38abfe92-280c-42c4-a3f1-b7c81454163d','b617429d-0722-4ced-95ec-eb5bd03e3098');",
+    "INSERT INTO `account` (id, is_activated, password, user_id, username) VALUES ('38abfe92-280c-42c4-a3f1-b7c81454163d',_binary '\u0001','$2a$10$1uyllxkKheYmeMFJ7kj/PeRHR1AIWyXBAfbNqfVolcWxe0D2nk0UO','980033d6-e318-41a1-9ce3-597b955717ef','sonanh2001'),('4bc8ef19-a15a-4983-a6ac-a3e1f6eb28a7',_binary '\\0','$2a$10$EJ.53Q7DdxwLc4rj7KeJAu2Zfzp7G1Si.nXN9.AHJ0huvqi.APBMa','311c4ba5-5239-4a99-8ddc-13f68308d306','sonanh2002');",
+    "INSERT INTO `role` (id, name) VALUES ('1b6fc636-230a-429c-977e-a5289f7f03b6','EMPLOYEE'),('b617429d-0722-4ced-95ec-eb5bd03e3098','ADMIN'),('bdb4b8bf-d4d1-4aaa-b4fd-e1187fc0faed','MERCHANT');",
+    "INSERT INTO `user` (id, address, email, gender, name, avatar_url) VALUES ('311c4ba5-5239-4a99-8ddc-13f68308d306',NULL,'anhson7931@gmail.com',NULL,NULL,NULL),('980033d6-e318-41a1-9ce3-597b955717ef','Ha Noi','anhson713@gmail.com','FEMALE','Son Anh',NULL);",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000001\", \"Broadsheet Check Shirt\", 58, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000001/broadsheet-check-shirt.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000002\", \"Broadsheet Plaid Shirt\", 62, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000002/broadsheet-plaid-shirt.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000003\", \"Dispatch Floral Shirt\", 45, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000003/dispatch-floral-shirt.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000004\", \"Gazette Check Shirt\", 58, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000004/gazette-check-shirt.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000005\", \"Dot Matrix Frock\", 78, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000005/dot-matrix-frock.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000006\", \"Summer Issue Dress\", 68, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000006/summer-issue-dress.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000007\", \"Column Dress, Sage\", 84, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000007/column-dress-sage.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000008\", \"Quarto Short Frock\", 72, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000008/quarto-short-frock.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000009\", \"Tartan Folio Dress\", 92, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000009/tartan-folio-dress.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c00000000000000000000a\", \"Nocturne Gown\", 210, \"http://localhost:9000/ecommerce-media/products/67c00000000000000000000a/nocturne-gown.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c00000000000000000000b\", \"Letterpress Corset & Leather Skirt\", 165, \"http://localhost:9000/ecommerce-media/products/67c00000000000000000000b/letterpress-corset-leather-skirt.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c00000000000000000000c\", \"Inkblack Corset & Skirt\", 145, \"http://localhost:9000/ecommerce-media/products/67c00000000000000000000c/inkblack-corset-skirt.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c00000000000000000000d\", \"Redline Dot Dress\", 128, \"http://localhost:9000/ecommerce-media/products/67c00000000000000000000d/redline-dot-dress.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c00000000000000000000e\", \"Boldface Pump, Black & Brown\", 48, \"http://localhost:9000/ecommerce-media/products/67c00000000000000000000e/boldface-pump-black-brown.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c00000000000000000000f\", \"Gilt Edition Shoe\", 115, \"http://localhost:9000/ecommerce-media/products/67c00000000000000000000f/gilt-edition-shoe.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000010\", \"Broadside Pump\", 95, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000010/broadside-pump.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000011\", \"Red Press Shoe\", 105, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000011/red-press-shoe.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000012\", \"Folio Frame Sunglasses\", 85, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000012/folio-frame-sunglasses.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000013\", \"Classic Frame Sunglasses\", 75, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000013/classic-frame-sunglasses.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000014\", \"Proof Frame Sunglasses\", 88, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000014/proof-frame-sunglasses.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000015\", \"Halftone Sunglasses\", 42, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000015/halftone-sunglasses.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000016\", \"Cobalt Handbag\", 130, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000016/cobalt-handbag.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000017\", \"Offset Backpack, Chalk\", 110, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000017/offset-backpack-chalk.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000018\", \"Colophon Handbag, Black\", 150, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000018/colophon-handbag-black.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c000000000000000000019\", \"Colophon Drop Earring, Emerald\", 65, \"http://localhost:9000/ecommerce-media/products/67c000000000000000000019/colophon-drop-earring-emerald.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c00000000000000000001a\", \"Harlequin Hoop Earring\", 58, \"http://localhost:9000/ecommerce-media/products/67c00000000000000000001a/harlequin-hoop-earring.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c00000000000000000001b\", \"Tropic Edition Earring\", 52, \"http://localhost:9000/ecommerce-media/products/67c00000000000000000001b/tropic-edition-earring.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c00000000000000000001c\", \"Byline Shoulder Bag\", 180, \"http://localhost:9000/ecommerce-media/products/67c00000000000000000001c/byline-shoulder-bag.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c00000000000000000001d\", \"Masthead Wrist Watch\", 195, \"http://localhost:9000/ecommerce-media/products/67c00000000000000000001d/masthead-wrist-watch.jpg\");",
+    "INSERT INTO inventory_product (id, name, price, image_url) VALUES (\"67c00000000000000000001e\", \"Gilt Masthead Watch\", 420, \"http://localhost:9000/ecommerce-media/products/67c00000000000000000001e/gilt-masthead-watch.jpg\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000001\", \"67c000000000000000000001\", 30, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000002\", \"67c000000000000000000002\", 18, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000003\", \"67c000000000000000000003\", 12, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000004\", \"67c000000000000000000004\", 0, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000005\", \"67c000000000000000000005\", 8, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000006\", \"67c000000000000000000006\", 25, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000007\", \"67c000000000000000000007\", 22, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000008\", \"67c000000000000000000008\", 2, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000009\", \"67c000000000000000000009\", 35, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc00000000000000000000a\", \"67c00000000000000000000a\", 40, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc00000000000000000000b\", \"67c00000000000000000000b\", 28, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc00000000000000000000c\", \"67c00000000000000000000c\", 14, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc00000000000000000000d\", \"67c00000000000000000000d\", 22, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc00000000000000000000e\", \"67c00000000000000000000e\", 10, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc00000000000000000000f\", \"67c00000000000000000000f\", 0, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000010\", \"67c000000000000000000010\", 30, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000011\", \"67c000000000000000000011\", 6, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000012\", \"67c000000000000000000012\", 1, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000013\", \"67c000000000000000000013\", 18, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000014\", \"67c000000000000000000014\", 24, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000015\", \"67c000000000000000000015\", 50, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000016\", \"67c000000000000000000016\", 18, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000017\", \"67c000000000000000000017\", 32, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000018\", \"67c000000000000000000018\", 14, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc000000000000000000019\", \"67c000000000000000000019\", 0, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc00000000000000000001a\", \"67c00000000000000000001a\", 40, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc00000000000000000001b\", \"67c00000000000000000001b\", 10, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc00000000000000000001c\", \"67c00000000000000000001c\", 45, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc00000000000000000001d\", \"67c00000000000000000001d\", 16, \"2026-05-03 00:00:00\");",
+    "INSERT INTO product_quantity_history (id, product_id, quantity, created_at) VALUES (\"qhc00000000000000000001e\", \"67c00000000000000000001e\", 8, \"2026-05-03 00:00:00\");",
+    "LOCK TABLES `account_role` WRITE;",
+    "LOCK TABLES `account` WRITE;",
+    "LOCK TABLES `role` WRITE;",
+    "LOCK TABLES `user` WRITE;",
+    "UNLOCK TABLES;"
+  ],
+  "objects": [
+    "products/67c000000000000000000001/broadsheet-check-shirt.jpg",
+    "products/67c000000000000000000002/broadsheet-plaid-shirt.jpg",
+    "products/67c000000000000000000003/dispatch-floral-shirt.jpg",
+    "products/67c000000000000000000004/gazette-check-shirt.jpg",
+    "products/67c000000000000000000005/dot-matrix-frock.jpg",
+    "products/67c000000000000000000006/summer-issue-dress.jpg",
+    "products/67c000000000000000000007/column-dress-sage.jpg",
+    "products/67c000000000000000000008/quarto-short-frock.jpg",
+    "products/67c000000000000000000009/tartan-folio-dress.jpg",
+    "products/67c00000000000000000000a/nocturne-gown.jpg",
+    "products/67c00000000000000000000b/letterpress-corset-leather-skirt.jpg",
+    "products/67c00000000000000000000c/inkblack-corset-skirt.jpg",
+    "products/67c00000000000000000000d/redline-dot-dress.jpg",
+    "products/67c00000000000000000000e/boldface-pump-black-brown.jpg",
+    "products/67c00000000000000000000f/gilt-edition-shoe.jpg",
+    "products/67c000000000000000000010/broadside-pump.jpg",
+    "products/67c000000000000000000011/red-press-shoe.jpg",
+    "products/67c000000000000000000012/folio-frame-sunglasses.jpg",
+    "products/67c000000000000000000013/classic-frame-sunglasses.jpg",
+    "products/67c000000000000000000014/proof-frame-sunglasses.jpg",
+    "products/67c000000000000000000015/halftone-sunglasses.jpg",
+    "products/67c000000000000000000016/cobalt-handbag.jpg",
+    "products/67c000000000000000000017/offset-backpack-chalk.jpg",
+    "products/67c000000000000000000018/colophon-handbag-black.jpg",
+    "products/67c000000000000000000019/colophon-drop-earring-emerald.jpg",
+    "products/67c00000000000000000001a/harlequin-hoop-earring.jpg",
+    "products/67c00000000000000000001b/tropic-edition-earring.jpg",
+    "products/67c00000000000000000001c/byline-shoulder-bag.jpg",
+    "products/67c00000000000000000001d/masthead-wrist-watch.jpg",
+    "products/67c00000000000000000001e/gilt-masthead-watch.jpg"
+  ],
+  "reconcile": []
+}

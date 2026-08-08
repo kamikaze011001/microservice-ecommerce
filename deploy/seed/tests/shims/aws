@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+"""Fake `aws` — only `s3 cp <src> s3://<bucket>/<key> ...` is captured
+(scripts/aws/seed-images.sh); everything else is a silent success.
+"""
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _lib import log_record, redact_argv  # noqa: E402
+
+LOG = "aws"
+
+
+def main():
+    argv = sys.argv[1:]
+    log_record(LOG, {"kind": "raw", "argv": redact_argv(argv)})
+
+    if len(argv) >= 3 and argv[0] == "s3" and argv[1] == "cp":
+        # find the s3:// destination arg (position varies slightly with flags)
+        s3_arg = next((a for a in argv if a.startswith("s3://")), None)
+        if s3_arg:
+            m = re.match(r"^s3://[^/]+/(.*)$", s3_arg)
+            if m:
+                log_record(LOG, {"kind": "object", "key": m.group(1)})
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Fake `mongosh` — NOT in the task-1 brief's shim list, but required: the
+brief's shim set was copied from Phase 4's shape and missed that
+k8s/infra/jobs/02-mongo-seed/seed.sh (run directly, mirroring how Phase 4 ran
+03-vault-seed/seed.sh directly) calls `mongosh` bare four times — a
+wait-for-PRIMARY poll, an idempotency count, the imageUrl host rewrite, and a
+post-import verification. Without this shim the capture either hangs in the
+120s wait loop or dies at the first missing binary. See task-1-report.md.
+
+Every real call passes its script via `--eval SCRIPT`; classify_mongosh_eval
+decides both what the (fake) database "returns" and, for the two calls that
+represent real writes (collection drop, imageUrl rewrite), what to log.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _lib import classify_mongosh_eval, log_record, redact_argv  # noqa: E402
+
+LOG = "mongosh"
+
+
+def find_after(args, flag):
+    if flag in args:
+        i = args.index(flag)
+        if i + 1 < len(args):
+            return args[i + 1]
+    return None
+
+
+def main():
+    argv = sys.argv[1:]
+    log_record(LOG, {"kind": "raw", "argv": redact_argv(argv)})
+
+    script = find_after(argv, "--eval")
+    if script is None:
+        return 0
+
+    result = classify_mongosh_eval(script)
+    if result["action"] == "drop" and result["collection"]:
+        log_record(LOG, {"kind": "drop", "collection": result["collection"]})
+    elif result["action"] == "rewrite" and result["collection"]:
+        log_record(LOG, {"kind": "rewrite", "collection": result["collection"],
+                          "pattern": "http://localhost:9000/",
+                          "replacement": "http://media.microecom.local/"})
+    sys.stdout.write(result["stdout"])
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
