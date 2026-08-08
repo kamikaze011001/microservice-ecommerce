@@ -28,6 +28,12 @@ mysqldump's DISABLE/ENABLE KEYS pairs land sorted next to each other rather
 than interleaved per-table). "mongo" is collection -> list of docs sorted by
 the doc's own canonical JSON, same reasoning as the array sort: import order
 must not masquerade as a content difference.
+
+"mysql"/"mongo"/"objects" reproduce the OLD per-env goldens exactly — that's
+the equivalence Task 4 checks. "drop"/"reconcile" deliberately do NOT: they
+encode this phase's approved new intent instead (see RECONCILE_DEFAULT /
+REPLACE_COLLECTIONS below), so Task 4's diff against golden/<env>.json is
+expected to show exactly those two differences and no others.
 """
 import argparse
 import json
@@ -52,34 +58,30 @@ RAW_FILES = (
     "api_role.json",
 )
 
-# scripts/seed/mongo-products.sh and mongo-product-quantity.sh unconditionally
-# `db.<collection>.drop()` before importing — compose ONLY (design doc §7
-# Risks: "mongo-products.sh DROPs its collection before importing"). Neither
-# k8s/infra/jobs/02-mongo-seed/seed.sh nor its aws reuse (scripts/aws/
-# seed-mongo.sh) does this — confirmed against deploy/seed/tests/golden/*.json
-# ("drop": ["product","productQuantityHistory"] for compose, [] for k8s/aws).
-# Hardcoded per-env here, not a context key: this is OLD-PATH BEHAVIOR being
-# reproduced for golden equivalence, not env-varying DATA. The design's Risk
-# section flags this as something the new seed.sh (Task 5/6) may want to gate
-# behind an explicit flag instead of a silent default — not this renderer's
-# call to make.
-DROP_COLLECTIONS = {
-    "compose": ["product", "productQuantityHistory"],
-    "k8s": [],
-    "aws": [],
-}
+# --- Intentional divergence from the OLD-path goldens (approved before this
+# task's execution began; see task-3-report.md's "post-review change" note).
+# `drop`/`reconcile` are NEW INTENT, not a reproduction of old per-env
+# behaviour — the opposite of how mysql/mongo/objects work in this file.
+#
+# reconcile: scripts/seed/k8s-inventory.sh and scripts/aws/up-all.sh step 8
+# restart inventory-service after seeding so AvailableStockSeeder rebuilds
+# the Redis available:{productId} counters from the freshly-seeded ledger
+# (design doc §D3). The OLD compose path never did this — that absence IS
+# the documented "cart shows 0 available" bug (every order fails
+# "Insufficient available stock" because the counters are never rebuilt).
+# The new renderer closes that gap by making the restart env-INVARIANT: the
+# same token for every env, no `if env == ...` branch. seed.sh (Task 5/6)
+# maps the token to the env-appropriate restart mechanism.
+RECONCILE_DEFAULT = ["restart:inventory-service"]
 
-# k8s (scripts/seed/k8s-inventory.sh) and aws (scripts/aws/up-all.sh step 8)
-# restart inventory-service after seeding so AvailableStockSeeder rebuilds the
-# Redis available:{productId} counters from the freshly-seeded ledger (design
-# doc §D3). compose does not — that is the documented "cart shows 0 available"
-# bug this whole phase exists to fix for free, not something to paper over
-# here. Hardcoded per-env for the same reason as DROP_COLLECTIONS above.
-RECONCILE_ACTIONS = {
-    "compose": [],
-    "k8s": ["restart:inventory-service"],
-    "aws": ["restart:inventory-service"],
-}
+# drop: scripts/seed/mongo-products.sh and mongo-product-quantity.sh
+# unconditionally `db.<collection>.drop()` before importing — compose ONLY,
+# old behaviour. A seed that silently wipes local product edits is a bad
+# default (design doc §7 Risks), so the new renderer defaults `drop` to []
+# for every env and moves the old compose behaviour behind an explicit
+# `replace` opt-in (--replace) — flag-driven, not env-driven, so there is no
+# per-env branch here either.
+REPLACE_COLLECTIONS = ["product", "productQuantityHistory"]
 
 
 class RenderError(Exception):
@@ -235,11 +237,17 @@ def _objects(products, context):
     return sorted(keys)
 
 
-def render_all(seed_dir, env, tf_outputs=None, only=None):
+def render_all(seed_dir, env, tf_outputs=None, only=None, replace=False):
     """Canonical data + context -> the five-key artifact dict, OR — when
     `only` names one of RAW_FILES — {"file": only, "text": <rendered text>}
     (the CLI prints `text` verbatim, no wrapper: see --only below). Pure: no
-    network, no backend."""
+    network, no backend.
+
+    `replace=True` opts into the old compose behaviour of dropping the
+    `product`/`productQuantityHistory` Mongo collections before import
+    (REPLACE_COLLECTIONS); default is `drop: []` for every env. `reconcile`
+    is RECONCILE_DEFAULT for every env regardless of `replace` — see the
+    module docstring block above RECONCILE_DEFAULT for why."""
     seed_dir = pathlib.Path(seed_dir)
     if env not in ENVS:
         raise RenderError(f"unknown env '{env}' — expected one of {ENVS}")
@@ -267,8 +275,8 @@ def render_all(seed_dir, env, tf_outputs=None, only=None):
         "mysql": mysql,
         "mongo": mongo,
         "objects": _objects(products, context),
-        "drop": DROP_COLLECTIONS.get(env, []),
-        "reconcile": RECONCILE_ACTIONS.get(env, []),
+        "drop": list(REPLACE_COLLECTIONS) if replace else [],
+        "reconcile": list(RECONCILE_DEFAULT),
     }
 
 
@@ -280,11 +288,16 @@ def main():
     ap.add_argument("--only",
                      help="render exactly one canonical file "
                           f"({', '.join(RAW_FILES)}) and print it verbatim")
+    ap.add_argument("--replace", action="store_true",
+                     help="opt into dropping product/productQuantityHistory "
+                          "before import (old compose behaviour); default is "
+                          "no drop for every env")
     args = ap.parse_args()
 
     try:
         result = render_all(
             args.seed_dir, args.env, load_tf_outputs(args.tf_outputs), args.only,
+            args.replace,
         )
     except RenderError as exc:
         # stderr only — a failed render must emit NOTHING on stdout, so a

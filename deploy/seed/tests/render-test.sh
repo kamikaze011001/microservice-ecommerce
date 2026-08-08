@@ -15,6 +15,11 @@
 # hazard: row counts across all three envs, a missing {{ctx.…}} failing
 # loudly with nothing on stdout, SQL-quote/NULL escaping matching the old
 # jq generators, and `--only <file>` printing the file with no wrapper.
+#
+# Test 5 covers the one deliberate departure from golden equivalence: `drop`
+# and `reconcile` encode this phase's NEW intent (approved before execution),
+# not a reproduction of the old per-env scripts — see seed_render.py's
+# RECONCILE_DEFAULT / REPLACE_COLLECTIONS comments.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -190,6 +195,52 @@ if [ "$t4_rc" -eq 0 ] && [ "$t4_check" = "array" ]; then
   ok "--only product.json prints the bare 30-element array, no wrapper object"
 else
   bad "--only product.json: rc=$t4_rc parsed-as=$t4_check"
+fi
+
+# ── Test 5: drop/reconcile carry NEW intent, not the old goldens ───────────
+# Approved before execution began: reconcile is env-invariant (the compose
+# "0 available" bug — no post-seed reconcile — gets fixed here, not just
+# documented), and drop defaults to [] everywhere (no silent collection wipe)
+# with the old compose drop behaviour moved behind --replace. mysql/mongo/
+# objects must still match the goldens exactly; only these two keys diverge.
+echo
+echo -e "\033[1mrender_all — reconcile is env-invariant, drop defaults empty, --replace opts in\033[0m"
+
+t5_out="$(cd "$ROOT" && python3 - <<PY
+import json, sys
+sys.path.insert(0, "deploy/scripts/lib")
+import seed_render as sr
+
+problems = []
+for env in sr.ENVS:
+    tf_outputs = sr.load_tf_outputs("$TF_FIXTURE") if env == "aws" else None
+    default = sr.render_all("$SEED_DIR", env, tf_outputs)
+    replaced = sr.render_all("$SEED_DIR", env, tf_outputs, replace=True)
+
+    if default["reconcile"] != ["restart:inventory-service"]:
+        problems.append(f"{env}: default reconcile={default['reconcile']!r}")
+    if default["drop"] != []:
+        problems.append(f"{env}: default drop={default['drop']!r}, want []")
+    if replaced["drop"] != ["product", "productQuantityHistory"]:
+        problems.append(f"{env}: --replace drop={replaced['drop']!r}")
+    if replaced["reconcile"] != ["restart:inventory-service"]:
+        problems.append(f"{env}: --replace reconcile={replaced['reconcile']!r} (must be unaffected by replace)")
+    # mysql/mongo/objects must be untouched by replace=True.
+    for key in ("mysql", "mongo", "objects"):
+        if default[key] != replaced[key]:
+            problems.append(f"{env}: replace=True changed '{key}', it must not")
+
+if problems:
+    print("\n".join(problems), file=sys.stderr)
+    sys.exit(1)
+print("reconcile=['restart:inventory-service'] and drop=[] for all envs by default; --replace adds the two collections")
+PY
+)"
+t5_rc=$?
+if [ "$t5_rc" -eq 0 ]; then
+  ok "$t5_out"
+else
+  bad "drop/reconcile new-intent check failed: $t5_out"
 fi
 
 echo
