@@ -178,6 +178,37 @@ is_drop_flag() {
   jq -e --arg c "$1" '.drop | index($c) != null' "$RENDERED" >/dev/null 2>&1 && echo 1 || echo 0
 }
 
+# Credential hygiene (both branches below): the secret NEVER appears as a
+# token in any process's argv — not this script's, not docker/kubectl's own
+# client process, not the exec'd process inside the container/pod — because
+# argv is readable host-side via `ps aux` and container-side via
+# /proc/<pid>/cmdline. mongoimport only takes -u/-p as CLI flags (verified:
+# `mongoimport --help` inside mongo:8.0.1 lists no env-var form), so instead
+# every leg builds a `mongodb://user:pass@127.0.0.1/...` line and hands it to
+# mongoimport via `--config=<file>` (also verified real: `--config=` accepts
+# a YAML `uri:` key and mongoimport itself redacts it in its own log —
+# "connected to: mongodb://[**REDACTED**]@..." — see task-5-report.md).
+#   compose: the value is read SERVER-SIDE from the container's OWN
+#     MONGO_INITDB_ROOT_USERNAME/PASSWORD (docker/mongodb.yml sets these from
+#     docker/.env — confirmed set: `docker exec ecommerce-mongodb sh -c
+#     'echo ${MONGO_INITDB_ROOT_USERNAME:+set}'`). This script's own MONGO_*
+#     vars are not even used here — the secret never leaves the container.
+#   k8s/aws: no such env var exists in the mongodb pod at all (verified —
+#     k8s/infra/manifests/mongodb.yaml's `mongodb` container has no `env:`
+#     block; the bootstrap sidecar's creds are literals inside its own inline
+#     script, never exported) and `kubectl exec` has no docker-exec-style
+#     `-e NAME` passthrough, so any value passed as an exec ARGUMENT would
+#     land in that process's argv regardless of using "$1"/positional params.
+#     Instead the URI travels as the FIRST LINE of the exec's stdin stream
+#     (data, not argv) followed immediately by the JSON payload on the same
+#     stream; the remote script's `read -r` consumes exactly that one line
+#     (POSIX `read` is specified to read a line at a time with no read-ahead,
+#     so the JSON bytes right behind it are untouched — verified against the
+#     real compose container with a synthetic marker line + payload).
+# Either way the on-disk config file is created via mktemp (mode 0600,
+# owner-only) inside the container and removed by a `trap ... EXIT` in the
+# remote script — NOT `exec mongoimport` as the last step, since `exec`
+# replaces the shell process and would skip its own EXIT trap.
 seed_mongo_collection() {
   local coll="$1" drop="$2" docs_file n mode_args=()
   docs_file="$(mktemp)"
@@ -187,23 +218,40 @@ seed_mongo_collection() {
 
   case "$ENV_NAME" in
     compose)
-      docker exec -i "$MONGO_CONTAINER" mongoimport \
-        --authenticationDatabase admin -u "$MONGO_USER" -p "$MONGO_PASS" \
-        --db "$MONGO_DB" --collection "$coll" --jsonArray "${mode_args[@]}" \
-        < "$docs_file" >/dev/null
+      docker exec -i "$MONGO_CONTAINER" sh -c '
+        set -e
+        coll="$1"; shift
+        : "${MONGO_INITDB_ROOT_USERNAME:?missing in container env}"
+        : "${MONGO_INITDB_ROOT_PASSWORD:?missing in container env}"
+        cfg="$(mktemp)"
+        trap "rm -f \"$cfg\"" EXIT
+        cat > "$cfg" <<CFGEOF
+uri: "mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@127.0.0.1:27017/${MONGO_INITDB_DATABASE:-ecommerce_inventory}?authSource=admin"
+CFGEOF
+        mongoimport --config="$cfg" --collection "$coll" --jsonArray "$@"
+      ' sh "$coll" "${mode_args[@]}" < "$docs_file" >/dev/null
       ;;
     k8s|aws)
-      kubectl --context "$KUBE_CONTEXT" -n "$NS" exec -i mongodb-0 -- mongoimport \
-        --uri "mongodb://127.0.0.1:27017/$MONGO_DB?authSource=admin" \
-        -u "$MONGO_USER" -p "$MONGO_PASS" \
-        --collection "$coll" --jsonArray "${mode_args[@]}" \
-        < "$docs_file" >/dev/null
+      { printf '%s\n' "mongodb://${MONGO_USER}:${MONGO_PASS}@127.0.0.1:27017/${MONGO_DB}?authSource=admin"; cat "$docs_file"; } \
+        | kubectl --context "$KUBE_CONTEXT" -n "$NS" exec -i mongodb-0 -- sh -c '
+            set -e
+            coll="$1"; shift
+            IFS= read -r uri
+            cfg="$(mktemp)"
+            trap "rm -f \"$cfg\"" EXIT
+            printf "uri: \"%s\"\n" "$uri" > "$cfg"
+            mongoimport --config="$cfg" --collection "$coll" --jsonArray "$@"
+          ' sh "$coll" "${mode_args[@]}" >/dev/null
       ;;
   esac
   local rc=$?
   rm -f "$docs_file"
   if [ "$rc" -ne 0 ]; then
-    log_err "mongoimport failed for $coll"
+    if [ "$drop" = "1" ]; then
+      log_err "mongoimport failed for $coll — the collection WAS DROPPED (mongoimport --drop runs the drop before importing) and the import did not complete: data is GONE, not merely unchanged — re-run to restore"
+    else
+      log_err "mongoimport failed for $coll (upsert mode — any previously-seeded data is unchanged)"
+    fi
     return 1
   fi
   log_ok "mongo $coll seeded ($n docs$( [ "$drop" = "1" ] && echo ", dropped first" ))"
@@ -230,15 +278,26 @@ case "$ENV_NAME" in
       log_warn "Docker network '$NETWORK' not found. Trying 'docker_default'…"
       NETWORK="docker_default"
     fi
-    MC_CONFIG_DIR="$(mktemp -d)"
+    # No `mc alias set` and no -C/config-dir mount at all: `mc` supports an
+    # alias defined purely via an MC_HOST_<alias> env var (verified live
+    # against the running compose MinIO — `mc ls` worked with zero prior
+    # `alias set` call). That removes BOTH argv exposure (`alias set ... USER
+    # PASS` used to put the password on the `docker run` argv) AND the
+    # persisted-plaintext-config bug (`mc alias set` writes the credential
+    # into config.json under whatever -C dir is given; the old code's
+    # `MC_CONFIG_DIR="$(mktemp -d)"` was never in the cleanup trap, so every
+    # real run left a permanent host directory holding the MinIO password —
+    # two such directories from this task's own earlier verification runs
+    # were found and removed, see task-5-report.md). `-e MC_HOST_local` (bare
+    # name, no `=value`) passes the value through from THIS script's own
+    # environment without ever placing it in the `docker run` argv either.
+    export MC_HOST_local="http://${MINIO_USER}:${MINIO_PASS}@${MINIO_HOST}:9000"
     mc_run() {
       docker run --rm --network "$NETWORK" \
         -v "$SEED_IMAGES_DIR:/seed-images:ro" \
-        -v "$MC_CONFIG_DIR:/mc-config" \
-        --entrypoint mc "$MC_IMAGE" -C /mc-config "$@"
+        -e MC_HOST_local \
+        --entrypoint mc "$MC_IMAGE" "$@"
     }
-    mc_run alias set local "http://${MINIO_HOST}:9000" "$MINIO_USER" "$MINIO_PASS" >/dev/null \
-      || { log_err "mc alias set failed"; FAIL=1; }
     mc_run mb --ignore-existing "local/$MINIO_BUCKET" >/dev/null
     mc_run anonymous set download "local/$MINIO_BUCKET/products" >/dev/null
     ;;
