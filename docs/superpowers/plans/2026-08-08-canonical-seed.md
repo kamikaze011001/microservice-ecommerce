@@ -253,7 +253,12 @@ For each env, for each of `mysql`, `mongo`, `objects`, `drop`, `reconcile`: sort
 | env | key | old | new | why |
 |---|---|---|---|---|
 | `compose` | `reconcile` | empty | `restart:inventory-service` | spec D3 — compose has no reconcile today, which is the documented "0 available" bug |
-| all | `drop` | `["product"]` | `[]` unless `--replace` | Task 5 — the default must not silently wipe local product edits |
+| `compose` | `drop` | `["product","productQuantityHistory"]` | `[]` unless `--replace` | Task 5 — the default must not silently wipe local product edits |
+
+**Correction (found in Task 4):** an earlier draft of this table said `drop` differs
+for *all* envs. That is false for this repo — only compose's old path drops
+collections; the k8s and aws goldens already carry `drop: []`. So the `--replace`
+change affects compose alone, and the table has exactly two entries, both compose.
 
 Each declared entry is asserted **to differ, in the stated direction**, and the suite **fails if it ever matches again** — an intended improvement that silently reverts is a regression. Every other comparison must match exactly.
 
