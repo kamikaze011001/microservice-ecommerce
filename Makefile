@@ -143,6 +143,23 @@ secrets-validate:
 	@bash deploy/scripts/secrets-validate.sh
 
 # ============================================================================
+# Canonical Seed (deploy/seed/)
+# ============================================================================
+
+.PHONY: seed seed-render
+# Canonical seed data (deploy/seed/). ENV=compose|k8s|aws, STAGE=pre-apps|post-apps,
+# default compose/pre-apps. pre-apps: mongo (api_role/product/productQuantityHistory)
+# + product images — run before the apps. post-apps: ecommerce.sql (account/
+# account_role/role/user) + derived inventory rows + the inventory-service reconcile
+# — run after the apps (needs the Hibernate-created schema). See deploy/README.md.
+seed:
+	@bash deploy/scripts/seed.sh --env $(or $(ENV),compose) --stage $(or $(STAGE),pre-apps)
+
+# Resolve only. Touches no backend.
+seed-render:
+	@bash deploy/scripts/seed.sh --env $(or $(ENV),compose) --stage $(or $(STAGE),pre-apps) --dry-run
+
+# ============================================================================
 # Kafka
 # ============================================================================
 

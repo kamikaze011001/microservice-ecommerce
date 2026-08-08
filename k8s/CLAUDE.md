@@ -285,14 +285,32 @@ applies the Job with plain **`kubectl apply -f job.yaml`**, NOT `apply -k`. The
 `apply -k` for them. The other 3 Jobs (vault/minio/kafka-connect) have no
 out-of-tree refs and still use `apply -k`.
 
-### OPEN ISSUE (not yet resolved): mysql seed runs before any schema exists
+### SCAR (resolved): mysql seed used to run before any schema existed
 
-`docker/ecommerce.sql` is **data-only** (0 `CREATE TABLE`; INSERTs only). The
-schema is created by Hibernate `ddl-auto` when the JPA services boot. But the
-bootstrap order is `… k8s-seed → k8s-apps`, so `mysql-seed` runs *before* any
-app has created tables → `ERROR 1146 ... Table 'ecommerce_dev.account' doesn't
-exist`. (MongoDB is schemaless, so `mongo-seed` is unaffected.) This is a real
-ordering dependency that needs a decision — see the handoff; not yet fixed.
+**Symptom:** `docker/ecommerce.sql` is **data-only** (0 `CREATE TABLE`;
+INSERTs only). The schema is created by Hibernate `ddl-auto` when the JPA
+services boot. The original bootstrap order was `… k8s-seed → k8s-apps`, with
+`01-mysql-seed` bundled into `k8s-seed`, so mysql-seed ran *before* any app
+had created tables → `ERROR 1146 ... Table 'ecommerce_dev.account' doesn't
+exist`. (MongoDB is schemaless, so `mongo-seed` was unaffected — only the
+mysql leg had this dependency.)
+
+**Fix:** `01-mysql-seed` was split out of `k8s-seed` into its own target,
+`k8s-seed-mysql`, and `k8s-bootstrap` now runs it **after** `k8s-apps`:
+
+```
+k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build-reuse k8s-seed k8s-seed-images k8s-apps k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest
+```
+
+`k8s-seed` today covers only `02-mongo-seed`, `03-vault-seed`,
+`05-minio-bootstrap`, `04-kafka-connect-register` — all schemaless or
+independent of app-created tables, so they're still safe to run before
+`k8s-apps`. `k8s-seed-mysql` waits for `job/mysql-seed` to complete just like
+the other seed Jobs; see the Makefile for both recipes. The canonical seed
+path added in Phase 5 (`deploy/scripts/seed.sh --stage post-apps`, wired via
+`make seed ENV=k8s STAGE=post-apps` — see `deploy/README.md`) carries the
+same ordering constraint and enforces it with an explicit precondition check
+before writing a row, rather than relying on target ordering alone.
 
 ### SCAR: don't announce a root cause from garbled/lagged terminal output
 
