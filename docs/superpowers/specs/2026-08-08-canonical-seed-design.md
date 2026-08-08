@@ -73,12 +73,29 @@ function. That keeps compose privileged and keeps the rewrite a patch-after-the-
 pattern misses still ends up with a wrong host. Rendering cannot miss a row, and a missing context
 value fails loudly instead of leaving stale data.
 
-### D3 — Two stages with a fail-fast precondition
+### D3 — Two stages with a fail-fast precondition, and a post-seed reconcile
 
 ```
 seed.sh --env <env> --stage pre-apps    # mongo documents, image objects
-seed.sh --env <env> --stage post-apps   # ecommerce.sql, derived inventory rows
+seed.sh --env <env> --stage post-apps   # ecommerce.sql, derived inventory rows,
+                                        #   then the inventory-service reconcile
 ```
+
+**The reconcile is load-bearing and is not data.** `AvailableStockSeeder` runs at
+inventory-service *startup* and backfills the Redis `available:{productId}` reservation counters
+from `SUM(product_quantity_history)`. Apps start *before* the inventory seed, so it backfills 0
+rows and creates no counters — and the Lua reservation treats a missing key as 0, so every order
+fails "Insufficient available stock". k8s (`scripts/seed/k8s-inventory.sh`) and aws
+(`scripts/aws/up-all.sh` step 8) therefore restart inventory-service after seeding.
+
+**Compose does not.** No restart exists anywhere in `scripts/seed/`. This is not an implementation
+difference — it is a *behavioural* one, and it matches the documented compose symptom of carts
+showing "0 available". Consolidating fixes compose for free, which is the strongest argument for
+doing this phase at all: the drift has already produced a user-visible bug in one env.
+
+The reconcile is idempotent (the seeder deletes-then-incrs each key), so a no-op costs one rollout.
+It is skipped when the inventory-service workload is absent, so running the seed standalone before
+apps stays valid.
 
 `ecommerce.sql` is data-only (0 `CREATE TABLE`); the schema comes from Hibernate `ddl-auto` at
 service boot. `post-apps` therefore opens by checking the tables it needs exist, and exits naming
@@ -163,6 +180,11 @@ Seed old-way → snapshot; reset; seed new-way → snapshot; diff.
 **Not row counts alone.** Per-table content hashes and object listings, because equal counts with a
 wrong `image_url` host is exactly the bug this phase exists to eliminate. A count-only check would
 pass on the very defect being fixed.
+
+**And not MySQL alone.** Layer B must assert the Redis `available:{productId}` counters exist and
+sum to the ledger, because the D3 reconcile is what makes the inventory seed *effective*. Every
+row can be correct while checkout is broken — that is precisely the compose state today. A
+verification that stops at the database would report success on it.
 
 ### The standing invariant
 
