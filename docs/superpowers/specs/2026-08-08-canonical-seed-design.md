@@ -82,7 +82,7 @@ seed.sh --env <env> --stage post-apps   # ecommerce.sql, derived inventory rows,
 ```
 
 **The reconcile is load-bearing and is not data.** `AvailableStockSeeder` runs at
-inventory-service *startup* and backfills the Redis `available:{productId}` reservation counters
+inventory-service *startup* and backfills the Redis `productAvailable:{productId}` reservation counters
 from `SUM(product_quantity_history)`. Apps start *before* the inventory seed, so it backfills 0
 rows and creates no counters — and the Lua reservation treats a missing key as 0, so every order
 fails "Insufficient available stock". k8s (`scripts/seed/k8s-inventory.sh`) and aws
@@ -181,7 +181,7 @@ Seed old-way → snapshot; reset; seed new-way → snapshot; diff.
 wrong `image_url` host is exactly the bug this phase exists to eliminate. A count-only check would
 pass on the very defect being fixed.
 
-**And not MySQL alone.** Layer B must assert the Redis `available:{productId}` counters exist and
+**And not MySQL alone.** Layer B must assert the Redis `productAvailable:{productId}` counters exist and
 sum to the ledger, because the D3 reconcile is what makes the inventory seed *effective*. Every
 row can be correct while checkout is broken — that is precisely the compose state today. A
 verification that stops at the database would report success on it.

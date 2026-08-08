@@ -351,7 +351,7 @@ Expected: currently the run reaches MySQL and produces `ERROR 1146` mid-import �
 
 Precondition → `ecommerce.sql` → derived inventory rows → **reconcile**.
 
-The reconcile restarts inventory-service so `AvailableStockSeeder` rebuilds the Redis `available:{productId}` counters from the now-populated ledger (spec D3). It is idempotent (delete-then-incr per key) and must be **skipped when the inventory-service workload is absent**, so running the seed standalone stays valid. Per env: `kubectl rollout restart` for k8s/aws, the compose equivalent for compose — **compose has no reconcile today, and adding it is the point.**
+The reconcile restarts inventory-service so `AvailableStockSeeder` rebuilds the Redis `productAvailable:{productId}` counters from the now-populated ledger (spec D3). It is idempotent (delete-then-incr per key) and must be **skipped when the inventory-service workload is absent**, so running the seed standalone stays valid. Per env: `kubectl rollout restart` for k8s/aws, the compose equivalent for compose — **compose has no reconcile today, and adding it is the point.**
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -423,8 +423,8 @@ Reset scope: drop the `product` and `api_role` collections and `TRUNCATE invento
 
 ```
 For every productId in product_quantity_history:
-  redis available:{productId} EXISTS, and
-  sum(available:*) == SUM(product_quantity_history.quantity)
+  redis productAvailable:{productId} EXISTS, and
+  sum(productAvailable:*) == SUM(product_quantity_history.quantity)
 ```
 
 Spec §5: every row can be correct while checkout is broken. A database-only check reports success on that state.
