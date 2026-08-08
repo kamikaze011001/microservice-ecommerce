@@ -519,18 +519,41 @@ fi
 # verified against the entity), but the row order still mirrors the old
 # per-table scripts' intent (mysql-inventory-products.sh before
 # mysql-product-quantity-history.sh).
+#
+# Gated INDEPENDENTLY per table — NOT one combined gate — matching the old
+# mysql-inventory-products.sh / mysql-product-quantity-history.sh scripts
+# this replaces. A single inventory_product-only gate covering both imports
+# (an earlier version of this script did exactly that) has a silent-failure
+# window: if the connection drops after inventory_product commits but
+# before product_quantity_history does, a re-run sees inventory_product
+# already populated, skips BOTH imports, and the ledger stays permanently
+# half-empty — AvailableStockSeeder then rebuilds counters from an
+# incomplete SUM(product_quantity_history), silently reintroducing "0
+# available" for exactly the rows that never landed, while every command
+# up to and including the reconcile reports success.
 INV_PRODUCT_SQL="$(jq -r '.mysql[] | select(contains("INTO inventory_product "))' "$RENDERED")"
 QTY_SQL="$(jq -r '.mysql[] | select(contains("INTO product_quantity_history "))' "$RENDERED")"
 
 INV_COUNT="$(printf 'SELECT COUNT(*) FROM inventory_product;\n' | mysql_run)"
 if [ "${INV_COUNT:-0}" -gt 0 ] 2>/dev/null; then
-  log_warn "derived inventory rows already seeded (inventory_product=$INV_COUNT rows) — skipping"
+  log_warn "inventory_product already seeded ($INV_COUNT rows) — skipping"
 else
   INV_ROWS="$(printf '%s\n' "$INV_PRODUCT_SQL" | grep -c INSERT || true)"
+  log_info "importing inventory_product ($INV_ROWS rows)"
+  if ! printf '%s\n' "$INV_PRODUCT_SQL" | mysql_run >/dev/null; then
+    log_err "inventory_product import failed"
+    FAIL=1
+  fi
+fi
+
+QTY_DB_COUNT="$(printf 'SELECT COUNT(*) FROM product_quantity_history;\n' | mysql_run)"
+if [ "${QTY_DB_COUNT:-0}" -gt 0 ] 2>/dev/null; then
+  log_warn "product_quantity_history already seeded ($QTY_DB_COUNT rows) — skipping"
+else
   QTY_ROWS="$(printf '%s\n' "$QTY_SQL" | grep -c INSERT || true)"
-  log_info "importing derived inventory rows: inventory_product=$INV_ROWS product_quantity_history=$QTY_ROWS"
-  if ! { printf '%s\n' "$INV_PRODUCT_SQL"; printf '%s\n' "$QTY_SQL"; } | mysql_run >/dev/null; then
-    log_err "derived inventory import failed"
+  log_info "importing product_quantity_history ($QTY_ROWS rows)"
+  if ! printf '%s\n' "$QTY_SQL" | mysql_run >/dev/null; then
+    log_err "product_quantity_history import failed"
     FAIL=1
   fi
 fi
@@ -564,18 +587,47 @@ case "$ENV_NAME" in
     # container, so there is no `docker restart` target and no
     # scripts/services/restart.sh. The fix is `make svc-restart
     # svc=inventory-service`'s own two steps.
+    #
+    # Three outcomes, and they must stay distinguishable in the output:
+    #   1. confidently absent (no pidfile/dead PID AND lsof confirms no
+    #      listener) -> skip, log_warn, NOT a failure (standalone seed
+    #      before apps exist is a legitimate use).
+    #   2. confidently running -> restart, and the restart's own exit code
+    #      is checked (see below) — it must NOT be possible for a timed-out
+    #      or failed restart to still print success.
+    #   3. genuinely unknown (no pidfile AND lsof unavailable to fall back
+    #      on) -> NOT the same as (1). Silently choosing "skip" here would
+    #      let a real orphan on :6969 go unreconciled while reporting
+    #      success — the exact invisible-failure shape this whole stage
+    #      exists to close. Loudly refuse instead (FAIL=1).
     INV_PID_FILE="$ROOT/logs/pids/inventory-service.pid"
     inventory_running=0
+    inventory_status_known=1
     if [ -f "$INV_PID_FILE" ] && kill -0 "$(cat "$INV_PID_FILE" 2>/dev/null)" 2>/dev/null; then
       inventory_running=1
-    elif lsof -tiTCP:6969 -sTCP:LISTEN >/dev/null 2>&1; then
-      inventory_running=1
+    elif command -v lsof >/dev/null 2>&1; then
+      lsof -tiTCP:6969 -sTCP:LISTEN >/dev/null 2>&1 && inventory_running=1
+    else
+      inventory_status_known=0
     fi
+
     if [ "$inventory_running" -eq 1 ]; then
       log_info "reconcile: restarting inventory-service (stop.sh + start.sh) so AvailableStockSeeder rebuilds Redis counters from the seeded ledger"
-      bash "$ROOT/scripts/services/stop.sh" inventory-service
-      bash "$ROOT/scripts/services/start.sh" inventory-service
-      log_ok "reconcile: inventory-service restarted"
+      # start.sh runs under `set -e` and its single-target path calls
+      # wait_for_port with no `|| true` — a stuck/failed boot makes start.sh
+      # itself exit nonzero, which this `&&` chain now actually checks
+      # (previously ignored, the Critical finding: a timed-out rollout still
+      # printed "restarted" and exited 0).
+      if bash "$ROOT/scripts/services/stop.sh" inventory-service \
+         && bash "$ROOT/scripts/services/start.sh" inventory-service; then
+        log_ok "reconcile: inventory-service restarted"
+      else
+        log_err "reconcile: inventory-service restart failed — Redis productAvailable:* counters were NOT rebuilt; every order will fail \"Insufficient available stock\" until this is fixed and the seed is re-run"
+        FAIL=1
+      fi
+    elif [ "$inventory_status_known" -eq 0 ]; then
+      log_err "reconcile: could not determine whether inventory-service is running (no pidfile and lsof is unavailable) — refusing to silently skip the reconcile; install lsof, or ensure logs/pids/inventory-service.pid is current, then re-run"
+      FAIL=1
     else
       log_warn "reconcile: inventory-service is not running — skipping (seed run standalone before apps)"
     fi
@@ -583,9 +635,13 @@ case "$ENV_NAME" in
   k8s|aws)
     if kubectl --context "$KUBE_CONTEXT" -n apps get deploy inventory-service >/dev/null 2>&1; then
       log_info "reconcile: kubectl rollout restart deploy/inventory-service (context=$KUBE_CONTEXT)"
-      kubectl --context "$KUBE_CONTEXT" -n apps rollout restart deploy/inventory-service
-      kubectl --context "$KUBE_CONTEXT" -n apps rollout status deploy/inventory-service --timeout=300s
-      log_ok "reconcile: inventory-service rollout restarted"
+      if kubectl --context "$KUBE_CONTEXT" -n apps rollout restart deploy/inventory-service \
+         && kubectl --context "$KUBE_CONTEXT" -n apps rollout status deploy/inventory-service --timeout=300s; then
+        log_ok "reconcile: inventory-service rollout restarted"
+      else
+        log_err "reconcile: inventory-service rollout restart/status failed — Redis productAvailable:* counters were NOT rebuilt; every order will fail \"Insufficient available stock\" until this is fixed and the seed is re-run"
+        FAIL=1
+      fi
     else
       log_warn "reconcile: inventory-service Deployment not found in apps ns — skipping (seed run standalone before apps)"
     fi
