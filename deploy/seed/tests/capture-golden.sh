@@ -115,8 +115,14 @@ hosts = {}
 for env in ("compose", "k8s", "aws"):
     g = json.load(open(f"{golden_dir}/{env}.json"))
     blob = " ".join(g["mysql"])
-    hosts[env] = sorted(set(re.findall(r'http://([^/"]+)/', blob)))
+    # https? — aws's media host is https://, so an http-only pattern silently
+    # matched NOTHING for aws and left 1 of 3 envs unchecked by this assertion.
+    hosts[env] = sorted(set(re.findall(r'https?://([^/"]+)/', blob)))
 print(hosts)
-assert hosts["compose"] != hosts["k8s"], "compose and k8s should differ on media host"
-print("media-host disagreement confirmed")
+for env in ("compose", "k8s", "aws"):
+    assert hosts[env], f"{env}: no media host found — the capture or this pattern is wrong"
+# Three-way disagreement is the premise of this whole phase: one value, three
+# implementations. Asserting only one pair would pass while two envs agreed.
+assert len({tuple(v) for v in hosts.values()}) == 3, f"all three media hosts must differ: {hosts}"
+print("three-way media-host disagreement confirmed")
 PY
