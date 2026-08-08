@@ -27,13 +27,26 @@
 # the non-empty guard is demonstrated to actually fire, not just asserted to
 # exist, before it's relied on for the real comparison.
 #
-# CREDENTIAL HYGIENE mirrors deploy/scripts/seed.sh exactly: every password is
-# read SERVER-SIDE from the container's own env (MYSQL_ROOT_PASSWORD /
-# MONGO_INITDB_ROOT_PASSWORD / REDIS_PASSWORD, all already present in the
-# compose containers per docker/*.yml) and never appears in this script's own
-# argv, nor in `docker exec`'s host-side argv. k8s's redis has no password at
-# all (k8s/infra/manifests/redis.yaml — LOCAL-DEV ONLY, no auth); k8s's
-# mysql/mongo creds are read server-side the same way, from the pod's own env.
+# CREDENTIAL HYGIENE mirrors deploy/scripts/seed.sh's INTENT exactly (never on
+# any argv, host-side or container-side), using the tool-appropriate mechanism
+# per client — every password is read SERVER-SIDE from the container's own env
+# (MYSQL_ROOT_PASSWORD / MONGO_INITDB_ROOT_PASSWORD / REDIS_PASSWORD, all
+# already present in the compose containers per docker/*.yml):
+#   mysql:    --defaults-extra-file=<0600 tmpfile>, same as seed.sh -- never
+#             -p"$PASS" (that puts it in mysql's own argv, readable
+#             container-side via /proc/<pid>/cmdline).
+#   mongosh:  NOT `-u`/`-p` (mongosh has no --config= like mongoimport) --
+#             the URI is exported as an env var inside the remote shell and
+#             handed to `Mongo(process.env.MONGO_URI)` in the --eval script,
+#             so the secret is in mongosh's environment, never in its argv.
+#   redis-cli: REDISCLI_AUTH env var, not `-a "$PASS"` (which redis-cli's own
+#             `--no-auth-warning` flag exists to suppress the warning FOR --
+#             suppressing the warning is not fixing the exposure).
+# Never appears in THIS script's own argv either, nor in `docker
+# exec`/`kubectl exec`'s host-side argv (the URI travels over stdin for k8s
+# mongo, where no server-side credential env var exists at all -- see
+# mongo_docs's k8s branch). k8s's redis has no password at all
+# (k8s/infra/manifests/redis.yaml — LOCAL-DEV ONLY, no auth).
 #
 # RESET SCOPE (deliberately broader than the two Mongo collections named in
 # the original k8s-cluster task-8-brief.md): drops product, api_role AND
@@ -147,15 +160,21 @@ mongo_docs() {
   local coll="$1"
   case "$ENV_NAME" in
     compose)
+      # Credentials read server-side from the container's own env, then
+      # exported (not passed as `-u`/`-p` CLI flags -- those would land in
+      # mongosh's own argv, readable container-side via /proc/<pid>/cmdline)
+      # so `Mongo(process.env.MONGO_URI)` in the --eval script is the only
+      # thing that ever sees the value.
       docker exec "$MONGO_CONTAINER" sh -c '
         set -e
         coll="$1"; db="$2"
         : "${MONGO_INITDB_ROOT_USERNAME:?missing in container env}"
         : "${MONGO_INITDB_ROOT_PASSWORD:?missing in container env}"
-        mongosh --quiet --authenticationDatabase admin \
-          -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" "$db" --eval "
-            db.getCollection(\"$coll\").find().sort({_id:1}).forEach(function(d){print(EJSON.stringify(d));});
-          "
+        export MONGO_URI="mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@127.0.0.1:27017/admin?authSource=admin"
+        mongosh --quiet --eval "
+          var db = Mongo(process.env.MONGO_URI).getDB(\"$db\");
+          db.getCollection(\"$coll\").find().sort({_id:1}).forEach(function(d){print(EJSON.stringify(d));});
+        "
       ' sh "$coll" "$MONGO_DB"
       ;;
     k8s)
@@ -191,15 +210,17 @@ mongo_drop() {
   local coll="$1"
   case "$ENV_NAME" in
     compose)
+      # Same env-var technique as mongo_docs's compose branch above.
       docker exec "$MONGO_CONTAINER" sh -c '
         set -e
         coll="$1"; db="$2"
         : "${MONGO_INITDB_ROOT_USERNAME:?missing in container env}"
         : "${MONGO_INITDB_ROOT_PASSWORD:?missing in container env}"
-        mongosh --quiet --authenticationDatabase admin \
-          -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" "$db" --eval "
-            db.getCollection(\"$coll\").drop();
-          " >/dev/null
+        export MONGO_URI="mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@127.0.0.1:27017/admin?authSource=admin"
+        mongosh --quiet --eval "
+          var db = Mongo(process.env.MONGO_URI).getDB(\"$db\");
+          db.getCollection(\"$coll\").drop();
+        " >/dev/null
       ' sh "$coll" "$MONGO_DB"
       ;;
     k8s)
@@ -231,15 +252,21 @@ redis_dump() {
       docker exec "$REDIS_CONTAINER" sh -c '
         set -e
         : "${REDIS_PASSWORD:?missing in container env}"
-        pong="$(redis-cli -a "$REDIS_PASSWORD" --no-auth-warning PING 2>/dev/null)"
+        # REDISCLI_AUTH, never `-a`: an argument lands in redis-cli own argv,
+        # readable inside the container via /proc/<pid>/cmdline. `--no-auth-warning`
+        # exists precisely to silence redis-cli warning about that exposure —
+        # suppressing the warning is not fixing the leak. Same discipline as
+        # deploy/scripts/seed.sh (mongoimport --config=, MC_HOST_local).
+        REDISCLI_AUTH="$REDIS_PASSWORD"; export REDISCLI_AUTH
+        pong="$(redis-cli PING 2>/dev/null)"
         if [ "$pong" != "PONG" ]; then
           echo "redis auth/connect failed (PING != PONG)" >&2
           exit 3
         fi
         echo "AUTH_OK"
-        redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --scan --pattern "productAvailable:*" | while read -r k; do
+        redis-cli --scan --pattern "productAvailable:*" | while read -r k; do
           [ -n "$k" ] || continue
-          v="$(redis-cli -a "$REDIS_PASSWORD" --no-auth-warning GET "$k")"
+          v="$(redis-cli GET "$k")"
           printf "%s\t%s\n" "$k" "$v"
         done
       '
@@ -314,8 +341,10 @@ flush_redis_counters() {
       docker exec "$REDIS_CONTAINER" sh -c '
         set -e
         : "${REDIS_PASSWORD:?missing in container env}"
-        redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --scan --pattern "productAvailable:*" | while read -r k; do
-          [ -n "$k" ] && redis-cli -a "$REDIS_PASSWORD" --no-auth-warning DEL "$k" >/dev/null
+        # REDISCLI_AUTH, never `-a` — see redis_dump above for why.
+        REDISCLI_AUTH="$REDIS_PASSWORD"; export REDISCLI_AUTH
+        redis-cli --scan --pattern "productAvailable:*" | while read -r k; do
+          [ -n "$k" ] && redis-cli DEL "$k" >/dev/null
         done
       '
       ;;
@@ -412,18 +441,30 @@ run_new_way() {
 # content mismatch that was actually this second, MySQL-side effect of the
 # very reconcile step being tested, not a seed defect. It gets its own
 # declared-asymmetry check (see step 8) exactly like the Redis counters do.
+# Every query below is exit-checked, and the python block that follows refuses
+# to hash an empty table or collection. Without both, a query that fails the
+# SAME way on the old-way and new-way captures (dead container, dropped
+# connection, renamed table) yields two empty files whose hashes match, and
+# diff_snapshots reports `ok 0 rows hash matches` — the suite's headline claim
+# ("6 tables + 3 collections byte-identical") true over nothing. This is the
+# same empty-vs-negative trap the Redis path guards with assert_nonempty_counters;
+# the primary comparison needs it just as much.
 capture_snapshot() {
   local label="$1" t c
   for t in $MYSQL_TABLES; do
     if [ "$t" = "inventory_product" ]; then
-      mysql_query "SELECT id, name, price, image_url FROM inventory_product;" > "$WORKDIR/$label.mysql.$t"
+      mysql_query "SELECT id, name, price, image_url FROM inventory_product;" > "$WORKDIR/$label.mysql.$t" \
+        || { log_err "$label: query failed for table '$t' — refusing to snapshot"; exit 1; }
     else
-      mysql_query "SELECT * FROM \`$t\`;" > "$WORKDIR/$label.mysql.$t"
+      mysql_query "SELECT * FROM \`$t\`;" > "$WORKDIR/$label.mysql.$t" \
+        || { log_err "$label: query failed for table '$t' — refusing to snapshot"; exit 1; }
     fi
   done
-  mysql_query "SELECT id, stock FROM inventory_product;" > "$WORKDIR/$label.stock"
+  mysql_query "SELECT id, stock FROM inventory_product;" > "$WORKDIR/$label.stock" \
+    || { log_err "$label: stock query failed — refusing to snapshot"; exit 1; }
   for c in $MONGO_COLLECTIONS; do
-    mongo_docs "$c" > "$WORKDIR/$label.mongo.$c"
+    mongo_docs "$c" > "$WORKDIR/$label.mongo.$c" \
+      || { log_err "$label: query failed for collection '$c' — refusing to snapshot"; exit 1; }
   done
 
   python3 - "$WORKDIR" "$label" "$MYSQL_TABLES" "$MONGO_COLLECTIONS" <<'PY'
@@ -435,6 +476,13 @@ snap = {"mysql": {}, "mongo": {}}
 
 for t in mysql_tables:
     lines = [l for l in (wd / f"{label}.mysql.{t}").read_text().splitlines() if l != ""]
+    # THE GUARD: an empty table hashes identically on both captures, so a diff
+    # over two empty snapshots "matches" while proving nothing. Every table the
+    # seed writes must be non-empty after a seed; refuse rather than compare.
+    if not lines:
+        print(f"FAIL: {label}/mysql/{t} is EMPTY — refusing to hash an empty table "
+              f"(two empty snapshots compare equal and prove nothing)", file=sys.stderr)
+        sys.exit(1)
     lines.sort()
     h = hashlib.sha256("\n".join(lines).encode()).hexdigest()
     snap["mysql"][t] = {"rows": len(lines), "hash": h}
@@ -448,6 +496,10 @@ for c in mongo_colls:
         except json.JSONDecodeError as e:
             print(f"FAIL: {label}/{c} produced a non-JSON line: {l!r} ({e})", file=sys.stderr)
             sys.exit(1)
+    if not docs:
+        print(f"FAIL: {label}/mongo/{c} is EMPTY — refusing to hash an empty collection "
+              f"(two empty snapshots compare equal and prove nothing)", file=sys.stderr)
+        sys.exit(1)
     canon = sorted(json.dumps(d, sort_keys=True) for d in docs)
     h = hashlib.sha256("\n".join(canon).encode()).hexdigest()
     snap["mongo"][c] = {"docs": len(docs), "hash": h}
