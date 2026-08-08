@@ -223,7 +223,11 @@ kubectl -n infra rollout status deployment/schema-registry --timeout=10m
 # Kafka Connect — long-running Deployment hosting source/sink connectors.
 # Connector registration is a separate Job (k8s/infra/jobs/04-kafka-connect-register).
 kubectl apply -f k8s/infra/manifests/kafka-connect.yaml
-# 10m: same large-Confluent-image cold-pull reason as schema-registry above.
-kubectl -n infra rollout status deployment/kafka-connect --timeout=10m
+# 15m, not 10m: same large-Confluent-image cold-pull reason as schema-registry
+# above, but kafka-connect pulls AFTER it on an already-busy cold cluster and is
+# measurably slower. On a fresh 4-node minikube (2026-08-07) the pull alone took
+# 9m54s and the pod went Ready at 10m30s — 30s past a 10m wait, which failed the
+# whole `make k8s-bootstrap` on a deployment that was in fact healthy.
+kubectl -n infra rollout status deployment/kafka-connect --timeout=15m
 
 echo "infra install complete"

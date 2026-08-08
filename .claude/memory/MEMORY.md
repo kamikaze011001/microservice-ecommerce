@@ -6,6 +6,7 @@
 - [0001 — in-repo memory alongside untouched CLAUDE.md](decisions/0001-in-repo-memory-alongside-untouched-claude-md.md) — kept CLAUDE.md as SSOT, added the `.claude/memory/` lifecycle
 - [0002 — root CLAUDE.md delegates to nested module files](decisions/0002-root-claude-md-delegates-to-nested-module-files.md) — root keeps non-derivable + cross-cutting only; module specifics live in `<module>/CLAUDE.md`
 - [0003 — deploy refactor: Helm umbrella + three envs](decisions/0003-deploy-refactor-helm-umbrella-three-envs.md) — consolidate under `deploy/`; Helm for minikube/EKS, compose retained, canonical secrets/seed/images shared
+- [0004 — canonical secrets: resolve/transport split](decisions/0004-canonical-secrets-resolve-transport-split.md) — one file per service + per-env contexts; pure resolver separate from the seeder, so every env verifies offline without credentials
 
 ## Conventions (conventions + gotchas, durable)
 - [two-memory-systems-coexist](conventions/two-memory-systems-coexist.md) — global personal auto-memory vs in-repo team-shared `.claude/memory/`; which to use when
@@ -21,6 +22,11 @@
 - [minikube-node-resources-only-apply-at-creation](conventions/minikube-node-resources-only-apply-at-creation.md) — `--cpus/--memory` ignored on resume; cluster.sh re-applies via `docker update` (and is over-subscribed here)
 - [minikube-tunnel-external-ip-is-sticky](conventions/minikube-tunnel-external-ip-is-sticky.md) — 3 ways to misjudge tunnel health: sticky `EXTERNAL-IP`, `lsof` blind to the root-owned listener, and `sudo -v` cached per-tty
 - [buildkit-cache-mount-shadows-baked-m2](conventions/buildkit-cache-mount-shadows-baked-m2.md) — a cache mount hides the image's baked `/root/.m2`; seed it from a read-only bind with `cp -r` (never `-n`)
+- [vault-config-comment-keys-are-really-seeded](conventions/vault-config-comment-keys-are-really-seeded.md) — `_comment*` in `docker/vault-configs/*.json` are live Vault properties, not comments; explains the 94-vs-90 key count
+- [cross-env-equality-checks-miss-shared-drift](conventions/cross-env-equality-checks-miss-shared-drift.md) — "all envs agree" stays green when a shared source file moves all of them at once; pair it with an absolute anchor
+- [k8s-targets-inherit-ambient-kubectl-context](conventions/k8s-targets-inherit-ambient-kubectl-context.md) — no k8s target pins `--context`; only `secrets-seed` refuses an unnamed one, everything else acts on whatever kubectl points at
+- [helm-and-kubectl-deploy-paths-are-exclusive](conventions/helm-and-kubectl-deploy-paths-are-exclusive.md) — `k8s-apps-helm` can't follow `k8s-bootstrap`: namespace stamps + a vendored grafana vs the standalone release; "runs alongside" means the code paths, not one cluster
+- [cold-cluster-image-pulls-outgrow-rollout-timeouts](conventions/cold-cluster-image-pulls-outgrow-rollout-timeouts.md) — kafka-connect went Ready at 10m30s against a 10m wait and killed the whole 9-target chain; diagnose with pod timestamps, not "it's healthy now"
 
 ## Current
 - [HANDOFF](HANDOFF.md) — latest WIP state (overwritten each session)
