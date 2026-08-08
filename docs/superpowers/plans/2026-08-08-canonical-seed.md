@@ -59,10 +59,17 @@ Nothing can be verified until we know what the old paths actually write. This ta
     "mysql":     ["INSERT INTO ... ;", "..."],
     "mongo":     {"product": [ {...} ], "api_role": [ {...} ]},
     "objects":   ["products/<id>/<slug>.jpg", "..."],
+    "drop":      ["product"],
     "reconcile": ["restart:inventory-service"]
   }
   ```
   Arrays are **sorted** before writing so ordering differences never masquerade as content differences.
+
+  **`drop` and `reconcile` are operations, not data, and they are captured deliberately.** This phase
+  changes behaviour in exactly two places (see Task 4's expected-difference list), and an artifact
+  shape that recorded only documents would make both changes invisible to the offline suite.
+  `drop` records collections the path clears before importing; `reconcile` records post-seed
+  service restarts. Expect compose's `reconcile` to be **empty** — that absence is the bug.
 
 - [ ] **Step 1: Write the shims**
 
@@ -239,7 +246,18 @@ git commit -m "feat(seed): pure renderer for canonical seed data"
 
 - [ ] **Step 1: Write the failing test**
 
-For each env, for each of `mysql`, `mongo`, `objects`, `reconcile`: sort both sides, diff, report per-key. On mismatch print **which keys differ and how many**, never the full blob — a 30-row dump buries the signal.
+For each env, for each of `mysql`, `mongo`, `objects`, `drop`, `reconcile`: sort both sides, diff, report per-key. On mismatch print **which keys differ and how many**, never the full blob — a 30-row dump buries the signal.
+
+**Expected-difference list.** This phase deliberately changes behaviour in exactly two places. Encode them as a declared table, not as exclusions:
+
+| env | key | old | new | why |
+|---|---|---|---|---|
+| `compose` | `reconcile` | empty | `restart:inventory-service` | spec D3 — compose has no reconcile today, which is the documented "0 available" bug |
+| all | `drop` | `["product"]` | `[]` unless `--replace` | Task 5 — the default must not silently wipe local product edits |
+
+Each declared entry is asserted **to differ, in the stated direction**, and the suite **fails if it ever matches again** — an intended improvement that silently reverts is a regression. Every other comparison must match exactly.
+
+So the gate is: **13 matched, 2 declared-different, 0 unexplained** (3 envs × 5 keys = 15). Any difference outside the table is a failure, not a discovery.
 
 - [ ] **Step 2: Run to verify it fails or reveals real differences**
 
@@ -248,7 +266,7 @@ Expected: initially FAIL. **Investigate every difference before "fixing" the ren
 
 - [ ] **Step 3: Reconcile until green**
 
-Expected: `12 passed, 0 failed` (3 envs × 4 artifact kinds).
+Expected: `13 matched, 2 declared-different, 0 unexplained`.
 
 - [ ] **Step 4: Prove the test can fail**
 
@@ -434,6 +452,6 @@ Each task names the exact file it replaces. Read that file; make the goldens pas
 | Layer | Scope | Gate |
 |---|---|---|
 | `render-test.sh` | renderer + the compose byte-for-byte invariant | `5 passed, 0 failed` |
-| `equivalence-test.sh` | all three envs × 4 artifact kinds, offline | `12 passed, 0 failed` |
+| `equivalence-test.sh` | all three envs × 5 artifact kinds, offline | `13 matched, 2 declared-different, 0 unexplained` |
 | `live-verify.sh` | compose + k8s actual state, incl. Redis counters | identical state, counters present |
 | `git diff --stat docker/` | the frozen-tree constraint | empty, at every commit |
