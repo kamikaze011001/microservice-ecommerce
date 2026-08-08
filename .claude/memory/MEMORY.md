@@ -25,6 +25,8 @@
 - [vault-config-comment-keys-are-really-seeded](conventions/vault-config-comment-keys-are-really-seeded.md) — `_comment*` in `docker/vault-configs/*.json` are live Vault properties, not comments; explains the 94-vs-90 key count
 - [cross-env-equality-checks-miss-shared-drift](conventions/cross-env-equality-checks-miss-shared-drift.md) — "all envs agree" stays green when a shared source file moves all of them at once; pair it with an absolute anchor
 - [k8s-targets-inherit-ambient-kubectl-context](conventions/k8s-targets-inherit-ambient-kubectl-context.md) — no k8s target pins `--context`; only `secrets-seed` refuses an unnamed one, everything else acts on whatever kubectl points at
+- [helm-and-kubectl-deploy-paths-are-exclusive](conventions/helm-and-kubectl-deploy-paths-are-exclusive.md) — `k8s-apps-helm` can't follow `k8s-bootstrap`: namespace stamps + a vendored grafana vs the standalone release; "runs alongside" means the code paths, not one cluster
+- [cold-cluster-image-pulls-outgrow-rollout-timeouts](conventions/cold-cluster-image-pulls-outgrow-rollout-timeouts.md) — kafka-connect went Ready at 10m30s against a 10m wait and killed the whole 9-target chain; diagnose with pod timestamps, not "it's healthy now"
 
 ## Current
 - [HANDOFF](HANDOFF.md) — latest WIP state (overwritten each session)
