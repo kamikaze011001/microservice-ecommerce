@@ -189,12 +189,24 @@ def _generated_statements(products, qty_rows, context):
         price = product["price"]
         # Matches scripts/seed/mysql-inventory-products.sh's `if .imageUrl
         # then ... else NULL end` — jq falsy is only null/false, so this is a
-        # missing/null check, not an empty-string check. None of the 30
-        # canonical products have an empty-string imageUrl, so this can't
-        # diverge from scripts/aws/seed-inventory.sh's stricter
-        # `(.imageUrl // "" | length) > 0` check on the real data; see
-        # task-3-report.md for the untested edge case.
+        # missing/null check, not an empty-string check. But an empty-string
+        # imageUrl is exactly where compose's jq and scripts/aws/
+        # seed-inventory.sh's stricter `(.imageUrl // "" | length) > 0`
+        # disagree (compose: quoted "", aws: NULL). None of the 30 canonical
+        # products hit this, so — same precedent as the mediaBaseUrl boundary
+        # check in _objects() below — fail loudly instead of silently picking
+        # one env's semantics for all three. Normalising here would be an
+        # undeclared third behavioural change beyond this phase's approved
+        # compose/drop + compose/reconcile pair (see the module docstring),
+        # for an input no current data produces.
         image_url = product.get("imageUrl")
+        if image_url == "":
+            _fail("product.json", product.get("_id", {}).get("$oid", "<unknown>"),
+                  "imageUrl is an empty string — compose's old jq quotes it "
+                  "as \"\", aws's old jq treats it as NULL; the renderer "
+                  "refuses to guess which semantics wins across all three "
+                  "envs. Give the product a real imageUrl or make it null "
+                  "and re-render.")
         image_expr = "NULL" if image_url is None else f'"{_escape_sql(image_url)}"'
         stmts.append(
             f"{verb} INTO inventory_product (id, name, price, image_url) VALUES "

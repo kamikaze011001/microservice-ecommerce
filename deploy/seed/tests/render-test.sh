@@ -20,6 +20,11 @@
 # and `reconcile` encode this phase's NEW intent (approved before execution),
 # not a reproduction of the old per-env scripts — see seed_render.py's
 # RECONCILE_DEFAULT / REPLACE_COLLECTIONS comments.
+#
+# Test 6 covers a review finding: an empty-string imageUrl is the one case
+# where compose's and aws's old jq disagree (quoted "" vs NULL). No current
+# product hits it, so the renderer fails loudly rather than silently picking
+# a winner for all three envs.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -242,6 +247,38 @@ if [ "$t5_rc" -eq 0 ]; then
 else
   bad "drop/reconcile new-intent check failed: $t5_out"
 fi
+
+# ── Test 6: empty-string imageUrl fails loudly, names the product id ───────
+# compose's old jq (`if .imageUrl then …`) quotes an empty string as "";
+# aws's old jq (`(.imageUrl // "" | length) > 0`) treats it as NULL. No
+# canonical product hits this, so the renderer must refuse to silently pick
+# one env's semantics for all three — same precedent as the mediaBaseUrl
+# boundary check in _objects().
+echo
+echo -e "\033[1mrender_all — empty-string imageUrl fails loudly, names the product id\033[0m"
+
+t6_dir="$(mktemp -d)"
+cp -R "$SEED_DIR" "$t6_dir/seed"
+t6_pid="cccccccccccccccccccccccc"
+python3 - "$t6_dir/seed/product.json" "$t6_pid" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+pid = sys.argv[2]
+products = json.loads(p.read_text())
+products.append({"_id": {"$oid": pid}, "name": "Empty Image Product", "price": 1, "imageUrl": ""})
+p.write_text(json.dumps(products, indent=2))
+PY
+t6_stdout="$(mktemp)"; t6_stderr="$(mktemp)"
+python3 "$RENDERER" --seed-dir "$t6_dir/seed" --env compose >"$t6_stdout" 2>"$t6_stderr"
+t6_rc=$?
+t6_stdout_bytes=$(wc -c < "$t6_stdout" | tr -d '[:space:]')
+if [ "$t6_rc" -ne 0 ] && [ "$t6_stdout_bytes" -eq 0 ] \
+   && grep -q "$t6_pid" "$t6_stderr" && grep -q "product.json" "$t6_stderr"; then
+  ok "empty-string imageUrl: nonzero exit, empty stdout, stderr names product id + file"
+else
+  bad "empty-string imageUrl: rc=$t6_rc stdout_bytes=$t6_stdout_bytes stderr=$(cat "$t6_stderr")"
+fi
+rm -rf "$t6_dir" "$t6_stdout" "$t6_stderr"
 
 echo
 printf '%d passed, %d failed\n' "$pass" "$fail"
