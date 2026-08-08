@@ -6,10 +6,14 @@
 # context must reproduce docker/product.json byte-for-byte — see
 # deploy/seed/tests/render-test.sh.
 
-# {{ctx.mediaBaseUrl}} in product.json expands back to the literal host baked
-# into docker/product.json's imageUrl fields (protocol + host, no path — the
-# JSON already carries "/ecommerce-media/products/...").
-mediaBaseUrl: http://localhost:9000
+# {{ctx.mediaBaseUrl}} in product.json expands back to the literal prefix
+# baked into docker/product.json's imageUrl fields: protocol + host +
+# "/ecommerce-media" (product.json's own text supplies "/products/..." after
+# it). The boundary sits AFTER "/ecommerce-media", not before it, so ONE
+# substitution scheme covers all three envs with no per-env path branching —
+# see contexts/aws.yaml, where the bucket URL already ends at this same
+# boundary with no special-casing needed.
+mediaBaseUrl: http://localhost:9000/ecommerce-media
 
 # Transport selectors (deploy/scripts/seed.sh, Task 3): HOW the rendered SQL
 # and objects get written, not part of the rendered data itself.

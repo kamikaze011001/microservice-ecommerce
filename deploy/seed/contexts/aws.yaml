@@ -25,19 +25,16 @@ objectTransport: aws-s3   # mc | aws-s3
 # env-invariant, not governed by this key).
 generatedInsertMode: INSERT IGNORE   # INSERT | INSERT IGNORE
 
-# NOT YET RESOLVED BY THE CANONICAL PLACEHOLDER SCHEME (flagged for Task 3,
-# not fixed here): scripts/aws/seed-inventory.sh's own gsub does more than a
-# host swap — it replaces the WHOLE prefix "http://localhost:9000/ecommerce-
-# media/" with "$S3_BASE_URL/", dropping the "ecommerce-media" path segment
-# entirely (S3 virtual-hosted addressing puts the bucket in the host, so the
-# segment is redundant there). compose and k8s only ever swap the host and
-# keep "/ecommerce-media/products/..." intact. A literal
-# "{{ctx.mediaBaseUrl}}" substitution in deploy/seed/product.json (the scheme
-# this task's brief specifies) reproduces compose and k8s exactly, but for aws
-# it yields ".../ecommerce-media/products/..." after mediaBaseUrl instead of
-# the golden's ".../products/..." — confirmed against
+# mediaBaseUrl boundary: unchanged here on purpose. scripts/aws/seed-
+# inventory.sh's own gsub already substitutes the WHOLE prefix
+# "http://localhost:9000/ecommerce-media/" for "$S3_BASE_URL/" — i.e. the
+# terraform output already resolves to a value ending exactly where
+# compose/k8s's mediaBaseUrl now ends too (right before "/products/...",
+# see contexts/compose.yaml's comment for why the boundary moved there).
+# S3 virtual-hosted addressing puts the bucket in the host, so there is no
+# "/ecommerce-media" segment to include or strip — one substitution scheme,
+# no aws-specific rule needed in the renderer. Confirmed against
 # deploy/seed/tests/golden/aws.json's mongo.*.imageUrl and
-# mysql[].inventory_product rows, both of which omit "ecommerce-media".
-# Task 3's renderer will need an aws-specific rule (e.g. strip the
-# "ecommerce-media/" segment when objectTransport == aws-s3), not just
-# placeholder substitution, to reproduce this golden.
+# mysql[].inventory_product rows: both read
+# ".../s3.ap-southeast-1.amazonaws.com/products/<id>/<slug>.jpg" with no
+# "ecommerce-media" anywhere.

@@ -25,7 +25,7 @@
       "blue",
       "everyday"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000001/broadsheet-check-shirt.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000001/broadsheet-check-shirt.jpg"
   },
   {
     "_id": {
@@ -54,7 +54,7 @@
       "black",
       "layering"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000002/broadsheet-plaid-shirt.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000002/broadsheet-plaid-shirt.jpg"
   },
   {
     "_id": {
@@ -83,7 +83,7 @@
       "short-sleeve",
       "summer"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000003/dispatch-floral-shirt.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000003/dispatch-floral-shirt.jpg"
   },
   {
     "_id": {
@@ -111,7 +111,7 @@
       "teal",
       "olive"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000004/gazette-check-shirt.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000004/gazette-check-shirt.jpg"
   },
   {
     "_id": {
@@ -140,7 +140,7 @@
       "white",
       "daywear"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000005/dot-matrix-frock.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000005/dot-matrix-frock.jpg"
   },
   {
     "_id": {
@@ -169,7 +169,7 @@
       "black",
       "maxi"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000006/summer-issue-dress.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000006/summer-issue-dress.jpg"
   },
   {
     "_id": {
@@ -197,7 +197,7 @@
       "belted",
       "tailored"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000007/column-dress-sage.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000007/column-dress-sage.jpg"
   },
   {
     "_id": {
@@ -226,7 +226,7 @@
       "ruffle",
       "evening"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000008/quarto-short-frock.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000008/quarto-short-frock.jpg"
   },
   {
     "_id": {
@@ -255,7 +255,7 @@
       "white",
       "bow"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000009/tartan-folio-dress.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000009/tartan-folio-dress.jpg"
   },
   {
     "_id": {
@@ -284,7 +284,7 @@
       "evening",
       "formal"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c00000000000000000000a/nocturne-gown.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c00000000000000000000a/nocturne-gown.jpg"
   },
   {
     "_id": {
@@ -312,7 +312,7 @@
       "skirt",
       "structured"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c00000000000000000000b/letterpress-corset-leather-skirt.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c00000000000000000000b/letterpress-corset-leather-skirt.jpg"
   },
   {
     "_id": {
@@ -340,7 +340,7 @@
       "skirt",
       "evening"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c00000000000000000000c/inkblack-corset-skirt.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c00000000000000000000c/inkblack-corset-skirt.jpg"
   },
   {
     "_id": {
@@ -370,7 +370,7 @@
       "strapless",
       "party"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c00000000000000000000d/redline-dot-dress.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c00000000000000000000d/redline-dot-dress.jpg"
   },
   {
     "_id": {
@@ -398,7 +398,7 @@
       "pump",
       "heel"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c00000000000000000000e/boldface-pump-black-brown.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c00000000000000000000e/boldface-pump-black-brown.jpg"
   },
   {
     "_id": {
@@ -427,7 +427,7 @@
       "stiletto",
       "evening"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c00000000000000000000f/gilt-edition-shoe.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c00000000000000000000f/gilt-edition-shoe.jpg"
   },
   {
     "_id": {
@@ -456,7 +456,7 @@
       "stiletto",
       "evening"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000010/broadside-pump.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000010/broadside-pump.jpg"
   },
   {
     "_id": {
@@ -484,7 +484,7 @@
       "patent",
       "heel"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000011/red-press-shoe.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000011/red-press-shoe.jpg"
   },
   {
     "_id": {
@@ -506,7 +506,7 @@
       "green",
       "clubmaster"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000012/folio-frame-sunglasses.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000012/folio-frame-sunglasses.jpg"
   },
   {
     "_id": {
@@ -528,7 +528,7 @@
       "aviator",
       "blue"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000013/classic-frame-sunglasses.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000013/classic-frame-sunglasses.jpg"
   },
   {
     "_id": {
@@ -550,7 +550,7 @@
       "transparent",
       "oversized"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000014/proof-frame-sunglasses.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000014/proof-frame-sunglasses.jpg"
   },
   {
     "_id": {
@@ -572,7 +572,7 @@
       "graphic",
       "statement"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000015/halftone-sunglasses.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000015/halftone-sunglasses.jpg"
   },
   {
     "_id": {
@@ -595,7 +595,7 @@
       "tote",
       "work"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000016/cobalt-handbag.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000016/cobalt-handbag.jpg"
   },
   {
     "_id": {
@@ -617,7 +617,7 @@
       "gold-hardware",
       "commute"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000017/offset-backpack-chalk.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000017/offset-backpack-chalk.jpg"
   },
   {
     "_id": {
@@ -640,7 +640,7 @@
       "tote",
       "everyday"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000018/colophon-handbag-black.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000018/colophon-handbag-black.jpg"
   },
   {
     "_id": {
@@ -662,7 +662,7 @@
       "drop",
       "statement"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c000000000000000000019/colophon-drop-earring-emerald.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c000000000000000000019/colophon-drop-earring-emerald.jpg"
   },
   {
     "_id": {
@@ -685,7 +685,7 @@
       "checkerboard",
       "statement"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c00000000000000000001a/harlequin-hoop-earring.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c00000000000000000001a/harlequin-hoop-earring.jpg"
   },
   {
     "_id": {
@@ -707,7 +707,7 @@
       "gold",
       "statement"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c00000000000000000001b/tropic-edition-earring.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c00000000000000000001b/tropic-edition-earring.jpg"
   },
   {
     "_id": {
@@ -729,7 +729,7 @@
       "shoulder-bag",
       "everyday"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c00000000000000000001c/byline-shoulder-bag.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c00000000000000000001c/byline-shoulder-bag.jpg"
   },
   {
     "_id": {
@@ -751,7 +751,7 @@
       "bracelet",
       "formal"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c00000000000000000001d/masthead-wrist-watch.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c00000000000000000001d/masthead-wrist-watch.jpg"
   },
   {
     "_id": {
@@ -774,6 +774,6 @@
       "chronograph",
       "formal"
     ],
-    "imageUrl": "{{ctx.mediaBaseUrl}}/ecommerce-media/products/67c00000000000000000001e/gilt-masthead-watch.jpg"
+    "imageUrl": "{{ctx.mediaBaseUrl}}/products/67c00000000000000000001e/gilt-masthead-watch.jpg"
   }
 ]

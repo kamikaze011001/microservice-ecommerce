@@ -4,10 +4,11 @@
 
 # k8s/infra/jobs/02-mongo-seed/seed.sh rewrites imageUrl's host from
 # localhost:9000 to media.microecom.local post-import today (the ingress the
-# browser actually reaches MinIO through inside kind); the path segment
-# ("/ecommerce-media/products/...") is left untouched. Same shape as compose,
-# different host.
-mediaBaseUrl: http://media.microecom.local
+# browser actually reaches MinIO through inside kind); the "/ecommerce-media"
+# path segment is left untouched. Boundary matches compose.yaml (see its
+# comment): mediaBaseUrl includes "/ecommerce-media", product.json supplies
+# "/products/..." after it.
+mediaBaseUrl: http://media.microecom.local/ecommerce-media
 
 mysqlTransport: k8s-job   # docker-exec | k8s-job | k8s-run
 objectTransport: mc       # mc | aws-s3
