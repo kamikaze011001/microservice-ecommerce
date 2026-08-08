@@ -1,17 +1,27 @@
 #!/usr/bin/env bash
-# Resolve deploy/seed/ (+ an env context) and push the PRE-APPS artifacts —
-# Mongo documents and product image objects — to this env's backend.
+# Resolve deploy/seed/ (+ an env context) and push the seed artifacts to this
+# env's backend, in one of two stages.
 #
-#   deploy/scripts/seed.sh --env compose|k8s|aws --stage pre-apps
+#   deploy/scripts/seed.sh --env compose|k8s|aws --stage pre-apps|post-apps
 #                          [--dry-run] [--replace] [--context NAME]
 #                          [--tf-outputs FILE]
 #
-# PRE-APPS (this file, Phase 5 Task 5): mongo (api_role/product/
-# productQuantityHistory) + objects (product images). POST-APPS (ecommerce.sql,
-# the derived inventory_product/product_quantity_history rows, the schema
-# precondition, and the inventory-service reconcile) is Task 6 — NOT
-# implemented here. `render_all()`'s "reconcile" key is printed for visibility
-# but this stage does not act on it; `--stage post-apps` refuses below.
+# PRE-APPS (Phase 5 Task 5): mongo (api_role/product/productQuantityHistory)
+# + objects (product images). Must run before the apps so product-service /
+# inventory-service have data to react to.
+#
+# POST-APPS (Phase 5 Task 6, this addition): the schema precondition, then
+# ecommerce.sql (account/account_role/role/user), then the derived
+# inventory_product/product_quantity_history rows, then the reconcile —
+# `kubectl rollout restart deploy/inventory-service` on k8s/aws, `stop.sh` +
+# `start.sh inventory-service` on compose (compose has no container to
+# restart; the services are JVM processes — see design doc §D3). Must run
+# AFTER the apps: ecommerce.sql is data-only (0 CREATE TABLE — its only
+# "localhost" is an inert mysqldump header comment, do not "fix" it), so the
+# schema must already exist via Hibernate ddl-auto or the import dies
+# mid-way with ERROR 1146 (the failure mode k8s/CLAUDE.md documents). The
+# precondition below checks every table an INSERT targets and refuses before
+# writing a single row if any is missing.
 #
 # Same resolve-then-transport ordering as secrets-seed.sh: render the FULL
 # artifact set first (deploy/scripts/lib/seed_render.py::render_all — pure,
@@ -26,20 +36,25 @@
 # _id, never drops the collection), so a plain re-run never silently wipes a
 # locally-added product — see design doc §7 and the Makefile's
 # mongo-seed-ensure comment, which documents the old drop as the reason
-# mongo-products.sh is excluded from `make up`.
+# mongo-products.sh is excluded from `make up`. --replace is a pre-apps-only
+# concept (mysql's idempotency below is a plain row-count skip, matching the
+# OLD mysql*.sh scripts it replaces).
 #
 # --context NAME (or KUBE_CONTEXT=NAME) is REQUIRED for a real (non
 # --dry-run) run against --env k8s — copied in spirit from secrets-seed.sh.
-# It is ALSO required for --env aws's MONGO leg only: per the design doc's
-# transport matrix ("Mongo | mongoimport via docker | in-cluster Job |
-# *reuses the k8s Job verbatim*") and deploy/secrets/contexts/aws.yaml's own
-# note ("MongoDB stays self-hosted in-cluster... keeps cluster DNS"), aws's
-# mongo leg runs over `kubectl exec` against the EKS cluster too — the exact
-# same "ambient context might be a different live cluster" hazard the k8s
-# guard exists for. aws's IMAGE leg (`aws s3 cp`) never touches kubectl and
-# is exempt. NOTE: this extends the letter of this script's original
-# requirement (stated only for --env k8s) to --env aws for this one reason;
-# see task-5-report.md.
+# It is ALSO required for --env aws's MONGO leg (pre-apps) and MYSQL leg
+# (post-apps): per the design doc's transport matrix ("Mongo | mongoimport
+# via docker | in-cluster Job | *reuses the k8s Job verbatim*"; "MySQL |
+# docker exec -> mysql-master | in-cluster Job | ephemeral kubectl run pod ->
+# mysql -h $RDS_HOST") and deploy/secrets/contexts/aws.yaml's own note
+# ("MongoDB stays self-hosted in-cluster... keeps cluster DNS"), aws's mongo
+# leg runs over `kubectl exec` against the EKS cluster, and aws's mysql leg
+# launches an ephemeral pod INTO that same cluster with `kubectl run` — both
+# the exact same "ambient context might be a different live cluster" hazard
+# the k8s guard exists for. aws's IMAGE leg (`aws s3 cp`) never touches
+# kubectl and is exempt. NOTE: this extends the letter of this script's
+# original requirement (stated only for --env k8s) to --env aws for this
+# reason; see task-5-report.md.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -49,7 +64,7 @@ ENV_NAME=""; STAGE=""; DRY_RUN=0; REPLACE=0; TF_OUTPUTS_OVERRIDE=""
 KUBE_CONTEXT="${KUBE_CONTEXT:-}"; CONTEXT_FLAG_GIVEN=0
 
 usage() {
-  echo "usage: seed.sh --env compose|k8s|aws --stage pre-apps [--dry-run] [--replace] [--context NAME] [--tf-outputs FILE]" >&2
+  echo "usage: seed.sh --env compose|k8s|aws --stage pre-apps|post-apps [--dry-run] [--replace] [--context NAME] [--tf-outputs FILE]" >&2
 }
 
 while [ $# -gt 0 ]; do
@@ -70,14 +85,7 @@ case "$ENV_NAME" in
 esac
 
 case "$STAGE" in
-  pre-apps) ;;
-  post-apps)
-    log_err "--stage post-apps is not implemented by this build (Task 6: mysql," \
-            "derived inventory_product/product_quantity_history rows, the schema" \
-            "precondition, and the inventory-service reconcile). This build only" \
-            "ships --stage pre-apps (mongo + objects)."
-    exit 2
-    ;;
+  pre-apps|post-apps) ;;
   *) usage; exit 2 ;;
 esac
 
@@ -141,18 +149,27 @@ PRODUCT_COUNT="$(jq '.mongo.product | length' "$RENDERED")"
 API_ROLE_COUNT="$(jq '.mongo.api_role | length' "$RENDERED")"
 QTY_COUNT="$(jq '.mongo.productQuantityHistory | length' "$RENDERED")"
 OBJECTS_COUNT="$(jq '.objects | length' "$RENDERED")"
+MYSQL_COUNT="$(jq '.mysql | length' "$RENDERED")"
 DROP_LIST="$(jq -c '.drop' "$RENDERED")"
 RECONCILE_LIST="$(jq -c '.reconcile' "$RENDERED")"
 
-log_info "resolved pre-apps artifacts for $ENV_NAME: mongo.api_role=$API_ROLE_COUNT mongo.product=$PRODUCT_COUNT mongo.productQuantityHistory=$QTY_COUNT objects=$OBJECTS_COUNT drop=$DROP_LIST"
-log_info "reconcile=$RECONCILE_LIST — not acted on by this stage (Task 6/post-apps)"
+case "$STAGE" in
+  pre-apps)
+    log_info "resolved pre-apps artifacts for $ENV_NAME: mongo.api_role=$API_ROLE_COUNT mongo.product=$PRODUCT_COUNT mongo.productQuantityHistory=$QTY_COUNT objects=$OBJECTS_COUNT drop=$DROP_LIST"
+    log_info "reconcile=$RECONCILE_LIST — not acted on by this stage (pre-apps)"
+    ;;
+  post-apps)
+    log_info "resolved post-apps artifacts for $ENV_NAME: mysql statements=$MYSQL_COUNT reconcile=$RECONCILE_LIST"
+    ;;
+esac
 
 if [ "$DRY_RUN" -eq 1 ]; then
   log_ok "dry-run — nothing written"
   exit 0
 fi
 
-# --- Step 2: transport (mongo, then objects) --------------------------------
+# --- Step 2: transport (pre-apps: mongo, then objects. post-apps: mysql,
+#             then the inventory-service reconcile) -------------------------
 
 FAIL=0
 
@@ -164,6 +181,9 @@ if [ "$ENV_NAME" = "compose" ]; then
   . "$ROOT/scripts/lib/env.sh"
   load_dotenv || exit 1
 fi
+
+case "$STAGE" in
+pre-apps)
 MONGO_DB="${MONGO_DB_NAME:-ecommerce_inventory}"
 MONGO_USER="${MONGO_USERNAME:-ecommerce}"
 MONGO_PASS="${MONGO_PASSWORD:-ecommerce123}"
@@ -342,10 +362,241 @@ while IFS=$'\t' read -r pid category image_url; do
 done < <(jq -r '.mongo.product[] | select(.imageUrl != null) | [._id["$oid"], .category, .imageUrl] | @tsv' "$RENDERED")
 
 log_ok "objects seeded: uploaded=$uploaded missing=$skipped_missing (expected $OBJECTS_COUNT)"
+;; # pre-apps
 
-if [ "$FAIL" -ne 0 ]; then
-  log_err "seed pre-apps for $ENV_NAME finished WITH ERRORS — see above"
+post-apps)
+# --- mysql: schema precondition -> ecommerce.sql -> derived inventory rows
+#            -> reconcile (design doc §D3) ----------------------------------
+#
+# Credential hygiene mirrors the mongo leg above exactly (same rule, same
+# reason: argv is readable host-side via `ps aux` and container-side via
+# /proc/<pid>/cmdline). `mysql -uroot -p"$PASS"` is precisely the class of
+# bug this repo has already fixed twice (7f45f28, Task 5's c1a2153) — a
+# password NEVER reaches any argv here either.
+# `--defaults-extra-file=<file>` (must be the FIRST argument to mysql, or it
+# is silently ignored) is MySQL's client-side analogue of mongoimport's
+# `--config=`.
+#   compose: docker/mysql.yml's `master` container carries its own
+#     MYSQL_ROOT_PASSWORD (confirmed: `docker exec mysql-master sh -c
+#     'echo ${MYSQL_ROOT_PASSWORD:+set}'` -> "set") — read SERVER-SIDE inside
+#     the container; this script's own environment is never consulted.
+#   k8s: k8s/infra/manifests/mysql.yaml's `mysql` StatefulSet pod (mysql-0,
+#     ns infra, one replica) gets MYSQL_ROOT_PASSWORD via `envFrom:
+#     secretRef: mysql-credentials` — same server-side read as compose.
+#   aws: unlike mongo (which stays self-hosted in-cluster for aws too — see
+#     this file's header), RDS has no pod to exec into. mysql runs from a
+#     throwaway `kubectl run` pod that reaches RDS over the network
+#     (mirrors scripts/aws/seed-inventory.sh). That pod has no ambient
+#     credential env var, so the password travels as the FIRST LINE of the
+#     exec's stdin stream — exactly the mongo aws leg's technique above
+#     (`IFS= read -r pass` consumes exactly that line; POSIX `read` has no
+#     read-ahead, so the SQL stream behind it is untouched — already
+#     verified for mongo). It is never handed to `kubectl run` via --env:
+#     that WOULD land it on THIS HOST's kubectl argv — the actual mistake in
+#     scripts/aws/seed-inventory.sh's own `--env=MYSQL_PWD="$DB_PASS"` (not
+#     our path, named here because it is the nearest precedent's real bug).
+# Every on-disk defaults file is 0600 (mktemp's default mode), lives inside
+# the container/pod only, and is removed by a `trap ... EXIT` — never `exec
+# mysql` as the last step, since that replaces the shell and would skip its
+# own trap.
+
+MYSQL_DB="${MYSQL_DB_NAME:-ecommerce_dev}"
+MYSQL_CONTAINER="${MYSQL_CONTAINER:-mysql-master}"
+
+if [ "$ENV_NAME" = "aws" ]; then
+  RDS_HOST="$(jq -r 'if (.rds_primary_endpoint.value) then .rds_primary_endpoint.value else .rds_primary_endpoint end' "$TF_CACHE" 2>/dev/null)"
+  RDS_PASS="$(jq -r 'if (.db_master_password.value) then .db_master_password.value else .db_master_password end' "$TF_CACHE" 2>/dev/null)"
+  if [ -z "$RDS_HOST" ] || [ "$RDS_HOST" = "null" ]; then
+    log_err "rds_primary_endpoint missing from tf-outputs ($TF_CACHE)"
+    FAIL=1
+  fi
+  if [ -z "$RDS_PASS" ] || [ "$RDS_PASS" = "null" ]; then
+    log_err "db_master_password missing from tf-outputs ($TF_CACHE)"
+    FAIL=1
+  fi
+  [ "$FAIL" -eq 0 ] || exit 1
+fi
+
+# mysql_run: pipes SQL (or a query) on ITS OWN stdin to mysql against this
+# env's target db, prints mysql's stdout. -N -B = no headers/table borders,
+# so a SELECT's rows come back one bare value per line.
+mysql_run() {
+  case "$ENV_NAME" in
+    compose)
+      docker exec -i "$MYSQL_CONTAINER" sh -c '
+        set -e
+        db="$1"
+        : "${MYSQL_ROOT_PASSWORD:?missing in container env}"
+        cfg="$(mktemp)"
+        trap "rm -f \"$cfg\"" EXIT
+        printf "[client]\nuser=root\npassword=%s\n" "$MYSQL_ROOT_PASSWORD" > "$cfg"
+        mysql --defaults-extra-file="$cfg" -N -B "$db"
+      ' sh "$MYSQL_DB"
+      ;;
+    k8s)
+      kubectl --context "$KUBE_CONTEXT" -n "$NS" exec -i mysql-0 -- sh -c '
+        set -e
+        db="$1"
+        : "${MYSQL_ROOT_PASSWORD:?missing in container env}"
+        cfg="$(mktemp)"
+        trap "rm -f \"$cfg\"" EXIT
+        printf "[client]\nuser=root\npassword=%s\n" "$MYSQL_ROOT_PASSWORD" > "$cfg"
+        mysql --defaults-extra-file="$cfg" -N -B "$db"
+      ' sh "$MYSQL_DB"
+      ;;
+    aws)
+      { printf '%s\n' "$RDS_PASS"; cat; } | kubectl --context "$KUBE_CONTEXT" -n apps run "mysql-seed-${RANDOM}" \
+        --rm -i --restart=Never --image=mysql:8.0.40 --command -- sh -c '
+          set -e
+          host="$1"; db="$2"
+          IFS= read -r pass
+          cfg="$(mktemp)"
+          trap "rm -f \"$cfg\"" EXIT
+          printf "[client]\nhost=%s\nuser=admin\npassword=%s\n" "$host" "$pass" > "$cfg"
+          mysql --defaults-extra-file="$cfg" -N -B "$db"
+        ' sh "$RDS_HOST" "$MYSQL_DB"
+      ;;
+  esac
+}
+
+# --- precondition: every table an INSERT targets must already exist -------
+# ecommerce.sql is data-only (0 CREATE TABLE — see this file's header); the
+# schema comes from Hibernate ddl-auto at service boot. Importing against a
+# missing table fails partway through with ERROR 1146 (k8s/CLAUDE.md's
+# documented failure mode). Check EVERY target table (from BOTH the
+# ecommerce.sql dump and the generated inventory rows) before a single
+# INSERT runs, and name the first missing one.
+REQUIRED_TABLES="$(jq -r '.mysql[]' "$RENDERED" \
+  | grep -oiE 'INSERT( IGNORE)? INTO `?[A-Za-z_]+`?' \
+  | grep -oE '[A-Za-z_]+`?$' | tr -d '`' | sort -u)"
+IN_LIST="$(printf '%s\n' "$REQUIRED_TABLES" | awk '{printf "%s%s", (NR>1?",":""), "\x27" $0 "\x27"}')"
+EXISTING_TABLES="$(printf "SELECT table_name FROM information_schema.tables WHERE table_schema='%s' AND table_name IN (%s);\n" "$MYSQL_DB" "$IN_LIST" | mysql_run)"
+precheck_rc=$?
+if [ "$precheck_rc" -ne 0 ]; then
+  log_err "post-apps: could not query information_schema — is $ENV_NAME's MySQL reachable?"
+  exit 1
+fi
+MISSING="$(comm -23 <(printf '%s\n' "$REQUIRED_TABLES") <(printf '%s\n' "$EXISTING_TABLES" | sort -u) | head -1)"
+if [ -n "$MISSING" ]; then
+  log_err "post-apps: table '$MISSING' does not exist — run the apps first so Hibernate ddl-auto creates the schema"
+  exit 1
+fi
+log_ok "post-apps precondition: all $(printf '%s\n' "$REQUIRED_TABLES" | grep -c .) target tables exist ($ENV_NAME:$MYSQL_DB)"
+
+# --- ecommerce.sql (account/account_role/role/user) ------------------------
+# Rendered fresh via --only (same substitution path as the merged .mysql[]
+# array); ecommerce.sql carries no {{ctx.…}} refs today so this is close to
+# a no-op, but going through the renderer keeps one source of truth instead
+# of reading deploy/seed/ecommerce.sql directly.
+ECOMMERCE_SQL="$(python3 "$ROOT/deploy/scripts/lib/seed_render.py" "${RESOLVE_ARGS[@]}" --only ecommerce.sql)"
+ec_render_rc=$?
+if [ "$ec_render_rc" -ne 0 ] || [ -z "$ECOMMERCE_SQL" ]; then
+  log_err "post-apps: could not render ecommerce.sql — see renderer stderr above"
   exit 1
 fi
 
-log_ok "seed pre-apps complete for $ENV_NAME"
+ACCOUNT_COUNT="$(printf 'SELECT COUNT(*) FROM account;\n' | mysql_run)"
+if [ "${ACCOUNT_COUNT:-0}" -gt 0 ] 2>/dev/null; then
+  log_warn "ecommerce.sql already seeded (account=$ACCOUNT_COUNT rows) — skipping"
+else
+  log_info "importing ecommerce.sql (account/account_role/role/user) into $ENV_NAME:$MYSQL_DB"
+  if ! printf '%s\n' "$ECOMMERCE_SQL" | mysql_run >/dev/null; then
+    log_err "ecommerce.sql import failed"
+    FAIL=1
+  fi
+fi
+
+if [ "$FAIL" -ne 0 ]; then
+  log_err "seed post-apps for $ENV_NAME finished WITH ERRORS — see above (reconcile NOT attempted)"
+  exit 1
+fi
+
+# --- derived inventory rows (inventory_product, then product_quantity_history) ----
+# Pulled from the already-rendered/escaped merged .mysql[] array (not
+# regenerated here) — table filter is safe because ecommerce.sql never
+# targets these two tables. inventory_product goes first: no FK exists
+# (ProductQuantityHistory.productId is a plain column, not a @ManyToOne —
+# verified against the entity), but the row order still mirrors the old
+# per-table scripts' intent (mysql-inventory-products.sh before
+# mysql-product-quantity-history.sh).
+INV_PRODUCT_SQL="$(jq -r '.mysql[] | select(contains("INTO inventory_product "))' "$RENDERED")"
+QTY_SQL="$(jq -r '.mysql[] | select(contains("INTO product_quantity_history "))' "$RENDERED")"
+
+INV_COUNT="$(printf 'SELECT COUNT(*) FROM inventory_product;\n' | mysql_run)"
+if [ "${INV_COUNT:-0}" -gt 0 ] 2>/dev/null; then
+  log_warn "derived inventory rows already seeded (inventory_product=$INV_COUNT rows) — skipping"
+else
+  INV_ROWS="$(printf '%s\n' "$INV_PRODUCT_SQL" | grep -c INSERT || true)"
+  QTY_ROWS="$(printf '%s\n' "$QTY_SQL" | grep -c INSERT || true)"
+  log_info "importing derived inventory rows: inventory_product=$INV_ROWS product_quantity_history=$QTY_ROWS"
+  if ! { printf '%s\n' "$INV_PRODUCT_SQL"; printf '%s\n' "$QTY_SQL"; } | mysql_run >/dev/null; then
+    log_err "derived inventory import failed"
+    FAIL=1
+  fi
+fi
+
+if [ "$FAIL" -ne 0 ]; then
+  log_err "seed post-apps for $ENV_NAME finished WITH ERRORS — see above (reconcile NOT attempted)"
+  exit 1
+fi
+log_ok "mysql seeded for $ENV_NAME: ecommerce.sql + derived inventory rows"
+
+# --- reconcile: restart inventory-service ----------------------------------
+# render_all()'s reconcile token is the env-invariant "restart:inventory-
+# service"; this is where it maps to a per-env action. AvailableStockSeeder
+# (inventory-service, ApplicationRunner) runs at STARTUP and backfills the
+# Redis `productAvailable:{productId}` counters from SUM(product_quantity_
+# history) — see core-redis's RedisConstant.AVAILABLE_PRODUCT_KEY, whose
+# actual value is "productAvailable:", not "available:" as an earlier draft
+# of this task's brief said (see task-6-report.md). Apps start BEFORE this
+# seed stage runs, so at boot the ledger was empty and it backfilled 0 rows,
+# creating no counters; the Lua reservation then reads a missing key as 0
+# and every order fails "Insufficient available stock". Idempotent (the
+# seeder deletes-then-incrs each key), so a no-op reconcile just costs one
+# restart. Skipped when the inventory-service workload is absent, so running
+# this stage standalone (before the apps exist) stays valid — matches
+# scripts/seed/k8s-inventory.sh's and scripts/aws/up-all.sh step 8's
+# existing guard for the k8s/aws case.
+case "$ENV_NAME" in
+  compose)
+    # compose has no reconcile today (the documented "0 available" cart bug)
+    # — inventory-service is a JVM process under scripts/services/*, not a
+    # container, so there is no `docker restart` target and no
+    # scripts/services/restart.sh. The fix is `make svc-restart
+    # svc=inventory-service`'s own two steps.
+    INV_PID_FILE="$ROOT/logs/pids/inventory-service.pid"
+    inventory_running=0
+    if [ -f "$INV_PID_FILE" ] && kill -0 "$(cat "$INV_PID_FILE" 2>/dev/null)" 2>/dev/null; then
+      inventory_running=1
+    elif lsof -tiTCP:6969 -sTCP:LISTEN >/dev/null 2>&1; then
+      inventory_running=1
+    fi
+    if [ "$inventory_running" -eq 1 ]; then
+      log_info "reconcile: restarting inventory-service (stop.sh + start.sh) so AvailableStockSeeder rebuilds Redis counters from the seeded ledger"
+      bash "$ROOT/scripts/services/stop.sh" inventory-service
+      bash "$ROOT/scripts/services/start.sh" inventory-service
+      log_ok "reconcile: inventory-service restarted"
+    else
+      log_warn "reconcile: inventory-service is not running — skipping (seed run standalone before apps)"
+    fi
+    ;;
+  k8s|aws)
+    if kubectl --context "$KUBE_CONTEXT" -n apps get deploy inventory-service >/dev/null 2>&1; then
+      log_info "reconcile: kubectl rollout restart deploy/inventory-service (context=$KUBE_CONTEXT)"
+      kubectl --context "$KUBE_CONTEXT" -n apps rollout restart deploy/inventory-service
+      kubectl --context "$KUBE_CONTEXT" -n apps rollout status deploy/inventory-service --timeout=300s
+      log_ok "reconcile: inventory-service rollout restarted"
+    else
+      log_warn "reconcile: inventory-service Deployment not found in apps ns — skipping (seed run standalone before apps)"
+    fi
+    ;;
+esac
+;; # post-apps
+esac
+
+if [ "$FAIL" -ne 0 ]; then
+  log_err "seed $STAGE for $ENV_NAME finished WITH ERRORS — see above"
+  exit 1
+fi
+
+log_ok "seed $STAGE complete for $ENV_NAME"
