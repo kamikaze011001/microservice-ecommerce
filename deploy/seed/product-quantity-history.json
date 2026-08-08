@@ -1,0 +1,272 @@
+[
+  {
+    "_id": "qhc000000000000000000001",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000001",
+    "quantity": 30,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000002",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000002",
+    "quantity": 18,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000003",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000003",
+    "quantity": 12,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000004",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000004",
+    "quantity": 0,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000005",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000005",
+    "quantity": 8,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000006",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000006",
+    "quantity": 25,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000007",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000007",
+    "quantity": 22,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000008",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000008",
+    "quantity": 2,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000009",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000009",
+    "quantity": 35,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc00000000000000000000a",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c00000000000000000000a",
+    "quantity": 40,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc00000000000000000000b",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c00000000000000000000b",
+    "quantity": 28,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc00000000000000000000c",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c00000000000000000000c",
+    "quantity": 14,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc00000000000000000000d",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c00000000000000000000d",
+    "quantity": 22,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc00000000000000000000e",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c00000000000000000000e",
+    "quantity": 10,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc00000000000000000000f",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c00000000000000000000f",
+    "quantity": 0,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000010",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000010",
+    "quantity": 30,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000011",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000011",
+    "quantity": 6,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000012",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000012",
+    "quantity": 1,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000013",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000013",
+    "quantity": 18,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000014",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000014",
+    "quantity": 24,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000015",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000015",
+    "quantity": 50,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000016",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000016",
+    "quantity": 18,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000017",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000017",
+    "quantity": 32,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000018",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000018",
+    "quantity": 14,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc000000000000000000019",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c000000000000000000019",
+    "quantity": 0,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc00000000000000000001a",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c00000000000000000001a",
+    "quantity": 40,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc00000000000000000001b",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c00000000000000000001b",
+    "quantity": 10,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc00000000000000000001c",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c00000000000000000001c",
+    "quantity": 45,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc00000000000000000001d",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c00000000000000000001d",
+    "quantity": 16,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  },
+  {
+    "_id": "qhc00000000000000000001e",
+    "_class": "org.aibles.ecommerce.product_service.entity.ProductQuantityHistory",
+    "productId": "67c00000000000000000001e",
+    "quantity": 8,
+    "createdAt": {
+      "$date": "2026-05-03T00:00:00Z"
+    }
+  }
+]

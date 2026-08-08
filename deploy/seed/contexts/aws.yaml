@@ -1,0 +1,43 @@
+# deploy/seed/contexts/aws.yaml — EKS + RDS + S3.
+#
+# See compose.yaml for the shared shape/comments; only the values differ here.
+# <terraform:NAME> is the same convention deploy/secrets/contexts/aws.yaml
+# uses (its own header comment documents the syntax) — one resolver
+# convention shared by both the secrets and seed resolvers. NAME here is
+# `s3_public_base_url`, the exact terraform output scripts/aws/seed-inventory.sh
+# already reads via `terraform -chdir="$TF" output -raw s3_public_base_url`.
+mediaBaseUrl: <terraform:s3_public_base_url>
+
+# scripts/aws/seed-inventory.sh runs mysql from a throwaway `kubectl run` pod
+# against RDS (no public endpoint) — distinct from k8s's in-cluster Job.
+mysqlTransport: k8s-run   # docker-exec | k8s-job | k8s-run
+# scripts/aws/seed-mongo.sh / seed-product-images equivalent uses `aws s3 cp`
+# direct from the host, not `mc` (there is no in-cluster MinIO on aws).
+objectTransport: aws-s3   # mc | aws-s3
+
+# See compose.yaml's comment — same scope (the two derived-inventory tables
+# only). aws emits INSERT IGNORE (scripts/aws/seed-inventory.sh) so re-runs
+# against the shared RDS instance are idempotent without a pre-check DELETE.
+# Verified against deploy/seed/tests/golden/aws.json: of 95 mysql statements,
+# 60 are "INSERT IGNORE INTO" (30 inventory_product + 30
+# product_quantity_history, the generated rows) and 4 are plain "INSERT INTO"
+# (user/role/account/account_role, from the shared ecommerce.sql dump —
+# env-invariant, not governed by this key).
+generatedInsertMode: INSERT IGNORE   # INSERT | INSERT IGNORE
+
+# NOT YET RESOLVED BY THE CANONICAL PLACEHOLDER SCHEME (flagged for Task 3,
+# not fixed here): scripts/aws/seed-inventory.sh's own gsub does more than a
+# host swap — it replaces the WHOLE prefix "http://localhost:9000/ecommerce-
+# media/" with "$S3_BASE_URL/", dropping the "ecommerce-media" path segment
+# entirely (S3 virtual-hosted addressing puts the bucket in the host, so the
+# segment is redundant there). compose and k8s only ever swap the host and
+# keep "/ecommerce-media/products/..." intact. A literal
+# "{{ctx.mediaBaseUrl}}" substitution in deploy/seed/product.json (the scheme
+# this task's brief specifies) reproduces compose and k8s exactly, but for aws
+# it yields ".../ecommerce-media/products/..." after mediaBaseUrl instead of
+# the golden's ".../products/..." — confirmed against
+# deploy/seed/tests/golden/aws.json's mongo.*.imageUrl and
+# mysql[].inventory_product rows, both of which omit "ecommerce-media".
+# Task 3's renderer will need an aws-specific rule (e.g. strip the
+# "ecommerce-media/" segment when objectTransport == aws-s3), not just
+# placeholder substitution, to reproduce this golden.
