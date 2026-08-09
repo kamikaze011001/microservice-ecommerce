@@ -67,11 +67,15 @@ help:
 # First-run / daily loop
 # ============================================================================
 
-.PHONY: bootstrap
+# NOTE: `bootstrap` itself is now defined below, in the "Unified verbs"
+# section, as a dispatcher (Phase 6). This target holds the original compose
+# recipe and prerequisites, moved here verbatim under the exception documented
+# there — do not add a `bootstrap:` target in this file.
+.PHONY: bootstrap-compose
 # NOTE: svc-start runs BEFORE seed-data because docker/ecommerce.sql is a
 # data-only dump. Tables are created by Hibernate ddl-auto on first service
 # boot, then the seed inserts rows. Reordering these breaks fresh bootstrap.
-bootstrap: infra-up vault-init vault-unseal vault-import kafka-topics mongo-connector build svc-start seed-data
+bootstrap-compose: infra-up vault-init vault-unseal vault-import kafka-topics mongo-connector build svc-start seed-data
 	@echo "✓ Bootstrap complete — stack is up"
 
 .PHONY: up
@@ -756,6 +760,33 @@ VERB_teardown_aws      := aws-down
 VERB_rebuild_compose   := svc-restart
 VERB_rebuild_k8s       := k8s-rebuild
 
+# `bootstrap` collision (human-approved exception, same pattern as `status`
+# above): `bootstrap` already existed as the compose target name. Its original
+# recipe + prerequisites were moved verbatim to `bootstrap-compose` above;
+# `bootstrap` itself is now the dispatcher defined below, so the compose
+# mapping points at `bootstrap-compose`, not `bootstrap` (which would recurse
+# into this dispatcher).
+VERB_bootstrap_compose := bootstrap-compose
+VERB_bootstrap_k8s     := k8s-bootstrap
+VERB_bootstrap_aws     := aws-all
+
+# image-build: deliberately NO VERB_image-build_compose. Compose builds no
+# container images (services run as JVM processes from Maven artifacts), so
+# the dispatch macro must reject ENV=compose by construction, not no-op with
+# exit 0 — see the macro's _WHY interpolation below.
+VERB_image-build_k8s   := k8s-build
+VERB_image-build_aws   := aws-push
+# NOTE: backticks here are escaped (\`...\`) deliberately. This text is
+# interpolated into a double-quoted `echo "..."` inside the dispatch macro's
+# shell recipe below — a bare, unescaped `make build` in backticks would be
+# parsed by the shell as command substitution and actually RUN `make build`
+# (a real multi-minute Maven install) while composing the error message,
+# instead of just naming it. Confirmed live: the unescaped form hangs
+# `make image-build ENV=compose` for as long as `scripts/maven/install-modules.sh`
+# takes, with zero output, because command substitution runs before echo's
+# own argument is complete.
+VERB_image-build_compose_WHY := compose builds no container images (services run as JVM processes from Maven artifacts — see \`make build\`)
+
 # An unmapped (verb, env) pair fails HERE, by construction — no per-verb
 # special case. A verb that silently succeeds where it has nothing to do is
 # indistinguishable from one that worked.
@@ -766,7 +797,7 @@ dispatch = t="$(VERB_$(1)_$(or $(ENV),compose))"; \
   fi; \
   $(MAKE) --no-print-directory $$t
 
-.PHONY: deploy status teardown rebuild
+.PHONY: deploy status teardown rebuild bootstrap image-build
 deploy:
 	@$(call dispatch,deploy)
 status:
@@ -775,3 +806,7 @@ teardown:
 	@$(call dispatch,teardown)
 rebuild:
 	@$(call dispatch,rebuild)
+bootstrap:
+	@$(call dispatch,bootstrap)
+image-build:
+	@$(call dispatch,image-build)
