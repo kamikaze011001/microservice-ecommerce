@@ -738,7 +738,13 @@ k8s-use:
 # Its original recipe was moved verbatim to `status-compose` above; `status`
 # itself is now the dispatcher defined below, so the compose mapping points
 # at `status-compose`, not `status` (which would recurse into this dispatcher).
-ENV ?= compose
+#
+# NOTE: no global `ENV ?= compose` here. This file already has several
+# targets (k9s, k8s-use, k8s-platform, k8s-infra-helm, k8s-apps-helm) that
+# read bare $(ENV) with their OWN default (local / local-k8s) via
+# $(or $(ENV),...). A global default would silently override every one of
+# them for any bare invocation. Instead the compose default is scoped to
+# just the dispatch macro below, via the same $(or $(ENV),...) idiom.
 
 VERB_deploy_compose    := svc-start
 VERB_deploy_k8s        := k8s-apps
@@ -753,9 +759,9 @@ VERB_rebuild_k8s       := k8s-rebuild
 # An unmapped (verb, env) pair fails HERE, by construction — no per-verb
 # special case. A verb that silently succeeds where it has nothing to do is
 # indistinguishable from one that worked.
-dispatch = t="$(VERB_$(1)_$(ENV))"; \
+dispatch = t="$(VERB_$(1)_$(or $(ENV),compose))"; \
   if [ -z "$$t" ]; then \
-    echo "make $(1): not applicable for ENV=$(ENV)$(if $(VERB_$(1)_$(ENV)_WHY), — $(VERB_$(1)_$(ENV)_WHY))" >&2; \
+    echo "make $(1): not applicable for ENV=$(or $(ENV),compose)$(if $(VERB_$(1)_$(or $(ENV),compose)_WHY), — $(VERB_$(1)_$(or $(ENV),compose)_WHY))" >&2; \
     exit 1; \
   fi; \
   $(MAKE) --no-print-directory $$t
