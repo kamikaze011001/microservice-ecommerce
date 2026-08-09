@@ -94,8 +94,12 @@ nuke:
 	@rm -f vault-keys.json
 	@echo "✓ All data wiped"
 
-.PHONY: status
-status:
+# NOTE: `status` itself is now defined below, in the "Unified verbs" section,
+# as a dispatcher (Phase 6). This target holds the original compose recipe,
+# moved here verbatim under the exception documented there — do not add a
+# `status:` target in this file.
+.PHONY: status-compose
+status-compose:
 	@bash scripts/services/status.sh
 
 # ============================================================================
@@ -721,3 +725,47 @@ k8s-use:
 	*) echo "Unknown ENV '$(ENV)' — use ENV=local or ENV=eks"; exit 1 ;; \
 	esac; \
 	kubectl config use-context "$$ctx" && echo "==> now on $$ctx"
+
+# ============================================================================
+# Unified verbs (Phase 6)
+# ============================================================================
+# `make <verb> ENV=<env>` delegates to the existing target below. Additive:
+# every old target still works and is unchanged. See
+# docs/superpowers/specs/2026-08-09-unified-make-verbs-design.md
+#
+# `status` collision (human-approved exception, see the design doc's "A note
+# on the collisions"): `status` already existed as the compose target name.
+# Its original recipe was moved verbatim to `status-compose` above; `status`
+# itself is now the dispatcher defined below, so the compose mapping points
+# at `status-compose`, not `status` (which would recurse into this dispatcher).
+ENV ?= compose
+
+VERB_deploy_compose    := svc-start
+VERB_deploy_k8s        := k8s-apps
+VERB_status_compose    := status-compose
+VERB_status_k8s        := k8s-status
+VERB_teardown_compose  := down
+VERB_teardown_k8s      := k8s-down
+VERB_teardown_aws      := aws-down
+VERB_rebuild_compose   := svc-restart
+VERB_rebuild_k8s       := k8s-rebuild
+
+# An unmapped (verb, env) pair fails HERE, by construction — no per-verb
+# special case. A verb that silently succeeds where it has nothing to do is
+# indistinguishable from one that worked.
+dispatch = t="$(VERB_$(1)_$(ENV))"; \
+  if [ -z "$$t" ]; then \
+    echo "make $(1): not applicable for ENV=$(ENV)$(if $(VERB_$(1)_$(ENV)_WHY), — $(VERB_$(1)_$(ENV)_WHY))" >&2; \
+    exit 1; \
+  fi; \
+  $(MAKE) --no-print-directory $$t
+
+.PHONY: deploy status teardown rebuild
+deploy:
+	@$(call dispatch,deploy)
+status:
+	@$(call dispatch,status)
+teardown:
+	@$(call dispatch,teardown)
+rebuild:
+	@$(call dispatch,rebuild)
