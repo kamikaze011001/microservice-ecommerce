@@ -15,7 +15,11 @@
 These bind **every** task.
 
 - **Never `git push`.** A pre-push hook owns pushing and it is the human's job in this repo. Never bypass it.
-- **Purely additive.** No existing target may be renamed, removed, or have its recipe changed. No files move. Rollback is "ignore the new verbs." Verify with `git diff` that every Makefile change is an *addition*.
+- **Purely additive, with ONE narrow authorised exception.** No existing target may be renamed, removed, or have its recipe changed. No files move. Rollback is "ignore the new verbs."
+
+  **The exception (human-approved at pre-flight):** `bootstrap` and `status` are existing target names the verb set needs, and GNU make cannot give them `ENV=` behaviour without changing them. For **these two only**, convert the target into a dispatcher and move its original recipe and prerequisites **verbatim** into a new internal target (`bootstrap-compose`, `status-compose`) that the table maps to.
+
+  This is behaviour-preserving, and it is **proven, not asserted**: `make -n bootstrap` and `make -n status` with no `ENV=` must expand identically to Task 1's captured baselines, modulo the sub-make invocation line. If they don't, the move was not verbatim. No other target may be touched.
 - **Nothing outside `Makefile`, `deploy/`, and `docs/`.** `docker/`, `scripts/`, `k8s/` stay byte-identical — check `git diff --stat docker/ scripts/ k8s/` is empty at every commit.
 - **Never print a credential value.**
 - Env names are exactly `compose`, `k8s`, `aws`.
@@ -260,11 +264,15 @@ Both suites pass. `git diff --stat docker/ scripts/ k8s/` empty. Every old targe
 
 ---
 
-## A note on the collisions
+## A note on the collisions — RESOLVED at pre-flight
 
-`bootstrap` and `status` already exist as compose target names, and the verb set wants those same words. This is the one genuinely fiddly part of the plan, and it is deliberately left to the implementer to resolve rather than prescribed here — because the right answer depends on GNU make behaviour that should be *tested*, not assumed, and the Global Constraints forbid the obvious shortcut (renaming the old target).
+`bootstrap` and `status` already exist as compose target names, and the verb set wants those same words. GNU make cannot have both: a second definition of the same target overrides the first with a warning, and giving the existing target `ENV=` behaviour necessarily changes it.
 
-Whatever you choose, `make bootstrap` and `make status` with **no `ENV=`** must keep behaving exactly as they do today — that is what the Task 1 baselines are for. Report what you did and why.
+**Human decision:** take the narrow exception (see Global Constraints). Convert those two targets into dispatchers and move each original recipe **and its prerequisites** verbatim into `bootstrap-compose` / `status-compose`.
+
+`bootstrap` has **nine** prerequisites and their order is load-bearing — Phase 5 established that `k8s-seed-mysql` must follow `k8s-apps`, and the compose chain has the same shape (`svc-start` before `seed-data`, because `docker/ecommerce.sql` is data-only and Hibernate creates the schema at service boot). Move them as one block; do not reorder or reformat.
+
+The proof is the Task 1 baseline, not your judgement: `make -n bootstrap` and `make -n status` with no `ENV=` must expand identically to what was captured before any change.
 
 ## Verification summary
 
