@@ -85,19 +85,68 @@ def norm(text):
     return re.sub(r'^\S+/make ', 'MAKE ', text, flags=re.M)
 
 
+# Reviewer finding (Task 4 review): the CASE_BLOCK_RE extraction alone is
+# NOT a safety boundary — it captures everything from `case "` through the
+# first `esac;` textually, with no regard for what's inside. Today that
+# happens to be safe only because k9s/k8s-use keep their real kubectl/k9s
+# work textually AFTER `esac;`; a synthetic block like
+# `""|local) ctx=microecom; kubectl config use-context danger ;;` placed
+# BEFORE `esac;` would execute for real. CASE_BLOCK_VALIDATE_RE enforces
+# the only shape this script is willing to execute: a `case "<value>" in`
+# header, one or more `<pattern>) ctx=<ident> ;;` assignment arms and/or
+# exactly one `*) echo "..."; exit <n> ;;` error arm, and a trailing
+# `esac;` — nothing else. Anything that doesn't match this shape is
+# REJECTED and resolve_ctx fails loudly (never silently skips the check
+# and never executes unvalidated text).
+CASE_HEADER_RE = re.compile(r'^case "[^"]*" in *\\?$')
+CASE_ARM_ASSIGN_RE = re.compile(
+    r'^\s*(?:"[^"]*"|\*|[A-Za-z0-9_]+)(?:\s*\|\s*(?:"[^"]*"|\*|[A-Za-z0-9_]+))*\)\s*'
+    r'ctx=[A-Za-z0-9_-]+\s*;;\s*\\?$'
+)
+CASE_ARM_ERROR_RE = re.compile(
+    r'^\s*\*\)\s*echo\s+"[^"`$]*"\s*;\s*exit\s+[0-9]+\s*;;\s*\\?$'
+)
+CASE_ESAC_RE = re.compile(r'^\s*esac;\s*$')
+
+
+def validate_case_block(block):
+    """Reject anything that isn't exactly `case "..." in` / assignment or
+    error arms / `esac;` — see the comment above resolve_ctx. Returns
+    (ok, reason_if_rejected)."""
+    lines = block.splitlines()
+    if len(lines) < 2:
+        return False, "block has fewer than 2 lines (no header+esac shape)"
+    if not CASE_HEADER_RE.match(lines[0]):
+        return False, f"first line is not a bare `case \"...\" in` header: {lines[0]!r}"
+    if not CASE_ESAC_RE.match(lines[-1]):
+        return False, f"last line is not a bare `esac;`: {lines[-1]!r}"
+    for line in lines[1:-1]:
+        if not line.strip():
+            continue
+        if CASE_ARM_ASSIGN_RE.match(line) or CASE_ARM_ERROR_RE.match(line):
+            continue
+        return False, f"line does not match the allowed `ctx=` / error-arm shape: {line!r}"
+    return True, None
+
+
 def resolve_ctx(recipe_text):
     """k9s / k8s-use resolve their target context via a plain shell `case
     "$(ENV)" in ""|local) ctx=... ;; ...` — shell-time, not visible in -n
     text as a value. Execute ONLY that case/esac block (extracted from the
     live -n output, which already has $(ENV) substituted in) in a bash
     subshell to see what ctx it actually assigns, then stop — the
-    subsequent kubectl/k9s invocation lines are never included, so nothing
-    ever touches a cluster or requires k9s/kubectl to be installed.
-    Returns (ctx_or_None, error_or_None)."""
+    subsequent kubectl/k9s invocation lines are never included by shape,
+    and validate_case_block() rejects the block outright (no execution) if
+    its content ever stops matching the narrow ctx-assignment shape this
+    function is willing to run. Returns (ctx_or_None, error_or_None)."""
     m = CASE_BLOCK_RE.search(recipe_text)
     if not m:
         return None, 'no `case "..." ... esac;` block found in recipe text'
-    script = m.group(1) + '\necho "__CTX__=$ctx"\n'
+    block = m.group(1)
+    ok, reason = validate_case_block(block)
+    if not ok:
+        return None, f"REFUSED to execute: block failed safety validation ({reason})"
+    script = block + '\necho "__CTX__=$ctx"\n'
     r = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
     cm = re.search(r"__CTX__=(\S*)", r.stdout)
     if r.returncode != 0 or not cm or not cm.group(1):
@@ -196,23 +245,39 @@ for verb, env, baseline_name in PAIRS:
 # ---------------------------------------------------------------------
 name = "image-build ENV=compose (declared: must fail to dispatch)"
 dispatch = mk(["image-build", "ENV=compose"])
-m = DISPATCH_RE.search(dispatch.stdout)
-resolved = m.group(1) if m else None
 
-if resolved:
+if not dispatch.stdout.strip():
+    # Same guard as Part 1: an empty dispatch line is NOT the same thing as
+    # a confirmed-unmapped (t="") dispatch line -- it means something broke
+    # upstream of the check this suite is trying to run. Never fall through
+    # to the real invocation on a guess.
     record("declared", name, False,
-           f"REGRESSION: now resolves to target={resolved!r} instead of being unmapped — "
-           f"refusing to execute it for real; this must go back to failing to dispatch")
+           "`make -n image-build ENV=compose` produced NOTHING (dispatch line itself empty) — "
+           "cannot tell mapped from unmapped, refusing to guess")
+elif not DISPATCH_RE.search(dispatch.stdout):
+    # Regex found no t="..." at all -- distinct from finding t="" (matched,
+    # empty target). If the dispatch macro's textual shape ever changes,
+    # this stops the suite from silently treating a real mapping as
+    # unmapped and running the real invocation against it.
+    record("declared", name, False,
+           f"could not find t=\"...\" in dispatch output — dispatch macro's shape may have "
+           f"changed: {dispatch.stdout.strip()!r} — refusing to treat this as unmapped")
 else:
-    real = mk(["image-build", "ENV=compose"], dry=False)
-    ok = real.returncode != 0 and "compose" in real.stderr
-    if ok:
-        record("declared", name, True,
-               f"exit={real.returncode}, stderr names compose: {real.stderr.strip()!r}")
-    else:
+    resolved = DISPATCH_RE.search(dispatch.stdout).group(1)
+    if resolved:
         record("declared", name, False,
-               f"expected non-zero exit + message naming compose; got "
-               f"exit={real.returncode} stdout={real.stdout.strip()!r} stderr={real.stderr.strip()!r}")
+               f"REGRESSION: now resolves to target={resolved!r} instead of being unmapped — "
+               f"refusing to execute it for real; this must go back to failing to dispatch")
+    else:
+        real = mk(["image-build", "ENV=compose"], dry=False)
+        ok = real.returncode != 0 and "compose" in real.stderr
+        if ok:
+            record("declared", name, True,
+                   f"exit={real.returncode}, stderr names compose: {real.stderr.strip()!r}")
+        else:
+            record("declared", name, False,
+                   f"expected non-zero exit + message naming compose; got "
+                   f"exit={real.returncode} stdout={real.stdout.strip()!r} stderr={real.stderr.strip()!r}")
 
 
 # ---------------------------------------------------------------------
