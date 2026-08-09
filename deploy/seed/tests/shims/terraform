@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+"""Fake `terraform` — NOT in the task-1 brief's shim list, but required:
+every scripts/aws/seed-*.sh script resolves its RDS/S3/redis endpoints via
+`terraform -chdir=... output -raw <name>`, and the real binary IS on this
+host's PATH (unlike mysql/mongosh/mc/mongoimport). Left unshimmed, capture
+would either hang refreshing real remote state or print a real credential.
+See task-1-report.md.
+
+Mirrors deploy/secrets/tests/shims/terraform (Phase 4's identical shim): the
+output name is always the last argument; served from a fixture JSON shaped
+like `terraform output -json`.
+"""
+import json
+import os
+import sys
+
+
+def main():
+    fixture = os.environ.get("TF_FIXTURE")
+    if not fixture:
+        sys.stderr.write("TF_FIXTURE must be set\n")
+        return 1
+    argv = sys.argv[1:]
+    if not argv:
+        return 0
+    name = argv[-1]
+    with open(fixture) as f:
+        data = json.load(f)
+    entry = data.get(name)
+    if entry is None:
+        sys.stderr.write(f"terraform shim: no fixture value for output '{name}'\n")
+        return 1
+    sys.stdout.write(str(entry["value"]))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

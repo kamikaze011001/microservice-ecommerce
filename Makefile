@@ -143,6 +143,47 @@ secrets-validate:
 	@bash deploy/scripts/secrets-validate.sh
 
 # ============================================================================
+# Canonical Seed (deploy/seed/)
+# ============================================================================
+
+.PHONY: seed seed-render
+# Canonical seed data (deploy/seed/). ENV=compose|k8s|aws, STAGE=pre-apps|post-apps,
+# default compose/pre-apps. pre-apps: mongo (api_role/product/productQuantityHistory)
+# + product images — run before the apps. post-apps: ecommerce.sql (account/
+# account_role/role/user) + derived inventory rows + the inventory-service reconcile
+# — run after the apps (needs the Hibernate-created schema). See deploy/README.md.
+seed:
+	@bash deploy/scripts/seed.sh --env $(or $(ENV),compose) --stage $(or $(STAGE),pre-apps)
+
+# Resolve only. Touches no backend.
+seed-render:
+	@bash deploy/scripts/seed.sh --env $(or $(ENV),compose) --stage $(or $(STAGE),pre-apps) --dry-run
+
+# ============================================================================
+# Canonical Seed — test suites (deploy/seed/tests/)
+# ============================================================================
+
+.PHONY: seed-test-render seed-test-equivalence seed-live-verify
+# Renderer unit tests + the compose/product.json byte-for-byte invariant.
+# No backend, no credentials, no cluster.
+seed-test-render:
+	@bash deploy/seed/tests/render-test.sh
+
+# Layer A — offline equivalence across all three envs (compose/k8s/aws)
+# against captured goldens of the three old per-env scripts. No backend, no
+# credentials, no cluster; the only verification `aws` gets. NOTE: named by
+# full path deliberately — deploy/secrets/tests/equivalence-test.sh (Canonical
+# Secrets' own suite) shares the same basename and is unrelated.
+seed-test-equivalence:
+	@bash deploy/seed/tests/equivalence-test.sh
+
+# Layer B — live state diff (old way vs new way, by content hash). ENV=compose|k8s,
+# default compose. Re-seeds the target backend and takes several minutes; only
+# run against a stack you're fine re-seeding. See deploy/README.md.
+seed-live-verify:
+	@bash deploy/seed/tests/live-verify.sh --env $(or $(ENV),compose)
+
+# ============================================================================
 # Kafka
 # ============================================================================
 

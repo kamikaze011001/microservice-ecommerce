@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""Fake `docker` for golden capture — compose's transport.
+
+compose never calls mysql/mongosh/mongoimport/mc directly: every one of them
+is reached through `docker exec` (mysql, mongosh, mongoimport) or, for MinIO,
+a `docker run --rm --entrypoint mc ...` wrapper function
+(scripts/seed/minio-product-images.sh). This shim recognises both shapes and
+appends structured records to $SEED_CAPTURE_DIR/docker.log; it never talks to
+a real daemon.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _lib import (  # noqa: E402
+    classify_mongosh_eval,
+    classify_query,
+    handle_mc_args,
+    load_json_array,
+    log_record,
+    redact_argv,
+)
+
+LOG = "docker"
+
+
+def read_stdin():
+    return sys.stdin.read()
+
+
+def find_after(args, flag):
+    if flag in args:
+        i = args.index(flag)
+        if i + 1 < len(args):
+            return args[i + 1]
+    return None
+
+
+def handle_exec(rest):
+    # docker exec [-i] CONTAINER <cmd...>
+    cmd_tokens = [a for a in rest if a != "-i"]
+    if not cmd_tokens:
+        return 0
+    container = cmd_tokens[0]
+    cmd = cmd_tokens[1:]
+    if not cmd:
+        return 0
+
+    if cmd[0] == "mysql":
+        margs = cmd[1:]
+        if "-e" in margs:
+            query = find_after(margs, "-e")
+            sys.stdout.write(classify_query(query or ""))
+        else:
+            sql = read_stdin()
+            log_record(LOG, {"kind": "mysql_write", "sql": sql})
+        return 0
+
+    if cmd[0] == "mongosh":
+        eval_script = find_after(cmd, "--eval")
+        if eval_script is not None:
+            result = classify_mongosh_eval(eval_script)
+            if result["action"] == "drop" and result["collection"]:
+                log_record(LOG, {"kind": "drop", "collection": result["collection"]})
+            sys.stdout.write(result["stdout"])
+        return 0
+
+    if cmd[0] == "mongoimport":
+        margs = cmd[1:]
+        collection = find_after(margs, "--collection")
+        file_arg = find_after(margs, "--file")
+        if collection and file_arg:
+            repo_root = os.environ["REPO_ROOT"]
+            src = os.path.join(repo_root, "docker", os.path.basename(file_arg))
+            docs = load_json_array(src)
+            log_record(LOG, {"kind": "mongo_import", "collection": collection, "docs": docs})
+        return 0
+
+    return 0
+
+
+def handle_run(rest):
+    # docker run --rm --network N -v ... -v ... --entrypoint mc IMAGE -C /mc-config <mc-args...>
+    if "--entrypoint" not in rest:
+        return 0
+    i = rest.index("--entrypoint")
+    entry = rest[i + 1] if i + 1 < len(rest) else None
+    if entry != "mc":
+        return 0
+    # image name is the next non-flag token after the entrypoint value
+    tail = rest[i + 2:]
+    if not tail:
+        return 0
+    mc_full = tail[1:]  # drop the image name itself
+    if mc_full[:2] == ["-C", "/mc-config"]:
+        mc_full = mc_full[2:]
+    return handle_mc_args(LOG, mc_full)
+
+
+def main():
+    argv = sys.argv[1:]
+    log_record(LOG, {"kind": "raw", "argv": redact_argv(argv)})
+
+    if not argv:
+        return 0
+    if argv[0] == "exec":
+        return handle_exec(argv[1:])
+    if argv[0] == "run":
+        return handle_run(argv[1:])
+    if argv[0] == "network":
+        return 0
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

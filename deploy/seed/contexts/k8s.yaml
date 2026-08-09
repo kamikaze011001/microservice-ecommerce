@@ -1,0 +1,18 @@
+# deploy/seed/contexts/k8s.yaml — kind (local Kubernetes).
+#
+# See compose.yaml for the shared shape/comments; only the values differ here.
+
+# k8s/infra/jobs/02-mongo-seed/seed.sh rewrites imageUrl's host from
+# localhost:9000 to media.microecom.local post-import today (the ingress the
+# browser actually reaches MinIO through inside kind); the "/ecommerce-media"
+# path segment is left untouched. Boundary matches compose.yaml (see its
+# comment): mediaBaseUrl includes "/ecommerce-media", product.json supplies
+# "/products/..." after it.
+mediaBaseUrl: http://media.microecom.local/ecommerce-media
+
+mysqlTransport: k8s-job   # docker-exec | k8s-job | k8s-run
+objectTransport: mc       # mc | aws-s3
+
+# See compose.yaml's comment — same scope (the two derived-inventory tables
+# only). k8s emits plain INSERT, same as compose (scripts/seed/k8s-inventory.sh).
+generatedInsertMode: INSERT   # INSERT | INSERT IGNORE

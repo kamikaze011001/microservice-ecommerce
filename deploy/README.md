@@ -159,6 +159,207 @@ behavioural difference in the whole phase.
   verified only against fixture terraform outputs with a shimmed `aws` CLI.
   Live AWS seeding is Phase 7.
 
+## Canonical seed data (`deploy/seed/`)
+
+`deploy/seed/{api_role,product,product-quantity-history}.json` plus
+`deploy/seed/ecommerce.sql` are the single source of truth for the seed data
+previously hand-kept in sync across `docker/*.{sql,json}`,
+`k8s/infra/jobs/{01-mysql-seed,02-mongo-seed}/`, `scripts/seed/k8s-inventory.sh`,
+and their aws counterparts. Two targets operate on this tree, mirroring the
+canonical-secrets shape above:
+
+```bash
+make seed-render ENV=compose STAGE=pre-apps    # resolve only, touches no backend
+make seed ENV=compose STAGE=pre-apps           # resolve, then push
+```
+
+`ENV` is one of `compose`, `k8s`, `aws`; `STAGE` is `pre-apps` or `post-apps`.
+Both default to `compose`/`pre-apps`.
+
+### The two stages
+
+- **`pre-apps`** — mongo (`api_role`, `product`, `productQuantityHistory`)
+  plus product images (object storage: MinIO on compose/k8s, S3 on aws). Must
+  run **before** the apps start: product-service / inventory-service need
+  data to react to.
+- **`post-apps`** — `ecommerce.sql` (`account`/`account_role`/`role`/`user`),
+  then the derived `inventory_product`/`product_quantity_history` rows, then
+  a **reconcile** that restarts inventory-service so `AvailableStockSeeder`
+  rebuilds the Redis `productAvailable:*` counters from the ledger just
+  written. Must run **after** the apps: `ecommerce.sql` is data-only (0
+  `CREATE TABLE` — its only `localhost` is an inert `mysqldump` header
+  comment) because the schema comes from Hibernate `ddl-auto` at service
+  boot. Seeding first fails partway through with `ERROR 1146` — the failure
+  mode `k8s/CLAUDE.md` documents. `post-apps` therefore opens with a
+  precondition that checks every table any `INSERT` targets against
+  `information_schema.tables` and refuses to write a single row if any is
+  missing, naming the first missing one.
+
+### `post-apps` is safe to re-run
+
+`make seed ENV=… STAGE=post-apps` is idempotent. `account`, `inventory_product`,
+and `product_quantity_history` are each gated on their **own** row-count check
+(`SELECT COUNT(*) FROM <table>`) and the import for that table is skipped with
+a warning if it already holds rows — a re-run never double-inserts. The three
+gates are deliberately **per-table**, not one shared gate: an earlier version
+of this script gated `inventory_product` and `product_quantity_history`
+together, which had a silent-failure window — if the connection dropped after
+`inventory_product` committed but before `product_quantity_history` did, a
+retry would see `inventory_product` already populated, skip **both** imports,
+and leave the ledger permanently half-empty while every command up to and
+including the reconcile still reported success. Splitting the gate closes that
+window: a retry after a partial failure imports exactly the table that's still
+missing.
+
+### `--replace`
+
+`deploy/scripts/seed.sh --replace` (a `pre-apps`-only concept) opts into the
+**OLD compose path's** behaviour of DROPPING the `product` and
+`productQuantityHistory` Mongo collections before import. The default
+everywhere is `mongoimport --mode upsert` (matches on `_id`, never drops the
+collection), so a plain re-run never silently wipes a locally-added product.
+Only compose's old seed scripts ever dropped these collections — the old k8s
+and aws paths never did — so `--replace` restores a **compose-specific** old
+behaviour; offering the same flag for k8s/aws is a genuinely new capability
+there, not a restoration.
+
+### k8s context requirement
+
+Same rule as `secrets-seed`: `ENV=k8s` (and `ENV=aws`'s mongo leg in
+`pre-apps` and mysql leg in `post-apps`, both of which go through `kubectl`)
+require **naming the target cluster** — pass `--context NAME` or set
+`KUBE_CONTEXT`. There is no default; seeding writes to whatever cluster
+`kubectl` happens to point at, and an ambient `current-context` left over
+from unrelated work is a real hazard (see the canonical-secrets section
+above — it happened once, mid-refactor, against a production-adjacent
+cluster). `--dry-run` (`make seed-render`) touches no cluster and is exempt.
+aws's image leg (`aws s3 cp`) never touches `kubectl` and is exempt too.
+
+```bash
+make seed ENV=k8s STAGE=pre-apps KUBE_CONTEXT=microecom
+# or
+bash deploy/scripts/seed.sh --env k8s --stage pre-apps --context microecom
+```
+
+### `ENV=aws` and `--tf-outputs`
+
+Same mechanism as `secrets-seed.sh`: `ENV=aws` resolves against a cached
+`terraform output -json` from `aws/main` (`deploy/.run/terraform-outputs.json`
+by default, generated on first use). Pass `--tf-outputs FILE` to point at a
+different outputs file directly — the Makefile target doesn't expose this
+flag, so call the script itself:
+
+```bash
+bash deploy/scripts/seed.sh --env aws --stage pre-apps --dry-run \
+  --tf-outputs deploy/secrets/tests/fixtures/terraform-outputs.json
+```
+
+This is how the offline equivalence suite exercises `aws` without touching
+real terraform state, and how a CI run would too.
+
+### Reconcile
+
+`seed_render.py`'s reconcile signal is a single env-invariant token
+(`restart:inventory-service`); `seed.sh`'s `post-apps` stage maps it to a
+per-env action: `kubectl rollout restart deploy/inventory-service` (+
+`rollout status`) on k8s/aws, and `scripts/services/stop.sh` +
+`start.sh inventory-service` on compose. Compose has no `restart.sh` and
+none is added — inventory-service there is a JVM process under
+`scripts/services/*`, not a container, so there is nothing for a
+`docker restart`-style command to target.
+
+**Skip vs. failure — these are different outcomes, not the same "nothing
+happened":**
+
+- **Skipped (a warning, exit 0 as far as this step is concerned):** the
+  inventory-service workload genuinely isn't there yet — no k8s/aws
+  Deployment, or (compose) no pidfile *and* `lsof` confirms nothing is
+  listening on `:6969`. This is the expected shape of running `post-apps`
+  standalone before the apps exist, and is not treated as an error.
+- **Failure (`FAIL=1`, `make seed` exits non-zero):** the restart/rollout
+  itself fails or times out. `kubectl rollout restart` + `rollout status
+  --timeout=300s` on k8s/aws, or `stop.sh` + `start.sh inventory-service` on
+  compose — either leg's exit code is checked, and a failure there prints
+  the actual consequence: *"Redis productAvailable:\* counters were NOT
+  rebuilt; every order will fail 'Insufficient available stock' until this
+  is fixed and the seed is re-run."* The precondition/import steps ahead of
+  the reconcile can all have succeeded; only the reconcile itself failed.
+- **Failure, compose only — status genuinely unknown:** if there's no
+  pidfile *and* `lsof` isn't installed, compose has no way to tell running
+  from not-running. Rather than guess (and risk silently skipping a real
+  reconcile that was needed), this case also sets `FAIL=1` and prints
+  "install lsof, or ensure logs/pids/inventory-service.pid is current, then
+  re-run" — a deliberately loud refusal, not folded into the ordinary skip
+  path above.
+
+In every failure case, re-running `post-apps` is the fix: the precondition
+and the per-table import gates (above) make it safe to retry, and a
+successful retry's reconcile rebuilds the counters from the ledger that's
+already there.
+
+### Test suites
+
+Three suites cover this tree, each named by full path — `deploy/seed/tests/`
+has its own `equivalence-test.sh`, and `deploy/secrets/tests/` (Canonical
+Secrets, above) has a **different, unrelated** suite with the same basename;
+always disambiguate by path, never say "run equivalence-test.sh" alone.
+
+```bash
+make seed-test-render        # renderer unit tests + the compose/product.json
+                              # byte-for-byte invariant. No backend, no
+                              # credentials, no cluster.
+make seed-test-equivalence   # Layer A — offline equivalence across all three
+                              # envs against captured goldens. No backend, no
+                              # credentials, no cluster; the only verification
+                              # `aws` gets.
+make seed-live-verify ENV=compose   # Layer B — live state diff, old way vs
+                              # new way, by content hash. Re-seeds the target
+                              # backend; takes several minutes. ENV=compose|k8s,
+                              # default compose. See "Verification status" below.
+```
+
+### Verification status
+
+**Proven live on compose — both stages end to end.** `make seed ENV=compose
+STAGE=pre-apps` then `make seed ENV=compose STAGE=post-apps` against a
+running dev stack, and independently via `make seed-live-verify ENV=compose`
+(`deploy/seed/tests/live-verify.sh`), which reseeds old-way vs new-way and
+diffs live content. The headline fix was measured directly, not inferred, and
+it has **two** manifestations, both asserted as declared asymmetries:
+
+- **Redis `productAvailable:*` counters** — absent under the old path
+  (compose never restarts inventory-service); after flushing Redis and
+  re-running `post-apps`, 27 keys landed, summing to **578** — exactly
+  matching `SELECT SUM(quantity) FROM product_quantity_history`.
+- **`inventory_product.stock`** — `NULL` for every row under the old path
+  (the column has no `DEFAULT` and the seed `INSERT` never mentions it); the
+  same inventory-service restart that rebuilds the Redis counters also
+  backfills this column via `AvailableStockSeeder`
+  (`GREATEST(0, SUM(product_quantity_history.quantity))`), verified to match
+  the ledger for all 30 rows on live compose.
+
+**Proven offline for all three envs.** `make seed-test-equivalence`
+(`deploy/seed/tests/equivalence-test.sh`) resolves every env and diffs it
+against a capture of what the three OLD seed paths actually wrote — it has no
+stage concept of its own; the equivalence is keyed on the rendered artifact
+set, and both stages' artifacts (mongo/objects for pre-apps; mysql for
+post-apps) are covered because `render_all()` produces all of them together
+in one pass: **13 matched, 2 declared-different, 0 unexplained**. The two
+declared differences are both compose-only and both intentional (the
+`--replace`-gated drop behaviour and the new reconcile step, neither of which
+the old compose scripts had) — this suite needs no backend, no credentials,
+and no cluster, and is the only verification `aws` gets at all.
+
+**NOT proven, and this is stated plainly rather than left to be inferred:
+the k8s and aws transports have never been executed.** The minikube cluster
+used earlier in this phase was destroyed mid-phase, and no cluster exists as
+of this writing — every `kubectl exec` / `kubectl run` leg for k8s and aws
+is code-reviewed only, never run against a live cluster. `aws` has never
+written to a real RDS, S3, or EKS at all; its correctness rests entirely on
+the offline equivalence suite against fixture terraform outputs. Phases 1, 3,
+and 4 of this refactor each shipped with an unexercised transport leg — don't
+read more into the evidence above than what it actually measured.
+
 ## Current minikube workflow
 
 ```bash

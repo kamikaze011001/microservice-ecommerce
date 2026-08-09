@@ -1,0 +1,33 @@
+# deploy/seed/contexts/compose.yaml — docker compose (local dev).
+#
+# Mirrors deploy/secrets/contexts/compose.yaml's role: per-env values the
+# renderer (deploy/scripts/lib/seed_render.py, Task 3) substitutes into the
+# canonical seed data in deploy/seed/*. Rendering product.json with this
+# context must reproduce docker/product.json byte-for-byte — see
+# deploy/seed/tests/render-test.sh.
+
+# {{ctx.mediaBaseUrl}} in product.json expands back to the literal prefix
+# baked into docker/product.json's imageUrl fields: protocol + host +
+# "/ecommerce-media" (product.json's own text supplies "/products/..." after
+# it). The boundary sits AFTER "/ecommerce-media", not before it, so ONE
+# substitution scheme covers all three envs with no per-env path branching —
+# see contexts/aws.yaml, where the bucket URL already ends at this same
+# boundary with no special-casing needed.
+mediaBaseUrl: http://localhost:9000/ecommerce-media
+
+# Transport selectors (deploy/scripts/seed.sh, Task 3): HOW the rendered SQL
+# and objects get written, not part of the rendered data itself.
+mysqlTransport: docker-exec   # docker-exec | k8s-job | k8s-run
+objectTransport: mc           # mc | aws-s3
+
+# generatedInsertMode governs ONLY the two derived-inventory tables the
+# renderer synthesises from product.json / product-quantity-history.json
+# (inventory_product, product_quantity_history) — NOT ecommerce.sql, whose
+# INSERT INTO statements come from the shared mysqldump and are env-invariant.
+# compose and k8s emit plain INSERT (scripts/seed/mysql-inventory-products.sh,
+# scripts/seed/k8s-inventory.sh); aws emits INSERT IGNORE
+# (scripts/aws/seed-inventory.sh) because re-runs must be idempotent against
+# a shared RDS instance. Confirmed against deploy/seed/tests/golden/*.json:
+# compose/k8s render 64x "INSERT INTO", aws renders 60x "INSERT IGNORE INTO"
+# (the 60 generated rows) + 4x "INSERT INTO" (from the ecommerce.sql dump).
+generatedInsertMode: INSERT   # INSERT | INSERT IGNORE

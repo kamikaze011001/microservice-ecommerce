@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""Fake `kubectl` for golden capture — k8s's and aws's transport.
+
+Two invocation shapes matter:
+  - `kubectl [-n NS] exec ... -- <cmd...>` / `kubectl run NAME ... --command -- <cmd...>`
+    both put the real container command after a literal `--`; everything
+    after it is handled exactly like the docker shim's `exec` case (mysql
+    reads/writes, mc cp for k8s-product-images.sh's sidecar upload).
+  - `kubectl [-n NS] create configmap NAME --from-file=[KEY=]PATH ...`
+    is how scripts/aws/seed-mongo.sh hands the Job its (already
+    S3-host-rewritten) product.json — the configmap data IS the golden
+    mongo payload for aws, so we read the referenced file(s) right here,
+    before the caller's own `trap ... EXIT` deletes its temp file.
+
+Every other subcommand (rollout status, wait, apply, delete job, get ns,
+create ns) is a silent success — kubectl -n apps get deploy inventory-service
+included: nothing in this shim ever fails a `get`, so k8s-inventory.sh always
+reaches its reconcile branch.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _lib import (  # noqa: E402
+    classify_query,
+    handle_mc_args,
+    load_json_array,
+    log_record,
+    redact_argv,
+)
+
+LOG = "kubectl"
+
+# k8s/infra/jobs/02-mongo-seed/job.yaml's configmap: --from-file key -> the
+# mongo collection it seeds. product.json is passed with an EXPLICIT key by
+# scripts/aws/seed-mongo.sh (so the s3-rewritten temp file lands under the
+# name the Job expects); the other two rely on --from-file's implicit
+# basename-as-key behaviour. Same static knowledge as
+# k8s/infra/jobs/02-mongo-seed/seed.sh's own mongoimport --collection flags.
+CONFIGMAP_KEY_TO_COLLECTION = {
+    "api_role.json": "api_role",
+    "product.json": "product",
+    "product-quantity-history.json": "productQuantityHistory",
+}
+
+
+def find_after(args, flag):
+    if flag in args:
+        i = args.index(flag)
+        if i + 1 < len(args):
+            return args[i + 1]
+    return None
+
+
+def command_after_dashdash(args):
+    if "--" in args:
+        i = args.index("--")
+        return args[i + 1:]
+    return None
+
+
+def handle_container_command(cmd):
+    if not cmd:
+        return 0
+    if cmd[0] == "mysql":
+        margs = cmd[1:]
+        if "-e" in margs:
+            query = find_after(margs, "-e")
+            sys.stdout.write(classify_query(query or ""))
+        else:
+            sql = sys.stdin.read()
+            log_record(LOG, {"kind": "mysql_write", "sql": sql})
+        return 0
+    if cmd[0] == "mc":
+        return handle_mc_args(LOG, cmd[1:])
+    if cmd[0] == "sh":
+        # k8s-product-images.sh: `sh -c "cat > /tmp/img.jpg"` fed the raw jpg
+        # bytes on stdin. Nothing to capture here — the object key comes from
+        # the mc cp call that follows.
+        sys.stdin.read()
+        return 0
+    return 0
+
+
+def handle_create_configmap(args):
+    name = args[0] if args else None
+    if name != "mongo-seed-data":
+        return 0
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a.startswith("--from-file="):
+            spec = a[len("--from-file="):]
+        elif a == "--from-file" and i + 1 < len(args):
+            spec = args[i + 1]
+            i += 1
+        else:
+            i += 1
+            continue
+        if "=" in spec:
+            key, path = spec.split("=", 1)
+        else:
+            key, path = os.path.basename(spec), spec
+        collection = CONFIGMAP_KEY_TO_COLLECTION.get(key)
+        if collection and os.path.isfile(path):
+            docs = load_json_array(path)
+            log_record(LOG, {"kind": "mongo_import", "collection": collection, "docs": docs})
+        i += 1
+    return 0
+
+
+def main():
+    argv = sys.argv[1:]
+    log_record(LOG, {"kind": "raw", "argv": redact_argv(argv)})
+
+    cmd = command_after_dashdash(argv)
+    if cmd is not None:
+        return handle_container_command(cmd)
+
+    # strip a leading "-n <ns>" / "--namespace <ns>" so subcommand matching
+    # doesn't care which namespace was passed.
+    rest = list(argv)
+    for flag in ("-n", "--namespace"):
+        if flag in rest:
+            i = rest.index(flag)
+            del rest[i:i + 2]
+
+    if not rest:
+        return 0
+
+    if rest[0] == "rollout" and len(rest) >= 3 and rest[1] == "restart":
+        target = rest[2]  # "deploy/inventory-service"
+        log_record(LOG, {"kind": "reconcile", "action": f"restart:{target.split('/')[-1]}"})
+        return 0
+
+    if rest[0] == "create" and len(rest) >= 2 and rest[1] == "configmap":
+        return handle_create_configmap(rest[2:])
+
+    # get/apply/wait/delete/rollout status/create ns/get ns: all silent
+    # successes, including the brief's called-out special case
+    # `kubectl -n apps get deploy inventory-service`.
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

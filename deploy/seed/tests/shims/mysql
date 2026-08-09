@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+"""Fake `mysql` — used only when a Job's own seed.sh runs the client bare
+(no docker/kubectl wrapper), i.e. deploy/seed/tests/fixtures/01-mysql-seed.sh,
+the /seed-path-parameterised copy of k8s/infra/jobs/01-mysql-seed/seed.sh.
+
+Reads (`-e ...`) classify like every other mysql shim; a plain invocation
+with no `-e` is the `mysql ... ecommerce_dev < /seed/ecommerce.sql` import —
+its stdin is the golden's compose/k8s/aws-shared `account`/`role`/... data.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _lib import classify_query, log_record, redact_argv  # noqa: E402
+
+LOG = "mysql"
+
+
+def find_after(args, flag):
+    if flag in args:
+        i = args.index(flag)
+        if i + 1 < len(args):
+            return args[i + 1]
+    return None
+
+
+def main():
+    argv = sys.argv[1:]
+    log_record(LOG, {"kind": "raw", "argv": redact_argv(argv)})
+
+    if "-e" in argv:
+        query = find_after(argv, "-e")
+        sys.stdout.write(classify_query(query or ""))
+    else:
+        sql = sys.stdin.read()
+        log_record(LOG, {"kind": "mysql_write", "sql": sql})
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
