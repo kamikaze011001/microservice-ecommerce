@@ -97,7 +97,9 @@ somewhere correct, never that the target still works through the new entry point
 
 ## 3. The verb set
 
-Seven verbs, each defined only where it has meaning:
+**Eight** verbs, each defined only where it has meaning. Two of them — `seed` and
+`secrets-seed` — already exist and are already `ENV=`-parameterised (Phases 5 and 4),
+so Phase 6 adds six:
 
 | verb | compose | k8s | aws |
 |---|---|---|---|
