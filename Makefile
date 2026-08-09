@@ -810,3 +810,24 @@ bootstrap:
 	@$(call dispatch,bootstrap)
 image-build:
 	@$(call dispatch,image-build)
+
+# ============================================================================
+# Unified verbs — test suites (deploy/scripts/tests/)
+# ============================================================================
+
+.PHONY: verb-test-equivalence verb-live-test
+# Layer A — offline expansion equivalence for every (verb, env) pair against
+# captured baselines of the old targets, plus the declared image-build
+# ENV=compose failure and the five pre-existing bare-$(ENV) defaults. No
+# backend, no credentials, no cluster; runs from any cwd. See
+# deploy/README.md's Verification status section under "Unified verbs".
+verb-test-equivalence:
+	@bash deploy/scripts/tests/verb-equivalence-test.sh
+
+# Layer B — live compose run: deploy -> seed -> status -> rebuild against a
+# running compose stack, asserting each exits 0 and the stack still serves
+# afterwards. Deliberately excludes teardown ENV=compose (would stop the
+# stack this and other work depends on) — its dispatch mapping is covered by
+# verb-test-equivalence instead. See deploy/README.md.
+verb-live-test:
+	@bash deploy/scripts/tests/verb-live-test.sh
