@@ -787,12 +787,28 @@ VERB_image-build_aws   := aws-push
 # own argument is complete.
 VERB_image-build_compose_WHY := compose builds no container images (services run as JVM processes from Maven artifacts — see \`make build\`)
 
+# GNU make imports the process ENVIRONMENT as variables, not only
+# command-line assignments — `export ENV=aws` in a shell (or a stray
+# .envrc/direnv/CI env) makes plain `make bootstrap` silently behave like
+# `make bootstrap ENV=aws`, which resolves to `aws-all`: a real, unprompted,
+# billed EKS apply with no confirmation prompt anywhere downstream. Before
+# this branch `bootstrap`/`status` were ENV-blind, so this is a regression
+# specifically introduced by giving them dispatch verbs. VERB_ENV restores
+# that ENV-blindness for the dispatch macro ONLY: it resolves to a value
+# only when ENV was set on the `make` command line itself (`origin` returns
+# "command line"), never from an exported/inherited environment variable.
+# This must NOT be used by the five pre-existing bare-$(ENV) targets (k9s,
+# k8s-use, k8s-platform, k8s-infra-helm, k8s-apps-helm) — they read $(ENV)
+# directly and must keep honouring an exported ENV exactly as they did
+# before this branch.
+VERB_ENV := $(if $(filter command line,$(origin ENV)),$(ENV),)
+
 # An unmapped (verb, env) pair fails HERE, by construction — no per-verb
 # special case. A verb that silently succeeds where it has nothing to do is
 # indistinguishable from one that worked.
-dispatch = t="$(VERB_$(1)_$(or $(ENV),compose))"; \
+dispatch = t="$(VERB_$(1)_$(or $(VERB_ENV),compose))"; \
   if [ -z "$$t" ]; then \
-    echo "make $(1): not applicable for ENV=$(or $(ENV),compose)$(if $(VERB_$(1)_$(or $(ENV),compose)_WHY), — $(VERB_$(1)_$(or $(ENV),compose)_WHY))" >&2; \
+    echo "make $(1): not applicable for ENV=$(or $(VERB_ENV),compose)$(if $(VERB_$(1)_$(or $(VERB_ENV),compose)_WHY), — $(VERB_$(1)_$(or $(VERB_ENV),compose)_WHY))" >&2; \
     exit 1; \
   fi; \
   $(MAKE) --no-print-directory $$t

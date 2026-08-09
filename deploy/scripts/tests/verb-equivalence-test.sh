@@ -99,8 +99,14 @@ def norm(text):
 # REJECTED and resolve_ctx fails loudly (never silently skips the check
 # and never executes unvalidated text).
 CASE_HEADER_RE = re.compile(r'^case "[^"]*" in *\\?$')
+# Bash performs command substitution on case PATTERNS, not just bodies, so a
+# quoted pattern containing $(...) or `...` must be rejected the same way
+# CASE_ARM_ERROR_RE already excludes backtick/dollar from its quoted string —
+# that exclusion was missing here. Without it, e.g.
+# `"$(touch /tmp/PWNED; echo x)"|"local") ctx=microecom ;;` matches (no bare
+# `"` inside the quotes) and validate_case_block() would wave it through.
 CASE_ARM_ASSIGN_RE = re.compile(
-    r'^\s*(?:"[^"]*"|\*|[A-Za-z0-9_]+)(?:\s*\|\s*(?:"[^"]*"|\*|[A-Za-z0-9_]+))*\)\s*'
+    r'^\s*(?:"[^"`$]*"|\*|[A-Za-z0-9_]+)(?:\s*\|\s*(?:"[^"`$]*"|\*|[A-Za-z0-9_]+))*\)\s*'
     r'ctx=[A-Za-z0-9_-]+\s*;;\s*\\?$'
 )
 CASE_ARM_ERROR_RE = re.compile(
@@ -213,7 +219,13 @@ for verb, env, baseline_name in PAIRS:
                f"baseline/{baseline_name} MISSING or EMPTY (right-hand side; resolved target={target!r})")
         continue
 
-    live = mk([target])
+    # ENV=<env> is passed here too, not just to the dispatch call above: the
+    # dispatch macro invokes the sub-make with ENV still set (it's inherited,
+    # not stripped), so the proof's left-hand side must match what dispatch
+    # actually runs. All 14 resolved targets are ENV-blind today so this is
+    # not a live defect, but a bare `make -n <target>` would silently stop
+    # catching a future target that starts reading $(ENV).
+    live = mk([target, f"ENV={env}"])
     live_text = live.stdout
     if not live_text.strip():
         record("mapping", name, False,
@@ -337,6 +349,24 @@ for target in ("k9s", "k8s-use"):
                f"default has drifted away from ENV=local")
         continue
     record("env-default", name, True, f"both resolve ctx={ctx_default!r}")
+
+
+# ---------------------------------------------------------------------
+# Total-count assertion — cheap insurance against the recurring
+# "empty result masquerading as a negative result" failure mode (seven
+# instances across this project's phases, several inside guards written
+# to prevent exactly that). 0 passed + 0 failed exits 0 today because
+# nothing checks that `results` itself is non-empty/complete — a future
+# refactor that silently emptied PAIRS or short-circuited a section would
+# still print "0 passed, 0 failed -> PASS". 14 (Part 1) + 1 (Part 2) + 5
+# (Part 3) = 20 is the fixed, known-good count for this suite's structure.
+# ---------------------------------------------------------------------
+EXPECTED_TOTAL = 20
+if len(results) != EXPECTED_TOTAL:
+    print(f"{RED}FATAL{RESET} expected {EXPECTED_TOTAL} checks to have recorded a result, got "
+          f"{len(results)} — the check list was silently narrowed (a PAIRS entry dropped, a "
+          f"section short-circuited, etc.); refusing to report a summary over an incomplete set")
+    sys.exit(1)
 
 
 # ---------------------------------------------------------------------
