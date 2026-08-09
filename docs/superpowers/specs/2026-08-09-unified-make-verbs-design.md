@@ -172,6 +172,14 @@ The real verb set against the running stack: `deploy` → `seed` → `status` �
   it did.
 - **A wrapper can drift from its target.** Both exist until Phase 8, so they can
   diverge silently. Layer A is the guard, and it belongs in CI.
+- **`ENV=` values must never come from unsanitised external input.** GNU make
+  recursively expands command-line variable assignments, so a `$(shell …)` embedded in
+  the value executes — **even under `make -n`**. Verified 2026-08-09:
+  `make -n deploy ENV='compose)$(shell touch /tmp/probe)'` runs the `touch`.
+  This is **pre-existing and repo-wide** — the same reproduces against the untouched
+  `k8s-platform` — not something this phase introduced. It matters here only because
+  the unified verbs are the entry points most likely to be scripted against, so
+  **Phase 7's CI wrappers must not interpolate untrusted values into `ENV=`**.
 
 ## 6. Migration and rollback
 
