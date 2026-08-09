@@ -1,0 +1,4 @@
+echo "== nodes =="; kubectl get nodes
+echo "== infra =="; kubectl -n infra get pods
+echo "== bootstrap jobs =="; kubectl -n bootstrap get jobs
+echo "== apps =="; kubectl -n apps get pods

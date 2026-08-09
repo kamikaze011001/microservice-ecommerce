@@ -1,0 +1,2 @@
+bash scripts/services/stop.sh all
+bash scripts/services/start.sh all

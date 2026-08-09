@@ -1,0 +1,3 @@
+if [ -z "" ]; then echo "Usage: make k8s-rebuild svc=NAME"; exit 1; fi
+SVC= SKIP_CORES=1 k8s/images/build.sh
+kubectl -n apps rollout restart deployment/

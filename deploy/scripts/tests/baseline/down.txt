@@ -1,0 +1,3 @@
+bash scripts/services/stop.sh all
+bash scripts/infra/down.sh
+echo "✓ Stack is down"
