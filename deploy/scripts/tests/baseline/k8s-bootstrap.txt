@@ -1,0 +1,78 @@
+deploy/scripts/cluster.sh up
+k8s/infra/install.sh
+if [ -n "" ]; then k8s/images/build.sh; else REUSE_EXISTING=1 k8s/images/build.sh; fi
+for d in 02-mongo-seed 03-vault-seed 05-minio-bootstrap 04-kafka-connect-register; do \
+	  job=$(echo $d | sed 's/^[0-9]*-//'); \
+	  echo "==> applying $d (job/$job)"; \
+	  kubectl -n bootstrap delete job $job --ignore-not-found >/dev/null; \
+	  case "$d" in \
+	    02-mongo-seed) \
+	      kubectl -n bootstrap create configmap mongo-seed-scripts \
+	        --from-file=k8s/infra/jobs/02-mongo-seed/seed.sh --dry-run=client -o yaml | kubectl apply -f - ; \
+	      kubectl -n bootstrap create configmap mongo-seed-data \
+	        --from-file=docker/api_role.json --from-file=docker/product.json \
+	        --from-file=docker/product-quantity-history.json --dry-run=client -o yaml | kubectl apply -f - ; \
+	      kubectl apply -f k8s/infra/jobs/02-mongo-seed/job.yaml ;; \
+	    *) kubectl apply -k k8s/infra/jobs/$d ;; \
+	  esac; \
+	  kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/$job; \
+	done
+echo "k8s-seed complete"
+scripts/seed/k8s-product-images.sh
+for ns in apps bootstrap monitoring; do \
+	  kubectl create namespace $ns --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
+	  kubectl label namespace $ns app.kubernetes.io/managed-by=Helm --overwrite >/dev/null; \
+	  kubectl annotate namespace $ns \
+	    meta.helm.sh/release-name=microecom \
+	    meta.helm.sh/release-namespace=infra --overwrite >/dev/null; \
+	done
+if [ -f k8s/.env ]; then \
+	  kubectl create secret generic app-secrets --namespace apps \
+	    --from-env-file=k8s/.env --dry-run=client -o yaml | kubectl apply -f - ; \
+	else \
+	  echo "warn: k8s/.env missing — creating empty app-secrets Secret. Copy k8s/.env.example to k8s/.env and re-run k8s-app-secrets for working mail/PayPal."; \
+	  kubectl create secret generic app-secrets --namespace apps \
+	    --dry-run=client -o yaml | kubectl apply -f - ; \
+	fi
+kubectl apply -k k8s/apps/overlays/local
+kubectl -n apps rollout status deployment --timeout=10m
+echo "==> applying 01-mysql-seed (job/mysql-seed)"
+kubectl -n bootstrap delete job mysql-seed --ignore-not-found >/dev/null
+kubectl -n bootstrap create configmap mysql-seed-scripts \
+	  --from-file=k8s/infra/jobs/01-mysql-seed/seed.sh --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n bootstrap create configmap mysql-seed-sql \
+	  --from-file=docker/ecommerce.sql --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f k8s/infra/jobs/01-mysql-seed/job.yaml
+kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/mysql-seed
+echo "k8s-seed-mysql complete"
+scripts/seed/k8s-inventory.sh
+echo "==> applying 06-perftest-seed (job/perftest-seed)"
+kubectl -n bootstrap delete job perftest-seed --ignore-not-found >/dev/null
+kubectl apply -k k8s/infra/jobs/06-perftest-seed
+kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/perftest-seed
+echo "k8s-seed-perftest complete"
+echo "==> k8s bootstrap complete"
+/Library/Developer/CommandLineTools/usr/bin/make k8s-status
+echo "== nodes =="; kubectl get nodes
+echo "== infra =="; kubectl -n infra get pods
+echo "== bootstrap jobs =="; kubectl -n bootstrap get jobs
+echo "== apps =="; kubectl -n apps get pods
+echo ""
+echo "================================================================"
+echo "  Final steps:"
+echo ""
+echo "  1. Add these lines to /etc/hosts (one-time):"
+echo "       127.0.0.1 microecom.local"
+echo "       127.0.0.1 api.microecom.local"
+echo "       127.0.0.1 media.microecom.local"
+echo "       127.0.0.1 grafana.microecom.local"
+echo "       127.0.0.1 vm.microecom.local"
+echo ""
+echo "  2. Make sure the ingress tunnel is up (k8s-cluster-up starts it when"
+echo "     sudo is already cached; otherwise start it by hand):"
+echo "       sudo -v && make k8s-tunnel"
+echo ""
+echo "  3. Verify:"
+echo "       curl -i http://api.microecom.local/product-service/v1/products"
+echo "       open http://microecom.local"
+echo "================================================================"

@@ -22,6 +22,134 @@ deploy/
 └── images/             # image build definitions
 ```
 
+## Unified verbs (`make <verb> ENV=<env>`)
+
+Phase 6 adds one command dialect on top of the three that already exist
+(compose's bare targets, `k8s-*`, `aws-*`) — thin wrappers, nothing removed
+or moved. See
+`docs/superpowers/specs/2026-08-09-unified-make-verbs-design.md`.
+
+Only the verbs that are genuinely the same concept across more than one
+environment are unified. Env-specific targets (`k8s-tunnel`, `k8s-ctx`,
+`k9s`, the k6/observability targets, …) keep their old names — see the
+design doc §2/§7 for what was deliberately left alone.
+
+| verb | compose | k8s | aws |
+|---|---|---|---|
+| `bootstrap` | `bootstrap-compose` | `k8s-bootstrap` | `aws-all` |
+| `deploy` | `svc-start` | `k8s-apps` | *(Phase 7 — unmapped, fails)* |
+| `seed` | ✅ (Phase 5, `deploy/seed/`) | ✅ | ✅ |
+| `secrets-seed` | ✅ (Phase 4, `deploy/secrets/`) | ✅ | ✅ |
+| `status` | `status-compose` | `k8s-status` | *(unmapped, fails)* |
+| `teardown` | `down` | `k8s-down` | `aws-down` |
+| `rebuild` | `svc-restart` | `k8s-rebuild` | *(unmapped, fails)* |
+| `image-build` | *(unmapped — fails by construction)* | `k8s-build` | `aws-push` |
+
+```bash
+make deploy ENV=compose        # -> svc-start
+make status ENV=k8s            # -> k8s-status
+make rebuild ENV=compose svc=mock-paypal-service   # -> svc-restart svc=...
+make bootstrap ENV=aws         # -> aws-all (spends real money — see below)
+```
+
+**The `ENV=` default is `compose`, but it is not global.** There is no
+`ENV ?= compose` anywhere in the Makefile — that was tried in Task 2 and
+reverted because it silently overrode the *other* `$(or $(ENV),…)` defaults
+that `k9s`, `k8s-use`, `k8s-platform`, `k8s-infra-helm` and `k8s-apps-helm`
+already had (`local` / `local-k8s`). Instead the `compose` default is scoped
+to just the six verbs above, via `$(or $(ENV),compose)` inside the
+`dispatch` macro itself. `make deploy` with no `ENV=` behaves exactly like
+`make deploy ENV=compose`; it says nothing about what any other bare-`$(ENV)`
+target defaults to.
+
+**`bootstrap` and `status` are dispatchers, not new targets.** Both names
+already existed as compose target names before Phase 6. Rather than rename
+20+ years of muscle memory, their original recipes (and, for `bootstrap`,
+its nine load-bearing prerequisites, in the same order) were moved verbatim
+to `bootstrap-compose` / `status-compose`, and `bootstrap` / `status` became
+dispatchers like the other four verbs. `make bootstrap` and `make status`
+with no `ENV=` expand **identically** to what they expanded to before this
+phase — proven against the baselines captured before the change (see
+Verification status below).
+
+**`image-build ENV=compose` fails on purpose, exit non-zero.** Compose runs
+every service as a JVM process launched from a Maven artifact — it builds no
+container images at all, so there is nothing for the verb to do. An empty
+success would be indistinguishable from a real one, so the dispatch table
+simply has no compose mapping for `image-build`, and the generic
+"unmapped pair" guard fires:
+
+```
+$ make image-build ENV=compose
+make image-build: not applicable for ENV=compose — compose builds no container
+images (services run as JVM processes from Maven artifacts — see `make build`)
+make: *** [image-build] Error 1
+```
+
+`make build` (plain Maven install, env-invariant) is unrelated and unchanged
+by any of this — see the design doc's "`build` is not a deployment verb".
+
+### Test suites (`deploy/scripts/tests/`)
+
+```bash
+make verb-test-equivalence   # Layer A — offline, all three envs, any cwd
+make verb-live-test          # Layer B — live compose run (deploy/seed/status/rebuild)
+```
+
+`verb-test-equivalence` runs `deploy/scripts/tests/verb-equivalence-test.sh`:
+for every mapped (verb, env) pair it resolves the dispatch target and diffs
+its `make -n` expansion against a captured baseline of the old target, plus
+asserts the declared `image-build ENV=compose` failure and that the five
+pre-existing bare-`$(ENV)` targets still resolve their own defaults. No
+backend, no credentials, no cluster.
+
+`verb-live-test` runs `deploy/scripts/tests/verb-live-test.sh`: the real
+compose verb set — `deploy` → `seed` → `status` → `rebuild` — against a
+running stack, each asserted to exit 0, with an HTTP check through the
+gateway before and after. It deliberately does **not** run
+`teardown ENV=compose`, because that would stop the stack other work in this
+repo depends on; `teardown`'s dispatch mapping is proven by the offline
+suite instead.
+
+### Verification status
+
+**Proven live, compose only.** `make verb-live-test`
+(`deploy/scripts/tests/verb-live-test.sh`) ran the real sequence against the
+running dev stack: `make deploy ENV=compose` (all 11 services already up,
+resolved as a no-op start), `make seed ENV=compose` (pre-apps stage: 40
+`api_role` docs + 30 `product` docs + 30 `productQuantityHistory` docs + 30
+objects, all re-imported clean), `make status ENV=compose` (11/11 running),
+and `make rebuild ENV=compose svc=mock-paypal-service` (stop + cold start,
+back up in two 5s poll cycles). All four exited 0. The gateway→product-service
+storefront route (`GET /product-service/v1/products`) returned `200` both
+before and after the run, and mock-paypal-service's own actuator health
+returned `200` after its rebuild. `teardown ENV=compose` was **not** run
+live — see "Test suites" above for why; its expansion is covered by the
+offline suite below.
+
+**Proven offline, all three envs.** `make verb-test-equivalence`
+(`deploy/scripts/tests/verb-equivalence-test.sh`): **20 checks, 20 passed, 0
+failed** — 14 verb×env dispatch mappings (every cell in the table above that
+isn't `✅`/unmapped), the declared `image-build ENV=compose` failure, and the
+5 bare-`$(ENV)` default resolutions (`k9s`, `k8s-use`, `k8s-platform`,
+`k8s-infra-helm`, `k8s-apps-helm`). No backend, no credentials, no cluster;
+runs from any cwd.
+
+**NOT proven: no verb has ever been executed against k8s or aws.** No
+cluster exists — the minikube profile used earlier in this workstream was
+destroyed during Phase 5, and `kubectl` has no current context. Every
+k8s-mapped verb (`deploy ENV=k8s`, `status ENV=k8s`, `rebuild ENV=k8s`,
+`bootstrap ENV=k8s`, `image-build ENV=k8s`) is verified only by Layer A's
+offline expansion diff against a baseline — never run for real in this
+phase. `deploy ENV=aws`, `status ENV=aws` and `rebuild ENV=aws` are
+deliberately **unmapped** until Phase 7 and fail by design, the same way
+`image-build ENV=compose` does, just without a `_WHY` message yet.
+`bootstrap ENV=aws` (`aws-all`) and `teardown ENV=aws` (`aws-down`) resolve
+to real targets but were not run — `aws-all` spends real money and is out of
+scope for this phase's verification. Don't read more into the evidence above
+than what it actually measured — the same caveat Phases 1, 3 and 4 of this
+refactor each needed.
+
 ## Canonical secrets (`deploy/secrets/`)
 
 `deploy/secrets/<service>.yaml` plus `deploy/secrets/contexts/<env>.yaml` are

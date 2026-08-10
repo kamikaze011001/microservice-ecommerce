@@ -67,11 +67,15 @@ help:
 # First-run / daily loop
 # ============================================================================
 
-.PHONY: bootstrap
+# NOTE: `bootstrap` itself is now defined below, in the "Unified verbs"
+# section, as a dispatcher (Phase 6). This target holds the original compose
+# recipe and prerequisites, moved here verbatim under the exception documented
+# there — do not add a `bootstrap:` target in this file.
+.PHONY: bootstrap-compose
 # NOTE: svc-start runs BEFORE seed-data because docker/ecommerce.sql is a
 # data-only dump. Tables are created by Hibernate ddl-auto on first service
 # boot, then the seed inserts rows. Reordering these breaks fresh bootstrap.
-bootstrap: infra-up vault-init vault-unseal vault-import kafka-topics mongo-connector build svc-start seed-data
+bootstrap-compose: infra-up vault-init vault-unseal vault-import kafka-topics mongo-connector build svc-start seed-data
 	@echo "✓ Bootstrap complete — stack is up"
 
 .PHONY: up
@@ -94,8 +98,12 @@ nuke:
 	@rm -f vault-keys.json
 	@echo "✓ All data wiped"
 
-.PHONY: status
-status:
+# NOTE: `status` itself is now defined below, in the "Unified verbs" section,
+# as a dispatcher (Phase 6). This target holds the original compose recipe,
+# moved here verbatim under the exception documented there — do not add a
+# `status:` target in this file.
+.PHONY: status-compose
+status-compose:
 	@bash scripts/services/status.sh
 
 # ============================================================================
@@ -721,3 +729,121 @@ k8s-use:
 	*) echo "Unknown ENV '$(ENV)' — use ENV=local or ENV=eks"; exit 1 ;; \
 	esac; \
 	kubectl config use-context "$$ctx" && echo "==> now on $$ctx"
+
+# ============================================================================
+# Unified verbs (Phase 6)
+# ============================================================================
+# `make <verb> ENV=<env>` delegates to the existing target below. Additive:
+# every old target still works and is unchanged. See
+# docs/superpowers/specs/2026-08-09-unified-make-verbs-design.md
+#
+# `status` collision (human-approved exception, see the design doc's "A note
+# on the collisions"): `status` already existed as the compose target name.
+# Its original recipe was moved verbatim to `status-compose` above; `status`
+# itself is now the dispatcher defined below, so the compose mapping points
+# at `status-compose`, not `status` (which would recurse into this dispatcher).
+#
+# NOTE: no global `ENV ?= compose` here. This file already has several
+# targets (k9s, k8s-use, k8s-platform, k8s-infra-helm, k8s-apps-helm) that
+# read bare $(ENV) with their OWN default (local / local-k8s) via
+# $(or $(ENV),...). A global default would silently override every one of
+# them for any bare invocation. Instead the compose default is scoped to
+# just the dispatch macro below, via the same $(or $(ENV),...) idiom.
+
+VERB_deploy_compose    := svc-start
+VERB_deploy_k8s        := k8s-apps
+VERB_status_compose    := status-compose
+VERB_status_k8s        := k8s-status
+VERB_teardown_compose  := down
+VERB_teardown_k8s      := k8s-down
+VERB_teardown_aws      := aws-down
+VERB_rebuild_compose   := svc-restart
+VERB_rebuild_k8s       := k8s-rebuild
+
+# `bootstrap` collision (human-approved exception, same pattern as `status`
+# above): `bootstrap` already existed as the compose target name. Its original
+# recipe + prerequisites were moved verbatim to `bootstrap-compose` above;
+# `bootstrap` itself is now the dispatcher defined below, so the compose
+# mapping points at `bootstrap-compose`, not `bootstrap` (which would recurse
+# into this dispatcher).
+VERB_bootstrap_compose := bootstrap-compose
+VERB_bootstrap_k8s     := k8s-bootstrap
+VERB_bootstrap_aws     := aws-all
+
+# image-build: deliberately NO VERB_image-build_compose. Compose builds no
+# container images (services run as JVM processes from Maven artifacts), so
+# the dispatch macro must reject ENV=compose by construction, not no-op with
+# exit 0 — see the macro's _WHY interpolation below.
+VERB_image-build_k8s   := k8s-build
+VERB_image-build_aws   := aws-push
+# NOTE: backticks here are escaped (\`...\`) deliberately. This text is
+# interpolated into a double-quoted `echo "..."` inside the dispatch macro's
+# shell recipe below — a bare, unescaped `make build` in backticks would be
+# parsed by the shell as command substitution and actually RUN `make build`
+# (a real multi-minute Maven install) while composing the error message,
+# instead of just naming it. Confirmed live: the unescaped form hangs
+# `make image-build ENV=compose` for as long as `scripts/maven/install-modules.sh`
+# takes, with zero output, because command substitution runs before echo's
+# own argument is complete.
+VERB_image-build_compose_WHY := compose builds no container images (services run as JVM processes from Maven artifacts — see \`make build\`)
+
+# GNU make imports the process ENVIRONMENT as variables, not only
+# command-line assignments — `export ENV=aws` in a shell (or a stray
+# .envrc/direnv/CI env) makes plain `make bootstrap` silently behave like
+# `make bootstrap ENV=aws`, which resolves to `aws-all`: a real, unprompted,
+# billed EKS apply with no confirmation prompt anywhere downstream. Before
+# this branch `bootstrap`/`status` were ENV-blind, so this is a regression
+# specifically introduced by giving them dispatch verbs. VERB_ENV restores
+# that ENV-blindness for the dispatch macro ONLY: it resolves to a value
+# only when ENV was set on the `make` command line itself (`origin` returns
+# "command line"), never from an exported/inherited environment variable.
+# This must NOT be used by the five pre-existing bare-$(ENV) targets (k9s,
+# k8s-use, k8s-platform, k8s-infra-helm, k8s-apps-helm) — they read $(ENV)
+# directly and must keep honouring an exported ENV exactly as they did
+# before this branch.
+VERB_ENV := $(if $(filter command line,$(origin ENV)),$(ENV),)
+
+# An unmapped (verb, env) pair fails HERE, by construction — no per-verb
+# special case. A verb that silently succeeds where it has nothing to do is
+# indistinguishable from one that worked.
+dispatch = t="$(VERB_$(1)_$(or $(VERB_ENV),compose))"; \
+  if [ -z "$$t" ]; then \
+    echo "make $(1): not applicable for ENV=$(or $(VERB_ENV),compose)$(if $(VERB_$(1)_$(or $(VERB_ENV),compose)_WHY), — $(VERB_$(1)_$(or $(VERB_ENV),compose)_WHY))" >&2; \
+    exit 1; \
+  fi; \
+  $(MAKE) --no-print-directory $$t
+
+.PHONY: deploy status teardown rebuild bootstrap image-build
+deploy:
+	@$(call dispatch,deploy)
+status:
+	@$(call dispatch,status)
+teardown:
+	@$(call dispatch,teardown)
+rebuild:
+	@$(call dispatch,rebuild)
+bootstrap:
+	@$(call dispatch,bootstrap)
+image-build:
+	@$(call dispatch,image-build)
+
+# ============================================================================
+# Unified verbs — test suites (deploy/scripts/tests/)
+# ============================================================================
+
+.PHONY: verb-test-equivalence verb-live-test
+# Layer A — offline expansion equivalence for every (verb, env) pair against
+# captured baselines of the old targets, plus the declared image-build
+# ENV=compose failure and the five pre-existing bare-$(ENV) defaults. No
+# backend, no credentials, no cluster; runs from any cwd. See
+# deploy/README.md's Verification status section under "Unified verbs".
+verb-test-equivalence:
+	@bash deploy/scripts/tests/verb-equivalence-test.sh
+
+# Layer B — live compose run: deploy -> seed -> status -> rebuild against a
+# running compose stack, asserting each exits 0 and the stack still serves
+# afterwards. Deliberately excludes teardown ENV=compose (would stop the
+# stack this and other work depends on) — its dispatch mapping is covered by
+# verb-test-equivalence instead. See deploy/README.md.
+verb-live-test:
+	@bash deploy/scripts/tests/verb-live-test.sh
