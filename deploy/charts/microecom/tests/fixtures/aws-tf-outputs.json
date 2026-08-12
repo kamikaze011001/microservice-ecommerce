@@ -1,0 +1,5 @@
+{
+  "_comment": "Fixture stand-in for `terraform output -json` in aws/main + aws/bootstrap. Values are obviously-fake (account 000000000000) so nobody mistakes this for real infrastructure. Keys match the real output names used by scripts/aws/*.sh: s3_irsa_role_arn (scripts/aws/up-all.sh:127, from aws/main) and ecr_registry (scripts/aws/push-images.sh:33, from aws/bootstrap).",
+  "s3_irsa_role_arn": "arn:aws:iam::000000000000:role/microecom-s3-irsa",
+  "ecr_registry": "000000000000.dkr.ecr.ap-southeast-1.amazonaws.com"
+}
