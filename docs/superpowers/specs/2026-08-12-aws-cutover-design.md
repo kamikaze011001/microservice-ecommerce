@@ -31,11 +31,11 @@ apps-with-aws.
 Rendering that combination by hand produces **4 objects** (3 Namespaces + 1
 ServiceAccount): no Deployments, no Services, no ExternalSecrets, no ALB ingress.
 
-The existing AWS overlay produces **37**:
+The existing AWS overlay produces **39**:
 
 ```
 10 Deployment · 10 Service · 9 ExternalSecret · 5 HorizontalPodAutoscaler
-1 ServiceAccount · 1 Role · 1 RoleBinding · 1 Namespace
+1 ServiceAccount · 1 Role · 1 RoleBinding · 1 Namespace · 1 Ingress   = 39
 (10 alb references, 10 dkr.ecr references)
 ```
 
@@ -58,7 +58,7 @@ produced.
 ### D1 — The old path is the oracle, and it is COMPOSED FROM TWO SOURCES
 
 ```
-kubectl kustomize k8s/apps/overlays/aws                    → 37 objects
+kubectl kustomize k8s/apps/overlays/aws                    → 39 objects
 + k8s/apps/overlays/aws/s3-irsa-serviceaccounts.yaml       → applied out-of-band
     with s3_irsa_role_arn substituted
 ```
@@ -126,7 +126,7 @@ in for real ones, exactly as Phase 5's aws leg did.
 **Non-negotiable guards.** Seven "empty result masquerading as a negative result"
 defects have landed across Phases 5 and 6, several *inside guards written to prevent
 them*. So: assert both sides non-empty **and** object counts non-zero before comparing.
-A chart rendering 4 objects against an oracle of 37 must fail loudly, never diff two
+A chart rendering 4 objects against an oracle of 41 must fail loudly, never diff two
 near-empty streams.
 
 ---
@@ -141,7 +141,7 @@ near-empty streams.
   becomes nested keys instead of a string. This produced two wrong renders during this
   design session. The deploy path must use `--set-string`, and the suite should assert
   it.
-- **The 4-vs-37 gap may be structural**, not a small fix — the apps subchart may not be
+- **The 4-vs-41 gap may be structural**, not a small fix — the apps subchart may not be
   receiving its service list at all under aws values. Diagnosis is the first task's
   job; the plan must not assume the size of the repair.
 - **Two fail-loud paths are inconsistent.** A missing `s3RoleArn` fails with a clear

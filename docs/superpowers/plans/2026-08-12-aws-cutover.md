@@ -57,7 +57,7 @@ The second file is **not** in the overlay's `kustomization.yaml`. `scripts/aws/u
 - [ ] **Step 2: Capture**
 
 Run: `bash deploy/charts/microecom/tests/aws-oracle/capture.sh`
-Expected: `oracle.yaml` containing **37 objects from kustomize plus the IRSA ServiceAccounts**.
+Expected: `oracle.yaml` containing **39 objects from kustomize plus the 2 IRSA ServiceAccounts = 41**.
 
 - [ ] **Step 3: Assert the composition actually happened**
 
@@ -65,7 +65,7 @@ Both halves must be present, asserted separately. Expected from the kustomize ha
 
 ```
 10 Deployment · 10 Service · 9 ExternalSecret · 5 HorizontalPodAutoscaler
-1 ServiceAccount · 1 Role · 1 RoleBinding · 1 Namespace
+1 ServiceAccount · 1 Role · 1 RoleBinding · 1 Namespace · 1 Ingress   = 39
 ```
 
 And from the second half: at least one ServiceAccount carrying an `eks.amazonaws.com/role-arn` annotation. **If the IRSA half contributes nothing, the capture is broken** — the whole reason this task exists is that `kustomize build` alone misses it.
@@ -82,7 +82,7 @@ Exactly one Deployment must lack an ExternalSecret, and it must be `frontend` (a
 
 **This task has an unknown size. Diagnose before estimating, and report the diagnosis before fixing.**
 
-Rendering the chart's apps subchart with `envs/aws.yaml` currently produces **4 objects** (3 Namespaces + 1 ServiceAccount) against the oracle's 37+. It may be a values-plumbing problem or a template problem; nothing established yet distinguishes them.
+Rendering the chart's apps subchart with `envs/aws.yaml` currently produces **4 objects** (3 Namespaces + 1 ServiceAccount) against the oracle's 39+. It may be a values-plumbing problem or a template problem; nothing established yet distinguishes them.
 
 **Files:** whichever the diagnosis indicates — `envs/aws.yaml`, `charts/apps/templates/*`, or `charts/apps/values.yaml`.
 
@@ -132,7 +132,7 @@ Group both sides into `(kind, name)` and compare. Raw text diff will drown in or
 
 - [ ] **Step 2: Guard against vacuous comparison — MANDATORY**
 
-Assert **both sides are non-empty AND the object count is plausible** (the oracle has 37+; a chart render of 4 must fail loudly, not diff two near-empty streams). Seven "empty result masquerading as a negative result" defects have landed across Phases 5 and 6, several *inside guards written to prevent them*.
+Assert **both sides are non-empty AND the object count is plausible** (the oracle has 39+; a chart render of 4 must fail loudly, not diff two near-empty streams). Seven "empty result masquerading as a negative result" defects have landed across Phases 5 and 6, several *inside guards written to prevent them*.
 
 - [ ] **Step 3: Declared differences, asserted directionally**
 
@@ -217,7 +217,7 @@ All suites pass: chart `render-test` 268/0, the new aws diff suite, `verb-equiva
 
 | Layer | Scope | Gate |
 |---|---|---|
-| `aws-oracle/capture.sh` | the composed oracle | both halves present; 37+ objects |
+| `aws-oracle/capture.sh` | the composed oracle | both halves present; 41 objects |
 | `aws-diff-test.sh` | chart aws render vs oracle | all match or declared-different; 0 unexplained |
 | `render-test.sh` | local-k8s unaffected | 268 passed, 0 failed |
 | `verb-equivalence-test.sh` | verbs unaffected | all mappings match baselines |
