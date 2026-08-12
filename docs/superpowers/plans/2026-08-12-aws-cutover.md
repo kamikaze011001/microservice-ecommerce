@@ -152,7 +152,15 @@ Perturb one chart value so an object changes, confirm the suite names it and exi
 
 **Files:**
 - Modify: `Makefile`
-- Create/modify: the aws deploy path
+- Create: `deploy/scripts/aws-deploy.sh` (or similar) — the new wiring helper
+
+**PRE-FLIGHT RESOLUTION (human-approved).** The existing aws deploy path is
+`scripts/aws/up-all.sh`, which the Global Constraints freeze. **Do not edit it.** Put
+the wiring in a NEW helper under `deploy/`, and point `VERB_deploy_aws` at that. This
+keeps the build-alongside property every prior phase held: `up-all.sh` keeps working
+untouched, rollback stays "don't call the new verb", and Phase 8 deletes the old path
+as one atomic step. The Makefile comment saying Phase 7 "moves that into the AWS deploy
+script" predates this decision — the destination is the new helper, not `up-all.sh`.
 
 - [ ] **Step 1: Replace the manual `HELM_EXTRA` incantation**
 
@@ -163,7 +171,9 @@ Wire the three inputs — `s3_irsa_role_arn`, ECR registry, image tag — into t
 
 - [ ] **Step 2: Fill `VERB_deploy_aws`**
 
-Phase 6 left it deliberately empty, so `make deploy ENV=aws` currently fails with "not applicable". Map it, and confirm `deploy/scripts/tests/verb-equivalence-test.sh` still passes with the new mapping counted.
+Phase 6 left it deliberately empty, so `make deploy ENV=aws` currently fails with "not applicable". Map it at the new helper.
+
+**Expect `verb-equivalence-test.sh` to FAIL until you update its total-count assertion.** Phase 6 added `assert len(results) == 20` specifically so a refactor could not silently empty the check list. Adding a mapping makes it 21. That failure is the guard working — update the count and add the new pair to the suite's coverage, do not weaken or remove the assertion.
 
 - [ ] **Step 3: Make a missing terraform output fail legibly**
 
