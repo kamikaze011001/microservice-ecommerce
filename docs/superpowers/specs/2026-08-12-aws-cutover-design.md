@@ -30,9 +30,13 @@ because the *reasoning* it produced is still what shapes this phase.
 
 Two false claims, both from commands that silently dropped data:
 
-1. **"The chart renders 4 objects for aws."** It renders **43**. The hand-render omitted
-   `--namespace infra`, which the test suite's own `render()` helper always passes.
-   Without the flag: 4 objects. With it: 43.
+1. **"The chart renders 4 objects for aws."** It renders **43**.
+   *A first explanation blamed a missing `--namespace infra`; that was also wrong.*
+   Measured 2026-08-13: `--namespace` makes no difference (43 either way). The flag that
+   matters is **`--set apps.enabled=true`** — without it the render yields 3 objects,
+   since the apps subchart is gated on it and defaults to false.
+   **The original 4-object result has not been reproduced and its cause is unknown.**
+   Recorded as unexplained rather than given a third guess.
 2. **"`apps_render` is called 6 times, none pass `envs/aws.yaml`."** `render-test.sh:826-836`
    builds an `ALB_ARGS` array containing `envs/aws.yaml` and calls
    `apps_render "${ALB_ARGS[@]}"`, asserting `"aws values render"` plus ALB, IRSA and ESO
@@ -154,9 +158,15 @@ near-empty streams.
   becomes nested keys instead of a string. This produced two wrong renders during this
   design session. The deploy path must use `--set-string`, and the suite should assert
   it.
-- **`--namespace infra` is load-bearing for any hand render.** Omitting it silently
-  yields 4 objects instead of 43 — this produced the withdrawn premise above. Any script
-  or doc that renders the chart must pass it.
+- **`--set apps.enabled=true` is load-bearing for any hand render.** The apps subchart
+  is gated on it and defaults to false, so omitting it yields 3 objects that look like a
+  successful render. `--namespace infra` is NOT load-bearing (43 either way), despite an
+  earlier claim here to the contrary.
+- **A hand-render disagreeing with the suite should be treated as the hand-render being
+  wrong until proven otherwise.** Three separate wrong measurements of this one chart
+  produced a withdrawn spec premise, a wrong root-cause, and a wrong correction. The
+  suite's `render()` helper is the reference invocation; copy it rather than composing
+  flags by hand.
 - **Two fail-loud paths are inconsistent.** A missing `s3RoleArn` fails with a clear
   named message; a missing registry/tag fails with an opaque
   `YAML parse error … mapping values are not allowed in this context`. Both are
