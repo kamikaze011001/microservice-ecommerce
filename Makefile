@@ -733,6 +733,32 @@ aws-all:
 aws-deploy-apps:
 	@deploy/scripts/aws-deploy.sh
 
+# ============================================================================
+# Helm chart — AWS differential test suite (deploy/charts/microecom/tests/)
+# ============================================================================
+# Phase 7 (docs/superpowers/specs/2026-08-12-aws-cutover-design.md) closed the
+# gap that these two scripts had no entry point — same retrofit pattern Phase
+# 6 already applied to seed-test-equivalence / verb-test-equivalence. See
+# deploy/README.md's "AWS cut-over" section for what each layer proves.
+
+.PHONY: aws-oracle-capture aws-diff-test
+# Rebuilds tests/aws-oracle/oracle.yaml from `kubectl kustomize
+# k8s/apps/overlays/aws` (pure local build, no cluster contact) PLUS
+# s3-irsa-serviceaccounts.yaml with PLACEHOLDER_S3_ROLE_ARN substituted from
+# the offline fixture — the same out-of-band step up-all.sh:127-137 performs
+# live (D1). Re-run this after any change under k8s/apps/overlays/aws; the
+# oracle is captured output, not hand-written, and aws-diff-test always
+# compares against whatever oracle.yaml currently holds on disk.
+aws-oracle-capture:
+	@bash deploy/charts/microecom/tests/aws-oracle/capture.sh
+
+# Layer A — offline differential render: does the chart's aws-with-apps
+# render reproduce the composed oracle (kustomize half + IRSA half), object
+# by object? Guards both sides non-empty and per-kind counts before diffing.
+# No cluster, no credentials, no spend.
+aws-diff-test:
+	@bash deploy/charts/microecom/tests/aws-diff-test.sh
+
 .PHONY: k8s-use k8s-ctx
 
 k8s-ctx:
