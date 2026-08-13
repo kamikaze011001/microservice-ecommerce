@@ -22,27 +22,40 @@ Phase 3:
 So Phase 7 is **not** porting. It is making the ported templates produce the right
 output and proving they do.
 
-### The gap, measured
+### CORRECTION (2026-08-13): the gap did not exist
 
-`apps_render` is called **6 times** in the chart's 268-test suite. **None of them pass
-`envs/aws.yaml`.** The suite covers infra-with-aws and apps-with-local — never
-apps-with-aws.
+**An earlier draft of this section claimed the chart's aws path was broken. That was a
+measurement error, and the claim is withdrawn.** It is recorded here rather than deleted
+because the *reasoning* it produced is still what shapes this phase.
 
-Rendering that combination by hand produces **4 objects** (3 Namespaces + 1
-ServiceAccount): no Deployments, no Services, no ExternalSecrets, no ALB ingress.
+Two false claims, both from commands that silently dropped data:
 
-The existing AWS overlay produces **39**:
+1. **"The chart renders 4 objects for aws."** It renders **43**. The hand-render omitted
+   `--namespace infra`, which the test suite's own `render()` helper always passes.
+   Without the flag: 4 objects. With it: 43.
+2. **"`apps_render` is called 6 times, none pass `envs/aws.yaml`."** `render-test.sh:826-836`
+   builds an `ALB_ARGS` array containing `envs/aws.yaml` and calls
+   `apps_render "${ALB_ARGS[@]}"`, asserting `"aws values render"` plus ALB, IRSA and ESO
+   properties. The grep required both tokens on one line; they are on different lines.
 
-```
-10 Deployment · 10 Service · 9 ExternalSecret · 5 HorizontalPodAutoscaler
-1 ServiceAccount · 1 Role · 1 RoleBinding · 1 Namespace · 1 Ingress   = 39
-(10 alb references, 10 dkr.ecr references)
-```
+### What is actually true, measured
 
-Whether the chart's aws path is broken or merely invoked wrongly, **nothing in the repo
-distinguishes those two** — which is the finding. It is the same shape as Phase 3's
-Helm app path: render tests passing while the thing they describe has never been
-produced.
+The chart's aws render and the composed oracle agree on **every kind except Namespace**:
+
+| kind | chart | oracle |
+|---|---|---|
+| Service · Deployment · ExternalSecret · HPA · ServiceAccount | 10 · 10 · 9 · 5 · 3 | identical |
+| Role · RoleBinding · Ingress | 1 · 1 · 1 | identical |
+| **Namespace** | **3** | **1** |
+
+The Namespace delta is the umbrella's `templates/namespaces.yaml` rendering all three
+non-infra namespaces — pre-existing, unrelated to AWS, and a candidate declared
+difference rather than a defect.
+
+**So the porting is done and the rendering works.** What remains is genuinely unfinished:
+no test compares chart output to the overlay *object-by-object* (only individual
+properties), the three deploy-time inputs are still assembled by hand, and Phase 6's
+`VERB_deploy_aws` mapping is still empty.
 
 ### Two asymmetries, resolved before being declared
 
@@ -141,9 +154,9 @@ near-empty streams.
   becomes nested keys instead of a string. This produced two wrong renders during this
   design session. The deploy path must use `--set-string`, and the suite should assert
   it.
-- **The 4-vs-41 gap may be structural**, not a small fix — the apps subchart may not be
-  receiving its service list at all under aws values. Diagnosis is the first task's
-  job; the plan must not assume the size of the repair.
+- **`--namespace infra` is load-bearing for any hand render.** Omitting it silently
+  yields 4 objects instead of 43 — this produced the withdrawn premise above. Any script
+  or doc that renders the chart must pass it.
 - **Two fail-loud paths are inconsistent.** A missing `s3RoleArn` fails with a clear
   named message; a missing registry/tag fails with an opaque
   `YAML parse error … mapping values are not allowed in this context`. Both are

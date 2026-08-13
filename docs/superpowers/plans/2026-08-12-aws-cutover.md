@@ -78,46 +78,24 @@ Exactly one Deployment must lack an ExternalSecret, and it must be `frontend` (a
 
 ---
 
-## Task 2: Diagnose and close the render gap
+## Task 2: VOID — the gap did not exist
 
-**This task has an unknown size. Diagnose before estimating, and report the diagnosis before fixing.**
+**Do not implement this task.** Its premise was a controller measurement error, withdrawn
+2026-08-13 (see the design spec's §1 CORRECTION).
 
-Rendering the chart's apps subchart with `envs/aws.yaml` currently produces **4 objects** (3 Namespaces + 1 ServiceAccount) against the oracle's 39+. It may be a values-plumbing problem or a template problem; nothing established yet distinguishes them.
+The chart's aws path renders **43 objects** and agrees with the composed oracle on every
+kind except Namespace (3 vs 1, a pre-existing umbrella behaviour). `render-test.sh:826-836`
+already renders apps with `envs/aws.yaml` and asserts ALB, IRSA and ESO properties.
 
-**Files:** whichever the diagnosis indicates — `envs/aws.yaml`, `charts/apps/templates/*`, or `charts/apps/values.yaml`.
+The two false claims came from commands that silently dropped data: a hand-render missing
+`--namespace infra` (4 objects instead of 43), and a line-bounded grep that missed a
+multi-line `apps_render "${ALB_ARGS[@]}"` call.
 
-- [ ] **Step 1: Reproduce**
+Task 2's dispatch correctly returned `DONE_WITH_CONCERNS` with **no commit**, refusing to
+manufacture a fix for a gap that was not there. That is the outcome the "diagnose and
+report before fixing" instruction existed to produce.
 
-```bash
-helm template microecom deploy/charts/microecom \
-  -f deploy/charts/microecom/envs/aws.yaml \
-  --set apps.enabled=true --set infra.enabled=false \
-  --set-string apps.irsa.s3RoleArn=<fixture> \
-  --set-string global.appImage.registry=<fixture> \
-  --set-string global.appImage.tag=abc1234
-```
-
-**Use `--set-string` for all three** — the ECR hostname and the ARN both contain dots and colons.
-
-- [ ] **Step 2: Diagnose, and report before fixing**
-
-Determine *why* the services loop yields nothing. Compare against the working `envs/local-k8s.yaml` invocation. Note `local-k8s.yaml` nests service overrides under `apps.apps.<name>` while `aws.yaml` uses `apps.defaults` — establish whether the service list is being replaced rather than merged.
-
-**Report the diagnosis and your estimate of the repair before making it.** If it is structural — the subchart cannot express what the overlay does — say so plainly rather than forcing a fix.
-
-- [ ] **Step 3: Fix**
-
-Smallest change that makes the chart render the apps for aws. Do not restructure the chart to make a diff match; a difference that reveals a real design gap is a finding, not an obstacle.
-
-- [ ] **Step 4: Verify**
-
-The render succeeds and produces Deployments, Services, ExternalSecrets and an ALB ingress. Exact equality with the oracle is Task 3's job — here, non-empty and structurally plausible is enough.
-
-- [ ] **Step 5: Confirm no regression**
-
-`bash deploy/charts/microecom/tests/render-test.sh` → **268 passed, 0 failed**. The local-k8s path must be untouched.
-
-- [ ] **Step 6: Commit**
+**Phase 7 is re-scoped to Tasks 3, 4 and 5.**
 
 ---
 
