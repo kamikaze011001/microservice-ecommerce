@@ -530,11 +530,15 @@ k8s-apps-down:
 # k8s-infra-helm recipe (activeDeadlineSeconds + 330s); this target's --timeout
 # is unguarded and could drift with no test failing.
 #
-# ENV=aws additionally REQUIRES the S3 IRSA role ARN, or the render fails by
-# design (see charts/apps/templates/irsa-serviceaccounts.yaml):
-#   make k8s-apps-helm ENV=aws \
-#     HELM_EXTRA='--set apps.irsa.s3RoleArn=$$(terraform output -raw s3_irsa_role_arn)'
-# Phase 7 moves that into the AWS deploy script; this phase only ever runs local.
+# ENV=aws additionally REQUIRES the S3 IRSA role ARN, ECR registry and image
+# tag, or the render fails by design (see charts/apps/templates/
+# irsa-serviceaccounts.yaml and _helpers.tpl's `required` guards). Typing
+# `HELM_EXTRA='--set apps.irsa.s3RoleArn=$$(terraform output -raw
+# s3_irsa_role_arn)'` (plus separately supplying the registry/tag) by hand is
+# what deploy/scripts/aws-deploy.sh (Phase 7) resolves and wires in — see
+# `make deploy ENV=aws` / VERB_deploy_aws below. This target keeps taking
+# HELM_EXTRA directly too, for anyone who wants to call it without going
+# through that helper.
 #
 # k8s-app-secrets prerequisite: the apps chart mounts app-secrets with
 # envFrom.secretRef.optional: true, so a missing Secret doesn't crash pods — it
@@ -679,7 +683,7 @@ k8s-down: k8s-apps-down k8s-cluster-down
 # ============================================================================
 # AWS (ephemeral EKS) — see docs/superpowers/specs/2026-06-10-aws-deployment-design.md
 # ============================================================================
-.PHONY: aws-bootstrap aws-up aws-push aws-infra-up aws-down aws-leak-check aws-all
+.PHONY: aws-bootstrap aws-up aws-push aws-infra-up aws-down aws-leak-check aws-all aws-deploy-apps
 
 # One-time, persistent stack: TF remote-state bucket + DynamoDB lock + budget
 # alarm. Idempotent. Requires aws/bootstrap/terraform.tfvars (budget_email).
@@ -717,6 +721,18 @@ aws-leak-check:
 aws-all:
 	@scripts/aws/up-all.sh
 
+# Resolve the three AWS deploy-time inputs (S3 IRSA role ARN, ECR registry,
+# image tag) and deploy the apps via Helm — replacing the manual
+#   make k8s-apps-helm ENV=aws HELM_EXTRA='--set apps.irsa.s3RoleArn=...'
+# incantation an operator previously had to type (plus separately supply the
+# registry/tag, which envs/aws.yaml deliberately leaves empty). A NEW helper
+# under deploy/ (Phase 7), deliberately not folded into scripts/aws/up-all.sh
+# (frozen) — see docs/superpowers/specs/2026-08-12-aws-cutover-design.md D3.
+# Mapped from `make deploy ENV=aws` via VERB_deploy_aws below. Applies to a
+# live cluster with --wait (via k8s-apps-helm) — COSTS MONEY.
+aws-deploy-apps:
+	@deploy/scripts/aws-deploy.sh
+
 .PHONY: k8s-use k8s-ctx
 
 k8s-ctx:
@@ -752,6 +768,7 @@ k8s-use:
 
 VERB_deploy_compose    := svc-start
 VERB_deploy_k8s        := k8s-apps
+VERB_deploy_aws        := aws-deploy-apps
 VERB_status_compose    := status-compose
 VERB_status_k8s        := k8s-status
 VERB_teardown_compose  := down

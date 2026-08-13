@@ -34,7 +34,7 @@ OUT="$HERE/baseline"
 # baseline file each.
 TARGETS=(
   bootstrap   k8s-bootstrap   aws-all
-  svc-start   k8s-apps
+  svc-start   k8s-apps        aws-deploy-apps
   status      k8s-status
   down        k8s-down        aws-down
   k8s-build   aws-push
