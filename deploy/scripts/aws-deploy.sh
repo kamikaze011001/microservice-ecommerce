@@ -31,9 +31,17 @@
 #        scripts/aws/push-images.sh (ECR registry) already read today.
 #
 #   image tag:
-#     TAG env var (same convention as scripts/aws/push-images.sh), else the
-#     current commit's short SHA (envs/aws.yaml's own comment: "filled from
-#     the build's git sha").
+#     TAG env var, else "dev" — the SAME convention scripts/aws/push-images.sh
+#     and k8s/images/build.sh already default to, and what
+#     k8s/apps/overlays/aws/*/kustomization.yaml pins via `newTag: dev`. This
+#     used to default to `git rev-parse --short HEAD` instead, which is WRONG:
+#     nothing in this repo ever pushes a sha-tagged image (`rev-parse --short`
+#     appeared exactly once in the repo — here), so the first real
+#     `make deploy ENV=aws` after `make aws-push` would give every pod
+#     ImagePullBackOff and then hang for the full 30m `--wait --timeout 30m`
+#     on a billed cluster. envs/aws.yaml's own comment ("filled from the
+#     build's git sha") is aspirational — nothing in this repo tags images by
+#     sha today — and is corrected alongside this.
 #
 # `--set-string` for all three, never `--set`: a plain `--set` treats dots as
 # path separators, so an ECR hostname like
@@ -55,13 +63,24 @@
 #       Real deploy. Delegates to `make k8s-apps-helm ENV=aws` (single
 #       source of truth for the actual helm invocation) with the three
 #       inputs wired into HELM_EXTRA. Applies to a live cluster with --wait
-#       — COSTS MONEY. This is what `make deploy ENV=aws` runs.
+#       — COSTS MONEY. This is what `make deploy ENV=aws` runs. Refuses
+#       unless the current kubectl context is exactly `microecom-eks` (the
+#       same guard scripts/aws/up-all.sh and scripts/aws/infra-up.sh apply
+#       before their own kubectl calls — reproduced here, not copied, since
+#       scripts/ is frozen).
 #
 #   deploy/scripts/aws-deploy.sh --render [-- <extra helm template args>]
 #       Offline `helm template` only — never touches a cluster, never bills
-#       anything. Used for verification/CI (see
-#       deploy/charts/microecom/tests/aws-diff-test.sh, which this mirrors
-#       rather than hand-composes flags against).
+#       anything, no context guard needed. Mirrors
+#       deploy/charts/microecom/tests/aws-diff-test.sh's render invocation
+#       (including `--set infra.enabled=false`) rather than hand-composing
+#       flags a second time.
+#
+#   deploy/scripts/aws-deploy.sh --help | -h
+#       Print this usage and exit 0. Does NOT deploy. Any OTHER argument is
+#       rejected with a usage message and a non-zero exit rather than falling
+#       through to a real deploy — a script whose `--help` (or a typo like
+#       `-render`) silently deploys to production is a trap.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,6 +91,51 @@ fail() {  # fail <what-is-missing> <where-to-get-or-set-it>
   echo "ERROR: $1 -- $2" >&2
   exit 1
 }
+
+usage() {
+  cat <<'EOF' >&2
+Usage: aws-deploy.sh [--render [-- <extra helm template args>]]
+       aws-deploy.sh --help | -h
+
+  (no args)    Real deploy to the live AWS EKS cluster via
+               `make k8s-apps-helm ENV=aws`. Applies with --wait
+               --timeout 30m. COSTS MONEY. Refuses unless the current
+               kubectl context is exactly 'microecom-eks'.
+
+  --render     Offline `helm template` only. Never touches a cluster,
+               never bills anything.
+
+  --help, -h   Print this message and exit 0. Does NOT deploy.
+
+Any other argument is rejected (exit 1) rather than falling through to a
+real deploy.
+EOF
+}
+
+# ── Argument handling FIRST, before any dependency/input resolution, so
+# --help and rejected arguments never risk running any of the resolution
+# below. Only "--render" (optionally with trailing "-- <helm args>") and
+# nothing else reaches the real-deploy path; --help/-h prints usage and
+# exits 0; anything else is a hard reject.
+MODE="install"
+case "${1:-}" in
+  --render)
+    MODE="render"
+    shift
+    [ "${1:-}" = "--" ] && shift
+    ;;
+  --help | -h)
+    usage
+    exit 0
+    ;;
+  "")
+    ;;
+  *)
+    echo "ERROR: unrecognized argument: ${1}" >&2
+    usage
+    exit 1
+    ;;
+esac
 
 command -v helm >/dev/null || fail "helm not found" "install helm and retry"
 
@@ -91,11 +155,10 @@ fi
 [ -n "$ECR_REGISTRY" ] || fail "ecr_registry is empty" "run terraform apply in aws/bootstrap first (see scripts/aws/push-images.sh), or set AWS_TF_OUTPUTS_JSON to a fixture for offline testing"
 
 # ── Resolve image tag ────────────────────────────────────────────────────────
-IMAGE_TAG="${TAG:-}"
-if [ -z "$IMAGE_TAG" ]; then
-  IMAGE_TAG="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)"
-fi
-[ -n "$IMAGE_TAG" ] || fail "image tag is empty" "set TAG=<tag> (same convention as scripts/aws/push-images.sh), or run this from inside the git repo so a commit sha can be derived"
+# Default "dev", NOT a git sha: matches scripts/aws/push-images.sh, k8s/images/build.sh,
+# and k8s/apps/overlays/aws/*/kustomization.yaml's `newTag: dev`. A sha default here would
+# name a tag that has never once been pushed to ECR by anything in this repo (see header).
+IMAGE_TAG="${TAG:-dev}"
 
 # The load-bearing --set-string flags. Copied in shape from the reference
 # invocation in aws-diff-test.sh rather than composed by hand a fourth time.
@@ -105,20 +168,26 @@ HELM_SET_STRING_FLAGS=(
   --set-string "global.appImage.tag=${IMAGE_TAG}"
 )
 
-MODE="install"
-if [ "${1:-}" = "--render" ]; then
-  MODE="render"
-  shift
-  [ "${1:-}" = "--" ] && shift
-fi
-
 if [ "$MODE" = "render" ]; then
   echo "==> offline render (helm template) — registry=${ECR_REGISTRY} tag=${IMAGE_TAG}" >&2
   exec helm template microecom "$CHART_DIR" --namespace infra \
     -f "$CHART_DIR/envs/aws.yaml" \
-    --set apps.enabled=true \
+    --set apps.enabled=true --set infra.enabled=false \
     "${HELM_SET_STRING_FLAGS[@]}" \
     "$@"
+fi
+
+# ── Context guard (real-deploy path only) — reproduced from
+# scripts/aws/up-all.sh:115-119 and scripts/aws/infra-up.sh:23-27 (frozen,
+# not edited). An earlier phase ran a seeder against an unrelated live
+# cluster because nothing pinned the context; both scripts this one
+# replaces guard it, so this one must too.
+command -v kubectl >/dev/null || fail "kubectl not found" "install kubectl and retry"
+CTX="$(kubectl config current-context 2>/dev/null || true)"
+if [ "$CTX" != "microecom-eks" ]; then
+  echo "✋ kubectl context is '${CTX:-<none>}', not 'microecom-eks'. Aborting before apply." >&2
+  echo "   Run: aws eks update-kubeconfig --name microecom-eks --region ap-southeast-1 --alias microecom-eks" >&2
+  exit 1
 fi
 
 echo "==> deploying AWS apps (registry=${ECR_REGISTRY} tag=${IMAGE_TAG}) via 'make k8s-apps-helm ENV=aws' — this applies to a live cluster with --wait and COSTS MONEY" >&2

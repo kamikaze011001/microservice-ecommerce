@@ -11,10 +11,13 @@
 # §1 CORRECTION and §4.
 #
 # LEFT  = `helm template ... -f envs/aws.yaml --set apps.enabled=true
-#          --set infra.enabled=false` (--namespace infra is LOAD-BEARING —
-#          without it the render silently collapses to 4 objects instead of
+#          --set infra.enabled=false` (`--set apps.enabled=true` is
+#          LOAD-BEARING — the apps subchart defaults to false, and without
+#          this flag the render silently collapses to 3 objects instead of
 #          ~43, which is exactly the controller's own withdrawn premise this
-#          phase corrects).
+#          phase corrects. `--namespace infra` was an earlier, ALSO WRONG
+#          explanation for that same collapse — measured to make NO
+#          difference, 43 either way — see design doc §1 CORRECTION).
 # RIGHT = tests/aws-oracle/oracle.yaml, captured by capture.sh from
 #          `kubectl kustomize k8s/apps/overlays/aws` PLUS the out-of-band
 #          s3-irsa-serviceaccounts.yaml (D1). Nothing here touches a live
@@ -169,7 +172,7 @@ chart_kinds = kind_counts(chart_docs)
 if len(oracle_docs) < FLOOR:
     guard_failures.append(f"oracle has only {len(oracle_docs)} objects (floor {FLOOR}) -- oracle.yaml may be stale or truncated")
 if len(chart_docs) < FLOOR:
-    guard_failures.append(f"chart render has only {len(chart_docs)} objects (floor {FLOOR}) -- this is the Task-2-class collapse (missing --namespace infra renders 4, not ~43)")
+    guard_failures.append(f"chart render has only {len(chart_docs)} objects (floor {FLOOR}) -- this is the Task-2-class collapse (missing --set apps.enabled=true renders 3, not ~43)")
 
 for kind, expected in REQUIRED_KIND_COUNTS.items():
     o_n, c_n = oracle_kinds.get(kind, 0), chart_kinds.get(kind, 0)

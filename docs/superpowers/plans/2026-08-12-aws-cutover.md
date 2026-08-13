@@ -88,8 +88,10 @@ kind except Namespace (3 vs 1, a pre-existing umbrella behaviour). `render-test.
 already renders apps with `envs/aws.yaml` and asserts ALB, IRSA and ESO properties.
 
 The two false claims came from commands that silently dropped data: a hand-render missing
-`--namespace infra` (4 objects instead of 43), and a line-bounded grep that missed a
-multi-line `apps_render "${ALB_ARGS[@]}"` call.
+`--set apps.enabled=true` (3 objects instead of 43 — an earlier explanation blamed a
+missing `--namespace infra`, but that was measured to make NO difference, 43 either way,
+and was itself withdrawn), and a line-bounded grep that missed a multi-line
+`apps_render "${ALB_ARGS[@]}"` call.
 
 Task 2's dispatch correctly returned `DONE_WITH_CONCERNS` with **no commit**, refusing to
 manufacture a fix for a gap that was not there. That is the outcome the "diagnose and

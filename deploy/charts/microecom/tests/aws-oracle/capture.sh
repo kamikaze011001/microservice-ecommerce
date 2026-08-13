@@ -55,16 +55,34 @@ S3_ROLE_ARN="$(jq -r '.s3_irsa_role_arn' "$FIXTURE")"
 # a plain `sed s|...|...|g`, not envsubst, not a template engine.
 irsa_out="$(sed "s|PLACEHOLDER_S3_ROLE_ARN|${S3_ROLE_ARN}|g" "$OVERLAY/s3-irsa-serviceaccounts.yaml")"
 
+echo
+echo "== Assertion 1: PLACEHOLDER_S3_ROLE_ARN was actually substituted =="
+if grep -q 'PLACEHOLDER_S3_ROLE_ARN' <<<"$irsa_out"; then
+  bad "PLACEHOLDER_S3_ROLE_ARN is still present in the templated output -- the sed substitution is a no-op"
+elif ! grep -qF -- "$S3_ROLE_ARN" <<<"$irsa_out"; then
+  bad "substituted output does not contain the fixture's ARN ('$S3_ROLE_ARN') -- substitution produced the wrong value"
+else
+  ok "placeholder absent, fixture ARN ('$S3_ROLE_ARN') present in the templated ServiceAccounts"
+fi
+
 # ── Compose: concatenate both halves into one multi-doc YAML oracle. ────────────
+# Written to a TEMP file first, NOT $OUT directly: $OUT is committed evidence
+# (see deploy/scripts/tests/capture-baseline.sh's header -- this is the fourth
+# silently-invalidatable oracle in this project). Promoting straight to $OUT
+# before assertions run means a broken capture overwrites the last-known-good
+# oracle unconditionally. TMP_OUT is only moved into place at the very end,
+# after every assertion below has passed.
+TMP_OUT="$(mktemp "${TMPDIR:-/tmp}/aws-oracle-capture.XXXXXX.yaml")"
+trap 'rm -f "$TMP_OUT"' EXIT
 {
   printf '%s\n' "$kustomize_out"
   printf -- '---\n'
   printf '%s\n' "$irsa_out"
-} > "$OUT"
-echo "▶ wrote $OUT"
+} > "$TMP_OUT"
+echo "▶ composed to a temp file -- $OUT is left untouched until all assertions pass"
 
 # ── Assertions, via python3+pyyaml (yq is not installed in this environment). ───
-report="$(python3 - "$OUT" "$OVERLAY/kustomization.yaml" <<'PYEOF'
+report="$(python3 - "$TMP_OUT" "$OVERLAY/kustomization.yaml" <<'PYEOF'
 import sys, yaml, json
 from collections import Counter
 
@@ -120,7 +138,7 @@ n_ing="$(get '.kinds.Ingress // 0')"
 missing_es="$(get '.deployments_without_external_secret | join(",")')"
 
 echo
-echo "== Assertion 1: both halves contributed (separately) =="
+echo "== Assertion 2: both halves contributed (separately) =="
 
 if [[ "$kustomize_count" -gt 0 && "$n_deploy" == "10" && "$n_svc" == "10" && "$n_es" == "9" \
       && "$n_hpa" == "5" && "$n_sa" == "1" && "$n_role" == "1" && "$n_rb" == "1" && "$n_ns" == "1" ]]; then
@@ -147,7 +165,7 @@ else
 fi
 
 echo
-echo "== Assertion 2: the 9-vs-10 asymmetry is exactly 'frontend' =="
+echo "== Assertion 3: the 9-vs-10 asymmetry is exactly 'frontend' =="
 if [[ "$missing_es" == "frontend" ]]; then
   ok "exactly one Deployment lacks an ExternalSecret, and it is 'frontend'"
 else
@@ -156,9 +174,13 @@ fi
 
 echo
 echo "== Summary =="
-echo "  total objects in oracle.yaml: $total  (kustomize half: $kustomize_count, IRSA half: $irsa_count)"
+echo "  total objects in temp capture: $total  (kustomize half: $kustomize_count, IRSA half: $irsa_count)"
 echo "  $pass passed, $fail failed"
 
 if [[ "$fail" -gt 0 ]]; then
+  echo "▶ assertions FAILED -- leaving $OUT untouched (oracle.yaml is committed evidence, not a cache)" >&2
   exit 1
 fi
+
+mv "$TMP_OUT" "$OUT"
+echo "▶ wrote $OUT"
