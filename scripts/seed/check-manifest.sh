@@ -1,7 +1,7 @@
 #!/bin/bash
 # Gate for products-manifest.json.
 #
-# The k6 stress jobs (k8s/apps/base/k6-stress/*.yaml) hardcode product
+# The k6 stress jobs (deploy/k6-stress/*.yaml) hardcode product
 # ObjectIds 67c0…0001-0004. Renumbering the catalog silently breaks them,
 # and the failure surfaces far from the cause. So the IDs and their stock
 # levels are FROZEN and checked here.

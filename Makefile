@@ -613,8 +613,8 @@ k8s-mysql-status:
 k8s-payment-stress:
 	@kubectl -n apps delete job k6-payment-stress --ignore-not-found
 	@kubectl -n apps create configmap k6-payment-script \
-	  --from-file=k8s/apps/base/k6-stress/payment-flow.js --dry-run=client -o yaml | kubectl apply -f -
-	@kubectl apply -f k8s/apps/base/k6-stress/payment-job.yaml
+	  --from-file=deploy/k6-stress/payment-flow.js --dry-run=client -o yaml | kubectl apply -f -
+	@kubectl apply -f deploy/k6-stress/payment-job.yaml
 	@echo "k6 payment stress running. Watch with: make k8s-payment-stress-logs"
 	@echo "Watch HPA: kubectl -n apps get hpa -w"
 
@@ -645,12 +645,12 @@ k8s-storefront-stress:
 k8s-storefront-run:
 	@kubectl -n apps delete job k6-storefront --ignore-not-found
 	@kubectl -n apps create configmap k6-storefront-script \
-	  --from-file=k8s/apps/base/k6-stress/storefront-flow.js --dry-run=client -o yaml | kubectl apply -f -
+	  --from-file=deploy/k6-stress/storefront-flow.js --dry-run=client -o yaml | kubectl apply -f -
 	@sed -e 's/PROFILE_PLACEHOLDER/$(PROFILE)/' \
 	     -e 's/PEAK_RATE_PLACEHOLDER/$(PEAK_RATE)/' \
 	     -e 's/MAX_VUS_PLACEHOLDER/$(MAX_VUS)/' \
 	     -e 's/DURATION_PLACEHOLDER/$(STRESS_DUR)/' \
-	     k8s/apps/base/k6-stress/storefront-job.yaml | kubectl apply -f -
+	     deploy/k6-stress/storefront-job.yaml | kubectl apply -f -
 	@echo "k6 storefront [$(PROFILE)] running. Watch with: make k8s-storefront-logs"
 	@echo "Watch HPA: kubectl -n apps get hpa -w"
 
