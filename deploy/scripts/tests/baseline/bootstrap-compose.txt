@@ -1,10 +1,14 @@
 bash scripts/infra/up.sh
 bash scripts/vault/init.sh
 bash scripts/vault/unseal.sh
-bash scripts/vault/import-secrets.sh
+bash deploy/scripts/secrets-seed.sh --env compose
 bash scripts/kafka/topics.sh
 bash scripts/kafka/mongo-connector.sh
 bash scripts/maven/install-modules.sh
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory seed ENV=compose STAGE=pre-apps
+bash deploy/scripts/seed.sh --env compose --stage pre-apps
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory svc-start
 bash scripts/services/start.sh all
-bash scripts/seed/all.sh
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory seed ENV=compose STAGE=post-apps
+bash deploy/scripts/seed.sh --env compose --stage post-apps
 echo "✓ Bootstrap complete — stack is up"

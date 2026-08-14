@@ -72,10 +72,27 @@ help:
 # recipe and prerequisites, moved here verbatim under the exception documented
 # there — do not add a `bootstrap:` target in this file.
 .PHONY: bootstrap-compose
-# NOTE: svc-start runs BEFORE seed-data because docker/ecommerce.sql is a
-# data-only dump. Tables are created by Hibernate ddl-auto on first service
-# boot, then the seed inserts rows. Reordering these breaks fresh bootstrap.
-bootstrap-compose: infra-up vault-init vault-unseal vault-import kafka-topics mongo-connector build svc-start seed-data
+# NOTE: svc-start runs BEFORE the post-apps seed stage because docker/
+# ecommerce.sql is a data-only dump. Tables are created by Hibernate ddl-auto
+# on first service boot, then the seed inserts rows. Reordering this breaks
+# fresh bootstrap (ERROR 1146 — see k8s/CLAUDE.md and deploy/scripts/seed.sh's
+# post-apps precondition, which exists precisely to catch this).
+#
+# Phase 8 Task 2: repointed off the pre-Phase-4/5 `vault-import` /
+# `seed-data` prerequisites (which read docker/vault-configs/ and
+# scripts/seed/ — trees Phase 8 will delete) onto the canonical
+# `secrets-seed` (Phase 4) and `seed` (Phase 5) paths. secrets-seed relies on
+# its own ENV default (compose) since prerequisites can't carry variable
+# assignments; the two `seed` stages are invoked explicitly in the recipe
+# body (not as prerequisites) because the same target name can't appear twice
+# in one prerequisite list with different STAGE values — pre-apps (mongo +
+# product images) must run before svc-start, post-apps (ecommerce.sql +
+# derived inventory rows + the inventory-service reconcile) must run after.
+# Verified live 2026-08-14: `make infra-up && make bootstrap ENV=compose`.
+bootstrap-compose: infra-up vault-init vault-unseal secrets-seed kafka-topics mongo-connector build
+	@$(MAKE) --no-print-directory seed ENV=compose STAGE=pre-apps
+	@$(MAKE) --no-print-directory svc-start
+	@$(MAKE) --no-print-directory seed ENV=compose STAGE=post-apps
 	@echo "✓ Bootstrap complete — stack is up"
 
 .PHONY: up
