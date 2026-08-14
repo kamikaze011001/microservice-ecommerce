@@ -110,10 +110,21 @@ Losing them would cost more than the refactor saved.
 
 **Out:** `aws/` and the `deploy/terraform/` move (D2); any change to application code.
 
-**Needs a decision inside the phase:** the k6 stress-test manifests live in
-`k8s/apps/base/k6-stress/` and reference `docker/*.json`. They die with `k8s/` unless
-moved. Whether the stress path moves into `deploy/` or is dropped is a judgement call
-that must be made explicitly, not discovered.
+### D5 — the k6 stress harness moves into `deploy/`
+
+The stress manifests live in `k8s/apps/base/k6-stress/` (6 tracked files) and reference
+`docker/*.json`, so they are entangled with two things being deleted. **Human decision:
+relocate them under `deploy/` and repoint their seed references at `deploy/seed/`**, so
+`make k8s-payment-stress` and the three `k8s-storefront-*` targets keep working.
+
+Justification: this harness produced several of the project's most valuable findings —
+the Atomikos pool exhaustion under load, the inventory oversell race, and the replica-lag
+measurements at peak. Rebuilding that capability from scratch would cost far more than
+the migration.
+
+*Rejected:* carving out a residual `k8s/` containing only the harness (leaves a directory
+whose name no longer means what it says), and deleting it with the tree (git remembers,
+but the capability would need rebuilding to use again).
 
 ---
 
@@ -143,8 +154,9 @@ is the characteristic failure of this work.
 - **Deleting `k8s/` removes the AWS oracle's source** (`k8s/apps/overlays/aws`). Freeze
   before delete, in that order.
 - **`k8s/CLAUDE.md`'s scars** (D4). Migrate before deletion or lose them permanently.
-- **The k6 manifests** live in `k8s/` and reference `docker/*.json` — they move or die
-  together, and that is a decision, not a discovery.
+- **The k6 manifests** move under `deploy/` (D5) and their seed references repoint. If
+  the move is wrong, the failure surfaces only when someone next runs a stress test —
+  long after this phase merges.
 - **Compose is the daily driver.** A wrong repointed chain is felt immediately, on every
   run.
 - **Deletion is irreversible in practice.** Git remembers, but a half-deleted tree
