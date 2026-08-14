@@ -23,6 +23,22 @@
 # needed) and the IRSA half is templated with a fixture value, never applied.
 #
 # Usage: bash deploy/charts/microecom/tests/aws-oracle/capture.sh
+#
+# ── FROZEN — Phase 8 Task 4 (docs/superpowers/specs/2026-08-14-cleanup-cutover-
+# design.md D3). Task 5 of this same phase deletes this script's source:
+# k8s/apps/overlays/aws (part of k8s/, which is deleted whole). THE SOURCE IS
+# GOING AWAY AND oracle.yaml MUST NEVER BE REGENERATED AGAINST IT AGAIN. It is
+# the last known-good capture of the OLD kustomize aws overlay's output and is
+# committed evidence, not a cache — deploy/charts/microecom/tests/aws-diff-
+# test.sh diffs the chart's aws-with-apps render against exactly these bytes.
+# Regenerating destroys the only thing that suite has left to check against
+# once the source is gone.
+#
+# This is the fourth instance in this project of an oracle that can be
+# silently invalidated by regeneration (see deploy/scripts/tests/
+# capture-baseline.sh's header for the other three and the incident that
+# motivated this treatment). Refuses to run unless FORCE=1 is set:
+#   FORCE=1 bash deploy/charts/microecom/tests/aws-oracle/capture.sh   (regenerate on purpose)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,6 +46,11 @@ ROOT="$(cd "$SCRIPT_DIR/../../../../.." && pwd)"
 OVERLAY="$ROOT/k8s/apps/overlays/aws"
 FIXTURE="$SCRIPT_DIR/../fixtures/aws-tf-outputs.json"
 OUT="$SCRIPT_DIR/oracle.yaml"
+
+if [ -s "$OUT" ] && [ "${FORCE:-0}" != "1" ]; then
+  echo "REFUSED: $OUT already exists -- committed evidence, not a cache. The source (k8s/apps/overlays/aws) is scheduled for deletion; do not regenerate. Set FORCE=1 to override on purpose." >&2
+  exit 1
+fi
 
 pass=0
 fail=0
