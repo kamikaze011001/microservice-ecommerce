@@ -478,20 +478,29 @@ k8s-seed-images:
 # (2026-08-07) — the 268 render tests cannot catch it, because the conflict is
 # between the chart and pre-existing cluster state, not inside the rendered YAML.
 #
-# NECESSARY BUT NOT SUFFICIENT. This unblocks the namespaces only. On a cluster
-# brought up the kubectl way (`make k8s-bootstrap`), `make k8s-apps-helm` still
-# aborts afterwards, because it does NOT set infra.enabled=false — the umbrella
-# renders the whole infra subchart, which vendors grafana
-# (charts/infra/charts/grafana), while `k8s-platform` has already installed
-# grafana as its OWN standalone Helm release. Helm then refuses to adopt
-# ServiceAccount/grafana out of release "grafana" into release "microecom".
-# Same applies to the other standalone platform releases.
+# NECESSARY BUT NOT SUFFICIENT (historically). This unblocked the namespaces
+# only. Before Phase 8 Task 1, `make k8s-apps-helm` still aborted afterwards,
+# because it did NOT set infra.enabled=false — the umbrella rendered the whole
+# infra subchart, which vendors grafana (charts/infra/charts/grafana), while
+# `k8s-platform` had already installed grafana as its OWN standalone Helm
+# release. Helm then refused to adopt ServiceAccount/grafana out of release
+# "grafana" into release "microecom". Same applies to the other standalone
+# platform releases.
 #
-# So the Helm app path is only reachable on a cluster brought up the Helm way:
-#   make k8s-cluster-up && make k8s-infra-helm && make k8s-apps-helm
-# It is NOT a drop-in after `make k8s-bootstrap`. Verified live 2026-08-07:
-# k8s-apps-down + k8s-apps-helm aborted on ServiceAccount/grafana, and
-# `make k8s-apps` restored the kustomize path cleanly (10/10 pods, catalog 200).
+# FIXED (Phase 8 Task 1): the recipe below now passes --set infra.enabled=false
+# itself, mirroring deploy/scripts/aws-deploy.sh, so the umbrella never renders
+# the infra subchart here and the collision cannot occur. Reproduced live
+# 2026-08-14 on this exact cluster: `k8s-apps-down` + `k8s-apps-helm` (pre-fix)
+# aborted with "ServiceAccount \"grafana\" in namespace \"monitoring\" ...
+# current value is \"grafana\"" — confirming the diagnosis above verbatim.
+# With the fix, `k8s-apps-down` + `k8s-apps-helm` deploys cleanly (10/10 pods,
+# catalog serving 30 products through the gateway).
+#
+# It is still NOT a drop-in after `make k8s-bootstrap` (kubectl path) without
+# first running `k8s-apps-down` — the two app paths remain mutually exclusive
+# on one cluster (see the target comment below). `make k8s-apps` restored the
+# kustomize path cleanly on 2026-08-07 (10/10 pods, catalog 200) when this was
+# last needed as a rollback.
 #
 # On the pure kubectl path (`k8s-apps`) no Helm release exists and the keys are
 # inert — Helm deletes what its release manifest lists, never what merely
@@ -550,7 +559,7 @@ k8s-apps-helm: k8s-app-secrets
 	@helm upgrade --install microecom deploy/charts/microecom \
 	  --namespace infra --create-namespace \
 	  -f deploy/charts/microecom/envs/$(or $(ENV),local-k8s).yaml \
-	  --set apps.enabled=true $(HELM_EXTRA) \
+	  --set apps.enabled=true --set infra.enabled=false $(HELM_EXTRA) \
 	  --wait --timeout 30m
 	@kubectl -n apps rollout status deployment --timeout=10m
 
@@ -647,13 +656,52 @@ k9s:
 	 echo "k9s → context $$ctx (ENV=$${ENV:-local}), namespace apps"; \
 	 K9S_CONFIG_DIR="$(CURDIR)/k8s/k9s" k9s --context "$$ctx" -n apps
 
-.PHONY: k8s-bootstrap k8s-down
+.PHONY: k8s-bootstrap k8s-bootstrap-helm k8s-down
 
 # One-shot: cluster -> infra -> images -> seed -> apps. Idempotent —
 # safe to re-run after editing manifests or pulling new code. Mirrors
 # the docker-compose `make bootstrap` flow but for the minikube cluster.
 k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build-reuse k8s-seed k8s-seed-images k8s-apps k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest
 	@echo "==> k8s bootstrap complete"
+	@$(MAKE) k8s-status
+	@echo ""
+	@echo "================================================================"
+	@echo "  Final steps:"
+	@echo ""
+	@echo "  1. Add these lines to /etc/hosts (one-time):"
+	@echo "       127.0.0.1 microecom.local"
+	@echo "       127.0.0.1 api.microecom.local"
+	@echo "       127.0.0.1 media.microecom.local"
+	@echo "       127.0.0.1 grafana.microecom.local"
+	@echo "       127.0.0.1 vm.microecom.local"
+	@echo ""
+	@echo "  2. Make sure the ingress tunnel is up (k8s-cluster-up starts it when"
+	@echo "     sudo is already cached; otherwise start it by hand):"
+	@echo "       sudo -v && make k8s-tunnel"
+	@echo ""
+	@echo "  3. Verify:"
+	@echo "       curl -i http://api.microecom.local/product-service/v1/products"
+	@echo "       open http://microecom.local"
+	@echo "================================================================"
+
+# Helm-based one-shot, alongside `k8s-bootstrap` (kubectl/kustomize) — same
+# shape (cluster -> infra -> images -> seed -> apps), with the two Helm swaps:
+# k8s-infra-helm instead of k8s-infra, k8s-apps-helm instead of k8s-apps. The
+# bootstrap-namespace seed Jobs (k8s-seed / k8s-seed-mysql / k8s-seed-inventory
+# / k8s-seed-perftest) are unchanged — they run against the infra/mongo/vault/
+# minio/mysql Services by cluster DNS, which the umbrella chart's infra
+# subchart provisions under the same names k8s-infra does, regardless of which
+# path created them. NOT composable with `k8s-bootstrap` on one live cluster
+# (see k8s-apps-helm's comment above); pick one path per cluster.
+#
+# Phase 8 Task 1: this is the target VERB_bootstrap_k8s now resolves to (see
+# the dispatch table near the bottom of this file). Verified live 2026-08-14
+# only for its k8s-infra-helm + k8s-apps-helm halves (already-running cluster,
+# no full from-scratch rebuild performed — that takes ~35m and was out of
+# scope for this task); the seed Jobs are unchanged from the already-proven
+# k8s-bootstrap chain.
+k8s-bootstrap-helm: k8s-cluster-up k8s-infra-helm k8s-build-reuse k8s-seed k8s-seed-images k8s-apps-helm k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest
+	@echo "==> k8s bootstrap (helm) complete"
 	@$(MAKE) k8s-status
 	@echo ""
 	@echo "================================================================"
@@ -793,7 +841,7 @@ k8s-use:
 # just the dispatch macro below, via the same $(or $(ENV),...) idiom.
 
 VERB_deploy_compose    := svc-start
-VERB_deploy_k8s        := k8s-apps
+VERB_deploy_k8s        := k8s-apps-helm
 VERB_deploy_aws        := aws-deploy-apps
 VERB_status_compose    := status-compose
 VERB_status_k8s        := k8s-status
@@ -810,7 +858,7 @@ VERB_rebuild_k8s       := k8s-rebuild
 # mapping points at `bootstrap-compose`, not `bootstrap` (which would recurse
 # into this dispatcher).
 VERB_bootstrap_compose := bootstrap-compose
-VERB_bootstrap_k8s     := k8s-bootstrap
+VERB_bootstrap_k8s     := k8s-bootstrap-helm
 VERB_bootstrap_aws     := aws-all
 
 # image-build: deliberately NO VERB_image-build_compose. Compose builds no
@@ -849,12 +897,35 @@ VERB_ENV := $(if $(filter command line,$(origin ENV)),$(ENV),)
 # An unmapped (verb, env) pair fails HERE, by construction — no per-verb
 # special case. A verb that silently succeeds where it has nothing to do is
 # indistinguishable from one that worked.
+#
+# `ENV=` on the recursive $(MAKE) call (Phase 8 Task 1): the verb-env
+# vocabulary this dispatch resolves on (compose/k8s/aws, selected via
+# VERB_ENV above) is a DIFFERENT namespace from the bare $(ENV) some resolved
+# targets read for themselves (k8s-apps-helm / k8s-bootstrap-helm default to
+# "local-k8s", not "k8s"). GNU Make automatically forwards a command-line
+# variable override to recursive $(MAKE) invocations, so without this,
+# `make deploy ENV=k8s` resolves t="k8s-apps-helm" but then leaks the literal
+# string "k8s" into that target's own $(or $(ENV),local-k8s) — which is
+# non-empty, so the default never fires, and it looks for the nonexistent
+# deploy/charts/microecom/envs/k8s.yaml instead of envs/local-k8s.yaml.
+# Measured live 2026-08-14 via verb-equivalence-test.sh Part 1 going from
+# 21/21 to 19/21 the moment VERB_deploy_k8s / VERB_bootstrap_k8s were
+# repointed at these two ENV-aware targets — every one of the 12 previously
+# resolved targets was ENV-blind (see verb-equivalence-test.sh's own
+# comment), so this exact leak was latent, never triggered, until now.
+# `ENV=` (empty) resets the sub-make's command-line override back to unset,
+# so `$(or $(ENV),local-k8s)` correctly falls through to the target's own
+# default — restoring old behaviour (VERB_deploy_k8s used to point at the
+# ENV-blind k8s-apps, where this never mattered) rather than the target's own
+# `ENV=aws` direct-invocation path silently changing. Safe for every current
+# VERB_* mapping: aws-deploy-apps / aws-all / aws-push / aws-down are all
+# ENV-blind scripts that never read $(ENV) themselves.
 dispatch = t="$(VERB_$(1)_$(or $(VERB_ENV),compose))"; \
   if [ -z "$$t" ]; then \
     echo "make $(1): not applicable for ENV=$(or $(VERB_ENV),compose)$(if $(VERB_$(1)_$(or $(VERB_ENV),compose)_WHY), — $(VERB_$(1)_$(or $(VERB_ENV),compose)_WHY))" >&2; \
     exit 1; \
   fi; \
-  $(MAKE) --no-print-directory $$t
+  $(MAKE) --no-print-directory $$t ENV=
 
 .PHONY: deploy status teardown rebuild bootstrap image-build
 deploy:

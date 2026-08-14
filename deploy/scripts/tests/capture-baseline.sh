@@ -68,6 +68,14 @@ OUT="$HERE/baseline"
 # the REFUSE-TO-OVERWRITE / frozen-evidence comment above. `bootstrap-compose`
 # / `status-compose` capture the same recipes under the names that actually
 # hold them today.
+#
+# k8s-apps-helm / k8s-bootstrap-helm added in Phase 8 Task 1 (the k8s Helm
+# cut-over): VERB_deploy_k8s / VERB_bootstrap_k8s now resolve to these targets
+# instead of k8s-apps / k8s-bootstrap, so verb-equivalence-test.sh needs a
+# baseline for each — captured fresh here since neither existed as a wrapped
+# target before this cut-over. The OLD k8s-apps / k8s-bootstrap baselines stay
+# in TARGETS and in the tree unchanged (those targets aren't deleted, only no
+# longer what the verbs dispatch to).
 TARGETS=(
   bootstrap-compose  k8s-bootstrap   aws-all
   svc-start   k8s-apps        aws-deploy-apps
@@ -75,6 +83,7 @@ TARGETS=(
   down        k8s-down        aws-down
   k8s-build   aws-push
   svc-restart k8s-rebuild
+  k8s-apps-helm       k8s-bootstrap-helm
 )
 
 mkdir -p "$OUT"

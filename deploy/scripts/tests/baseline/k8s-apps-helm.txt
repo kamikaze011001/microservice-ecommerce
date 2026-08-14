@@ -1,0 +1,21 @@
+for ns in apps bootstrap monitoring; do \
+	  kubectl create namespace $ns --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
+	  kubectl label namespace $ns app.kubernetes.io/managed-by=Helm --overwrite >/dev/null; \
+	  kubectl annotate namespace $ns \
+	    meta.helm.sh/release-name=microecom \
+	    meta.helm.sh/release-namespace=infra --overwrite >/dev/null; \
+	done
+if [ -f k8s/.env ]; then \
+	  kubectl create secret generic app-secrets --namespace apps \
+	    --from-env-file=k8s/.env --dry-run=client -o yaml | kubectl apply -f - ; \
+	else \
+	  echo "warn: k8s/.env missing — creating empty app-secrets Secret. Copy k8s/.env.example to k8s/.env and re-run k8s-app-secrets for working mail/PayPal."; \
+	  kubectl create secret generic app-secrets --namespace apps \
+	    --dry-run=client -o yaml | kubectl apply -f - ; \
+	fi
+helm upgrade --install microecom deploy/charts/microecom \
+	  --namespace infra --create-namespace \
+	  -f deploy/charts/microecom/envs/local-k8s.yaml \
+	  --set apps.enabled=true --set infra.enabled=false  \
+	  --wait --timeout 30m
+kubectl -n apps rollout status deployment --timeout=10m
