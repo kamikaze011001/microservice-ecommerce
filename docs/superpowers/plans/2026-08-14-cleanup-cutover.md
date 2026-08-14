@@ -56,7 +56,11 @@ Then: all app pods Ready, and the catalog returns products through the gateway (
 
 - [ ] **Step 4: Repoint the verbs**
 
-`VERB_deploy_k8s := k8s-apps-helm` and `VERB_bootstrap_k8s` at the Helm-based chain. **`verb-equivalence-test.sh` will fail** — its baselines pin the old targets. Update the baselines *for these two mappings only*, using `FORCE=1` deliberately, and **never touch `baseline/bootstrap.txt` or `baseline/status.txt`** (frozen Phase 6 evidence).
+`VERB_deploy_k8s := k8s-apps-helm` and `VERB_bootstrap_k8s` at the Helm-based chain. **`verb-equivalence-test.sh` will fail** — it will resolve the verb to a target with no baseline.
+
+**Do NOT use `FORCE=1`.** `capture-baseline.sh` skips existing files by design, so simply *add the new target(s)* to its `TARGETS` list and run it normally: only the missing baselines are captured, every existing one is left untouched. `FORCE=1` would regenerate all of them against current state — exactly the hazard Phase 7 guarded against, and it would silently destroy frozen evidence.
+
+**Never touch `baseline/bootstrap.txt` or `baseline/status.txt`** under any circumstances (frozen Phase 6 pre-conversion evidence).
 
 - [ ] **Step 5: If Helm deployment fails, STOP**
 
