@@ -37,7 +37,7 @@ design doc §2/§7 for what was deliberately left alone.
 | verb | compose | k8s | aws |
 |---|---|---|---|
 | `bootstrap` | `bootstrap-compose` | `k8s-bootstrap` | `aws-all` |
-| `deploy` | `svc-start` | `k8s-apps` | *(Phase 7 — unmapped, fails)* |
+| `deploy` | `svc-start` | `k8s-apps` | `aws-deploy-apps` (Phase 7) |
 | `seed` | ✅ (Phase 5, `deploy/seed/`) | ✅ | ✅ |
 | `secrets-seed` | ✅ (Phase 4, `deploy/secrets/`) | ✅ | ✅ |
 | `status` | `status-compose` | `k8s-status` | *(unmapped, fails)* |
@@ -111,6 +111,22 @@ gateway before and after. It deliberately does **not** run
 repo depends on; `teardown`'s dispatch mapping is proven by the offline
 suite instead.
 
+**`deploy/scripts/tests/capture-baseline.sh` is the oracle behind
+`verb-test-equivalence`, and it refuses to overwrite what it already
+captured.** A bare re-run only fills in a baseline file that doesn't exist
+yet; skip `FORCE=1` and it leaves every existing `baseline/*.txt` untouched.
+`baseline/bootstrap.txt` and `baseline/status.txt` specifically are **frozen,
+pre-conversion evidence** — captured *before* Task 3 of the unified-verbs
+work turned `bootstrap`/`status` into dispatchers, from when those names
+still held their real recipe. They are the only proof the move was verbatim,
+so they are never regenerated, not even with `FORCE=1` — the ongoing targets
+are `bootstrap-compose`/`status-compose` instead. This guard exists because
+an earlier bare re-run silently overwrote both files with the dispatcher's
+one-line expansion instead of the original recipe (see task-4-report.md) —
+the fourth instance in this project of an oracle that can be invalidated by
+regenerating it (Phase 4's secrets goldens, Phase 5's seed goldens, and the
+AWS oracle below are the others).
+
 ### Verification status
 
 **Proven live, compose only.** `make verb-live-test`
@@ -128,12 +144,13 @@ live — see "Test suites" above for why; its expansion is covered by the
 offline suite below.
 
 **Proven offline, all three envs.** `make verb-test-equivalence`
-(`deploy/scripts/tests/verb-equivalence-test.sh`): **20 checks, 20 passed, 0
-failed** — 14 verb×env dispatch mappings (every cell in the table above that
-isn't `✅`/unmapped), the declared `image-build ENV=compose` failure, and the
-5 bare-`$(ENV)` default resolutions (`k9s`, `k8s-use`, `k8s-platform`,
-`k8s-infra-helm`, `k8s-apps-helm`). No backend, no credentials, no cluster;
-runs from any cwd.
+(`deploy/scripts/tests/verb-equivalence-test.sh`): **21 checks, 21 passed, 0
+failed** — 15 verb×env dispatch mappings (every cell in the table above that
+isn't `✅`/unmapped, including Phase 7's `deploy`/`aws` → `aws-deploy-apps`,
+added when `VERB_deploy_aws` was filled in), the declared `image-build
+ENV=compose` failure, and the 5 bare-`$(ENV)` default resolutions (`k9s`,
+`k8s-use`, `k8s-platform`, `k8s-infra-helm`, `k8s-apps-helm`). No backend, no
+credentials, no cluster; runs from any cwd.
 
 **NOT proven: no verb has ever been executed against k8s or aws.** No
 cluster exists — the minikube profile used earlier in this workstream was
@@ -141,14 +158,16 @@ destroyed during Phase 5, and `kubectl` has no current context. Every
 k8s-mapped verb (`deploy ENV=k8s`, `status ENV=k8s`, `rebuild ENV=k8s`,
 `bootstrap ENV=k8s`, `image-build ENV=k8s`) is verified only by Layer A's
 offline expansion diff against a baseline — never run for real in this
-phase. `deploy ENV=aws`, `status ENV=aws` and `rebuild ENV=aws` are
-deliberately **unmapped** until Phase 7 and fail by design, the same way
-`image-build ENV=compose` does, just without a `_WHY` message yet.
-`bootstrap ENV=aws` (`aws-all`) and `teardown ENV=aws` (`aws-down`) resolve
-to real targets but were not run — `aws-all` spends real money and is out of
-scope for this phase's verification. Don't read more into the evidence above
-than what it actually measured — the same caveat Phases 1, 3 and 4 of this
-refactor each needed.
+phase. `deploy ENV=aws` is now **mapped** (Phase 7, `aws-deploy-apps`) but,
+like every other aws-mapped verb, has never run for real — see "AWS
+cut-over" below for what closing that gap actually proved and what it
+didn't. `status ENV=aws` and `rebuild ENV=aws` remain deliberately
+**unmapped** and fail by design, the same way `image-build ENV=compose`
+does, just without a `_WHY` message yet. `bootstrap ENV=aws` (`aws-all`) and
+`teardown ENV=aws` (`aws-down`) resolve to real targets but were not run —
+`aws-all` spends real money and is out of scope for this phase's
+verification. Don't read more into the evidence above than what it actually
+measured — the same caveat Phases 1, 3 and 4 of this refactor each needed.
 
 ## Canonical secrets (`deploy/secrets/`)
 
@@ -756,4 +775,170 @@ The hand-written `k8s/apps/overlays/aws/ingress-gateway.yaml` lists eight
 service that worked locally and was invisible on AWS. The chart ranges the
 service list, skips `gateway` and `frontend`, and emits the rest — the
 divergence is no longer representable.
+
+## AWS cut-over (Phase 7 path)
+
+Phase 7 (`docs/superpowers/specs/2026-08-12-aws-cutover-design.md`) is
+**not** a porting task — the apps subchart already produced the right AWS
+objects, built during Phase 3 above. What Phase 7 closes: nothing had ever
+compared the chart's whole aws render to the old kustomize path
+object-by-object (only individual properties), the three deploy-time inputs
+were still assembled by hand, and `make deploy ENV=aws` was deliberately
+left unmapped by Phase 6. Read the design doc's §1 CORRECTION before
+anything else here — an earlier draft of that section claimed the chart's
+aws path was broken (a 4-object render); that was a measurement error
+(missing `--set apps.enabled=true`, not `--namespace infra`) and the claim
+is withdrawn.
+
+### The three deploy-time inputs
+
+`make deploy ENV=aws` now resolves its own inputs instead of an operator
+assembling them by hand as
+
+```bash
+make k8s-apps-helm ENV=aws \
+  HELM_EXTRA='--set apps.irsa.s3RoleArn=$(terraform output -raw s3_irsa_role_arn)'
+```
+
+(and separately supplying the ECR registry + image tag, which
+`envs/aws.yaml` deliberately leaves empty). `deploy/scripts/aws-deploy.sh`
+resolves all three and invokes the chart:
+
+| input | source, in order |
+|---|---|
+| `s3_irsa_role_arn` | `AWS_TF_OUTPUTS_JSON=<fixture>` (offline), else `terraform -chdir=aws/main output -raw s3_irsa_role_arn` |
+| ECR registry | `AWS_TF_OUTPUTS_JSON=<fixture>` (offline), else `terraform -chdir=aws/bootstrap output -raw ecr_registry` |
+| image tag | `TAG` env var, else the current commit's short SHA (`git rev-parse --short HEAD`) |
+
+```bash
+make deploy ENV=aws                          # real deploy — COSTS MONEY
+AWS_TF_OUTPUTS_JSON=deploy/charts/microecom/tests/fixtures/aws-tf-outputs.json \
+  TAG=testsha deploy/scripts/aws-deploy.sh --render -- --set infra.enabled=false
+                                              # offline render only, free
+```
+
+**Offline use:** `AWS_TF_OUTPUTS_JSON=<path>` substitutes a JSON file shaped
+like `terraform output -json` for real terraform outputs — this is what lets
+`aws-deploy.sh`, and `make deploy ENV=aws` through it, be verified without an
+AWS account. **Never point it at real state.** Real terraform is untouched
+unless the env var is unset.
+
+A missing input now fails loud and names which one and where it comes from,
+at two layers:
+
+- `aws-deploy.sh`'s own `fail()` guards catch an empty `s3_irsa_role_arn`,
+  `ecr_registry`, or image tag before invoking Helm at all.
+- `charts/apps/templates/_helpers.tpl` wraps `global.appImage.registry` and
+  `.tag` in Helm's `required`, mirroring the pre-existing
+  `apps.irsa.s3RoleArn` guard — a missing registry/tag now fails with a named
+  message (`global.appImage.registry must be set (the ECR registry) --
+  stamped by the deploy script ...`) instead of the previous opaque
+  `YAML parse error … mapping values are not allowed in this context`.
+
+**Two flags are load-bearing for any hand render, and both were gotten wrong
+at least once during this phase:**
+
+- **`--set apps.enabled=true`.** The apps subchart is gated on it and
+  defaults to `false`, so omitting it silently yields 3 objects that look
+  like a successful render — this was the exact shape of the design doc's
+  own withdrawn "4-object" premise.
+- **`--set-string`, never `--set`, for the registry/role-arn/tag.** Helm's
+  `--set` treats dots as path separators, so an ECR hostname like
+  `583178372344.dkr.ecr.ap-southeast-1.amazonaws.com` silently becomes
+  nested keys instead of a string. Both `aws-deploy.sh` and
+  `aws-diff-test.sh` use `--set-string` for all three inputs; a hand render
+  that disagrees with either should be treated as the hand render being
+  wrong until proven otherwise.
+
+### The oracle is composed from two sources
+
+The old kustomize AWS path — the oracle this phase proves the chart against
+— is not just `kubectl kustomize k8s/apps/overlays/aws` (39 objects). It is
+that **plus** `k8s/apps/overlays/aws/s3-irsa-serviceaccounts.yaml` (2 more
+ServiceAccounts), which is **not referenced in the overlay's
+`kustomization.yaml`**. `scripts/aws/up-all.sh:127-137` reads
+`terraform output -raw s3_irsa_role_arn`, substitutes it into that file with
+a plain `sed`, and pipes the result to `kubectl apply -f -` — out-of-band,
+after the kustomize build. Diffing against `kustomize build` alone would
+make the chart's IRSA ServiceAccounts look like an invented addition, when
+in fact AWS already gets them today, just via a second, separate step.
+
+`deploy/charts/microecom/tests/aws-oracle/capture.sh` reproduces both halves
+offline (`kubectl kustomize` is a pure local build — no cluster contact —
+and the IRSA half is templated with a fixture ARN, never applied) and
+concatenates them into `deploy/charts/microecom/tests/aws-oracle/oracle.yaml`,
+the file `aws-diff-test.sh` diffs the chart's render against. **This capture
+is not a cache — re-run it any time `k8s/apps/overlays/aws` changes**, since
+it is what keeps the oracle from silently drifting out from under the diff
+suite (`oracle.yaml` is committed, so a stale re-capture shows up as a normal
+`git diff`).
+
+### Test suites
+
+```bash
+make aws-oracle-capture   # rebuild tests/aws-oracle/oracle.yaml (offline, no cluster)
+make aws-diff-test        # Layer A — chart aws render vs. the composed oracle
+```
+
+`aws-diff-test` groups both sides by `(kind, name)`, guards both sides
+non-empty and every required per-kind count exact **before** diffing at all
+(a chart that collapsed to 3-4 objects must fail loudly here, never diff
+against a near-empty stream — this is the class of defect the design doc's
+§4 "non-negotiable guards" section calls out, and the exact shape of the
+withdrawn 4-object premise above), then reports every remaining difference
+as either a whole object on one side only, a shared object differing in a
+specific declared way, or an unexplained `FAIL`.
+
+### Verification status
+
+**Proven offline.** The chart's aws render (`helm template ... -f
+envs/aws.yaml --set apps.enabled=true --set-string ...`) matches the
+composed oracle object-by-object: **31 matched, 12 declared-different, 0
+unexplained.** The 12 are 2 chart-only `Namespace`s (`bootstrap`,
+`monitoring` — the umbrella's `namespaces.yaml` rendering all 3 non-infra
+namespaces regardless of env, pre-existing and unrelated to AWS) plus 10
+content differences on shared objects, **two of which are the chart being
+MORE correct than the overlay, not merely different:**
+
+- **8 Deployments carry stale `VAULT_TOKEN`/`SPRING_CLOUD_VAULT_URI` env in
+  the oracle that AWS has no use for.** They are leftovers in the shared
+  local-dev base manifest (`k8s/apps/base/*/deployment.yaml`) that the aws
+  overlay never strips. AWS has no in-cluster Vault (secrets come from ESO),
+  so the chart's `envs/aws.yaml` explicitly nulls both keys and correctly
+  omits them — a real residue in the *old* path, not a chart gap.
+- **The overlay's `ingress-gateway.yaml` references the frontend backend
+  Service port by number (`number: 80`) where every other backend in the
+  same hand-authored file uses the port name (`name: http`).** Same
+  Service, same port — the chart uses `name: http` consistently for every
+  backend including frontend; the inconsistency is in the old file.
+
+The one remaining content difference (`Deployment/frontend`'s explicit probe
+`failureThreshold`, liveness=4/readiness=6 vs. the oracle's implicit k8s
+default of 3) is a deliberate inherited value, documented in
+`charts/apps/values.yaml`'s `frontend.probes` comment — neither side is
+"more correct," it's just different by design.
+
+**NOT proven: no AWS deployment has ever been executed.** No EKS cluster was
+created, `terraform apply` never ran, and fixture outputs (`AWS_TF_OUTPUTS_JSON`)
+stood in for real ones throughout — the same offline-only shape Phases 1, 3
+and 4 of this refactor each shipped with. **This is the fourth consecutive
+phase shipping an unexercised transport.** `deploy ENV=aws` is mapped and
+its offline render is proven byte-for-byte against ground truth, but nobody
+has watched a real pod come up on a real EKS cluster wired this way. Deciding
+whether to spend money on that live run is explicitly deferred (design doc
+D2) — closing the offline gaps was free, a billed run is a decision for
+whoever picks this up next.
+
+### Finding for Phase 8
+
+The VAULT env leftover above (8 Deployments' oracle-only `VAULT_TOKEN` /
+`SPRING_CLOUD_VAULT_URI`) is harmless on AWS today — the chart already omits
+both keys, and nothing reads them from the overlay-deployed pods either,
+since AWS has no in-cluster Vault to reach. But it is a genuine, real gap in
+the *old* kustomize path (out of scope to fix here — `k8s/` must stay
+byte-identical through this phase), and it is exactly the kind of thing that
+should be cleaned up **before**, not after, Phase 8 deletes the overlay:
+once `k8s/apps/overlays/aws` is gone, this residue disappears along with it
+either way, but fixing it first turns "delete the file" into a verifiable
+no-op instead of quietly erasing a known bug along with everything else.
 

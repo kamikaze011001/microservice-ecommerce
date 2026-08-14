@@ -39,7 +39,7 @@ repeats), not the raw values block.
 {{- $s := .svc -}}
 {{- $root := .root -}}
 - name: {{ $name }}
-  image: {{ $root.Values.global.appImage.registry }}/{{ $name }}:{{ $root.Values.global.appImage.tag }}
+  image: {{ required "global.appImage.registry must be set (the ECR registry) -- stamped by the deploy script (deploy/scripts/aws-deploy.sh, or --set-string global.appImage.registry=... by hand) from `terraform output ecr_registry` (aws/bootstrap); see envs/aws.yaml" $root.Values.global.appImage.registry }}/{{ $name }}:{{ required "global.appImage.tag must be set (the image tag) -- stamped by the deploy script (deploy/scripts/aws-deploy.sh, or --set-string global.appImage.tag=... by hand, or TAG=<tag>); see envs/aws.yaml" $root.Values.global.appImage.tag }}
   imagePullPolicy: {{ $s.imagePullPolicy }}
   ports:
     - name: http

@@ -1,0 +1,10 @@
+bash scripts/infra/up.sh
+bash scripts/vault/init.sh
+bash scripts/vault/unseal.sh
+bash scripts/vault/import-secrets.sh
+bash scripts/kafka/topics.sh
+bash scripts/kafka/mongo-connector.sh
+bash scripts/maven/install-modules.sh
+bash scripts/services/start.sh all
+bash scripts/seed/all.sh
+echo "✓ Bootstrap complete — stack is up"

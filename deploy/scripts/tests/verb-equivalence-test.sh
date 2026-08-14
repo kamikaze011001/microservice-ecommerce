@@ -170,9 +170,12 @@ def record(section, name, ok, detail=None):
 
 # ---------------------------------------------------------------------
 # Part 1 — verb x env -> old-target dispatch mapping (resolve-then-diff).
-# 14 pairs = the same 14 old targets Task 1 baselined (9 from the four
-# Task-2 verbs + 3 bootstrap + 2 image-build). The right-hand baseline
-# filename doesn't always match the resolved target name: `status` and
+# 15 pairs = the 14 old targets Task 1 baselined (9 from the four Task-2
+# verbs + 3 bootstrap + 2 image-build) PLUS Phase 7's ("deploy", "aws")
+# pair, added when VERB_deploy_aws was filled in (previously deliberately
+# left unmapped — see
+# .superpowers/sdd/2026-08-12-aws-cutover/task-4-brief.md). The right-hand
+# baseline filename doesn't always match the resolved target name: `status` and
 # `bootstrap` collided with pre-existing compose target names, so their
 # original recipes were moved verbatim to `status-compose` /
 # `bootstrap-compose` (Tasks 2-3) while the baseline files kept the OLD
@@ -181,6 +184,7 @@ def record(section, name, ok, detail=None):
 PAIRS = [
     ("deploy",       "compose", "svc-start.txt"),
     ("deploy",       "k8s",     "k8s-apps.txt"),
+    ("deploy",       "aws",     "aws-deploy-apps.txt"),
     ("status",       "compose", "status.txt"),
     ("status",       "k8s",     "k8s-status.txt"),
     ("teardown",     "compose", "down.txt"),
@@ -358,10 +362,16 @@ for target in ("k9s", "k8s-use"):
 # to prevent exactly that). 0 passed + 0 failed exits 0 today because
 # nothing checks that `results` itself is non-empty/complete — a future
 # refactor that silently emptied PAIRS or short-circuited a section would
-# still print "0 passed, 0 failed -> PASS". 14 (Part 1) + 1 (Part 2) + 5
-# (Part 3) = 20 is the fixed, known-good count for this suite's structure.
+# still print "0 passed, 0 failed -> PASS". 15 (Part 1) + 1 (Part 2) + 5
+# (Part 3) = 21 is the fixed, known-good count for this suite's structure.
+# Bumped from 20 to 21 in Phase 7 when ("deploy", "aws") was added to
+# PAIRS — this assertion existing at all is what makes that addition show
+# up as a required, deliberate edit instead of a silent no-op (see the
+# comment where it was originally added, Task 4 of the Phase 6 unified
+# verbs work: a refactor must not be able to silently empty the check
+# list).
 # ---------------------------------------------------------------------
-EXPECTED_TOTAL = 20
+EXPECTED_TOTAL = 21
 if len(results) != EXPECTED_TOTAL:
     print(f"{RED}FATAL{RESET} expected {EXPECTED_TOTAL} checks to have recorded a result, got "
           f"{len(results)} — the check list was silently narrowed (a PAIRS entry dropped, a "
