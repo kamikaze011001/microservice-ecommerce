@@ -243,9 +243,15 @@ build:
 # now runs the full pre-apps stage (api_role + product + productQuantityHistory
 # + the 30 product images) non-destructively on every start.
 # Measured cost added to a warm `make up`: ~9.0-9.7s over 3 runs against the
-# live compose stack (2026-08-15) — under the 10s budget in
-# task-6-brief.md's decision rule, so wired directly rather than adding a
-# narrower --only flag. See task-6-report.md.
+# live compose stack (2026-08-15) — under the 10s budget in task-6-brief.md's
+# decision rule, so wired directly rather than adding a narrower --only flag.
+# After the readiness polls were added the margin narrowed: a later sample
+# measured 10.18s (others 9.69s / 9.79s), i.e. it now straddles 10s rather
+# than sitting under it. The polls are two sub-100ms `docker exec` probes
+# against an already-healthy stack, so this is sampling noise, not the polls'
+# cost — but do NOT quote "under 10s" as a guarantee. If this ever needs to be
+# genuinely fast, the fix is the --only flag, not removing the guards.
+# See task-6-report.md.
 mongo-seed-ensure:
 	@bash deploy/scripts/seed.sh --env compose --stage pre-apps
 
