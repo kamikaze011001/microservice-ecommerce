@@ -190,7 +190,7 @@ make secrets-seed ENV=compose      # resolve, then push to the env's backend
 Each env that delivers user-owned credentials by env file
 (`userCredDelivery: envfrom` — `compose` and `k8s`) must document every
 `owner: user` variable in **its own** `.env.example`: `docker/.env.example` for
-compose, `k8s/.env.example` for k8s. `secrets-validate.sh` check 3 enforces
+compose, `deploy/.env.example` for k8s. `secrets-validate.sh` check 3 enforces
 this per-env rather than against the union of both files, because a variable
 documented in only one of them is not documented for the other — that union is
 what let the mail credentials ship missing from `docker/.env.example`. `aws` is

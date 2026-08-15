@@ -10,7 +10,10 @@ SECRETS="$ROOT/deploy/secrets"
 # Per-env, not a union: a variable documented in only one env's file is not
 # documented for the other, and check 3 must be able to say so. Overridable so
 # the test suite can point at a corrupted copy.
-ENV_EXAMPLES="compose=$ROOT/docker/.env.example,k8s=$ROOT/k8s/.env.example"
+# k8s's example lives at deploy/.env.example (Phase 8 Task 6 follow-up:
+# relocated from k8s/.env.example — a tree a later phase deletes; see
+# task-6-report.md's Follow-up section).
+ENV_EXAMPLES="compose=$ROOT/docker/.env.example,k8s=$ROOT/deploy/.env.example"
 
 while [ $# -gt 0 ]; do
   case "$1" in

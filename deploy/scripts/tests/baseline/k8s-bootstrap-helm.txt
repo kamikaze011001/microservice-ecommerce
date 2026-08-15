@@ -23,11 +23,11 @@ for ns in apps bootstrap monitoring; do \
 	    meta.helm.sh/release-name=microecom \
 	    meta.helm.sh/release-namespace=infra --overwrite >/dev/null; \
 	done
-if [ -f k8s/.env ]; then \
+if [ -f deploy/.env ]; then \
 	  kubectl create secret generic app-secrets --namespace apps \
-	    --from-env-file=k8s/.env --dry-run=client -o yaml | kubectl apply -f - ; \
+	    --from-env-file=deploy/.env --dry-run=client -o yaml | kubectl apply -f - ; \
 	else \
-	  echo "warn: k8s/.env missing — creating empty app-secrets Secret. Copy k8s/.env.example to k8s/.env and re-run k8s-app-secrets for working mail/PayPal."; \
+	  echo "warn: deploy/.env missing — creating empty app-secrets Secret. Copy deploy/.env.example to deploy/.env and re-run k8s-app-secrets for working mail/PayPal."; \
 	  kubectl create secret generic app-secrets --namespace apps \
 	    --dry-run=client -o yaml | kubectl apply -f - ; \
 	fi

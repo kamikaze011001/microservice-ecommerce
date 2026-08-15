@@ -433,10 +433,18 @@ k8s-seed-images:
 
 # Apply all 8 service Deployments via the local overlay.
 # k8s-app-secrets: build the `app-secrets` Secret in the apps namespace from
-# k8s/.env (user-owned mail + PayPal creds). authorization-server and
-# payment-service envFrom it. Kept out of git (k8s/.env is gitignored) and out
-# of Vault. If k8s/.env is missing we create an empty Secret so the optional
-# secretRef resolves (mail/PayPal just stay unset). Idempotent (apply).
+# deploy/.env (user-owned mail + PayPal creds). authorization-server and
+# payment-service envFrom it. Kept out of git (deploy/.env is gitignored) and
+# out of Vault. If deploy/.env is missing we create an empty Secret so the
+# optional secretRef resolves (mail/PayPal just stay unset). Idempotent (apply).
+#
+# Phase 8 Task 6 (follow-up): relocated from k8s/.env — a tree a later phase
+# deletes. k8s/.env was gitignored, so `git rm -r k8s/` would not have removed
+# it from disk, but it would have been left stranded in an otherwise-empty
+# directory with nothing pointing at it any more, and this target's own
+# else-branch would then silently create an EMPTY app-secrets Secret (the
+# human's mail + PayPal config quietly stops working, with only a warn-level
+# log to notice it by). See task-6-report.md's Follow-up section.
 #
 # Ensures the namespaces exist FIRST, idempotently, rather than assuming some
 # other target already created them. This makes the target self-sufficient
@@ -504,11 +512,11 @@ k8s-app-secrets:
 	    meta.helm.sh/release-name=microecom \
 	    meta.helm.sh/release-namespace=infra --overwrite >/dev/null; \
 	done
-	@if [ -f k8s/.env ]; then \
+	@if [ -f deploy/.env ]; then \
 	  kubectl create secret generic app-secrets --namespace apps \
-	    --from-env-file=k8s/.env --dry-run=client -o yaml | kubectl apply -f - ; \
+	    --from-env-file=deploy/.env --dry-run=client -o yaml | kubectl apply -f - ; \
 	else \
-	  echo "warn: k8s/.env missing — creating empty app-secrets Secret. Copy k8s/.env.example to k8s/.env and re-run k8s-app-secrets for working mail/PayPal."; \
+	  echo "warn: deploy/.env missing — creating empty app-secrets Secret. Copy deploy/.env.example to deploy/.env and re-run k8s-app-secrets for working mail/PayPal."; \
 	  kubectl create secret generic app-secrets --namespace apps \
 	    --dry-run=client -o yaml | kubectl apply -f - ; \
 	fi

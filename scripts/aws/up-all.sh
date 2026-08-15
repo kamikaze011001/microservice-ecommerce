@@ -42,7 +42,11 @@ banner "Step 0/9 · preflight (credentials + tfvars)"
 
 # Credentials already live in the repo from local setup — source them rather than
 # re-enter. Each resolves: existing env var > canonical file > fail-loud.
-# 1) PayPal from docker/.env, mail from k8s/.env (both gitignored).
+# 1) PayPal from docker/.env, mail from deploy/.env (both gitignored).
+# Phase 8 Task 6 (follow-up): deploy/.env replaces k8s/.env — a tree a later
+# phase deletes. k8s/.env was gitignored (so `git rm -r k8s/` wouldn't have
+# removed it from disk), but it would have been left stranded with nothing
+# pointing at it any more; relocated instead of orphaned.
 load_env_file() {  # load_env_file <path>  — export its KEY=VALUE pairs if present
   local f="$1"
   [ -f "$f" ] || return 0
@@ -52,7 +56,7 @@ load_env_file() {  # load_env_file <path>  — export its KEY=VALUE pairs if pre
   { set -a; . "$f"; set +a; } || { set +a; return 1; }
 }
 load_env_file "$ROOT/docker/.env"
-load_env_file "$ROOT/k8s/.env"
+load_env_file "$ROOT/deploy/.env"
 
 # 2) JWK: Phase 8 Task 6 — no longer extracted here. deploy/secrets/
 #    jwk.private.json is now the single canonical copy secrets-seed.sh resolves
@@ -71,8 +75,8 @@ need() {  # need <VAR> <where-to-fill>
 }
 need PAYPAL_CLIENT_ID        "docker/.env"
 need PAYPAL_CLIENT_SECRET    "docker/.env"
-need APPLICATION_MAIL_USERNAME "k8s/.env"
-need APPLICATION_MAIL_PASSWORD "k8s/.env"
+need APPLICATION_MAIL_USERNAME "deploy/.env"
+need APPLICATION_MAIL_PASSWORD "deploy/.env"
 
 # 3) RDS master password must be in the gitignored tfvars (grep, never echo it).
 if ! grep -qE '^[[:space:]]*db_master_password[[:space:]]*=' "$TF/terraform.tfvars" 2>/dev/null; then
@@ -128,34 +132,34 @@ banner "Step 5/9 · seed Secrets Manager (RDS JDBC URLs + app config)"
 bash "$ROOT/deploy/scripts/secrets-seed.sh" --env aws
 
 # ── Step 6 — apps + the one hard sequencing gate ──────────────────────────────
+# Phase 8 Task 6 (follow-up): repointed off the imperative
+# k8s/apps/overlays/aws/{namespace.yaml,s3-irsa-serviceaccounts.yaml} +
+# `kubectl apply -k k8s/apps/overlays/aws` (trees a later phase deletes) onto
+# deploy/scripts/aws-deploy.sh — the canonical replacement built in Phase 7
+# specifically for this operation (`make deploy ENV=aws` runs the same
+# script). It covers everything the three lines above did:
+#   - context guard (reproduced from this exact block, verbatim, per its own
+#     header comment) instead of the duplicate guard that used to live here;
+#   - S3 IRSA role ARN resolution via terraform, same output name
+#     (s3_irsa_role_arn), passed to the chart as
+#     --set-string apps.irsa.s3RoleArn=... instead of sed-stamping the
+#     kustomize overlay's PLACEHOLDER_S3_ROLE_ARN;
+#   - the apps + bootstrap + monitoring namespaces (via `make k8s-apps-helm`'s
+#     own k8s-app-secrets prerequisite, which creates them idempotently
+#     BEFORE the helm install, same ordering guarantee the old namespace.yaml
+#     apply-before-SAs comment described — see the Makefile's k8s-app-secrets
+#     comment for the live-verified proof);
+#   - the ServiceAccount + IRSA annotation itself, now rendered by the chart
+#     (deploy/charts/microecom/charts/apps/templates/irsa-serviceaccounts.yaml)
+#     instead of a hand-maintained kustomize resource;
+#   - the apps Deployments themselves, via `helm upgrade --install ... --set
+#     apps.enabled=true --set infra.enabled=false --wait --timeout 30m`.
+# ECR registry + image tag are ALSO now resolved by aws-deploy.sh (terraform
+# aws/bootstrap output ecr_registry; TAG env var, default "dev" — the same
+# default the old kustomize overlay's `newTag: dev` pinned). Real deploy only
+# (no args) — COSTS MONEY, same as the block it replaces.
 banner "Step 6/9 · deploy apps overlay"
-# Guard the only kubectl this orchestrator issues directly (the leaf scripts at
-# steps 3-5/7-8 carry their own guard) so a stray context can't apply onto kind.
-CTX="$(kubectl config current-context)"
-if [[ "$CTX" != "microecom-eks" ]]; then
-  echo "✋ kubectl context is '$CTX', not 'microecom-eks'. Aborting before apply." >&2
-  echo "   Run: aws eks update-kubeconfig --name microecom-eks --region ap-southeast-1 --alias microecom-eks" >&2
-  exit 1
-fi
-# Stamp the S3 IRSA role ARN onto the product-service + authorization-server
-# ServiceAccounts and apply them BEFORE the apps overlay (mirror infra-up.sh's ESO
-# stamp). The IRSA webhook injects the web-identity token when a pod is admitted
-# based on its SA annotation, so the annotated SA must exist before app pods are
-# created — annotating after would need a restart. The context guard above already
-# pinned us to microecom-eks.
-S3_ROLE_ARN="$(terraform -chdir="$TF" output -raw s3_irsa_role_arn)" \
-  || { echo "ERROR: 'terraform output s3_irsa_role_arn' failed — run step 1 (terraform apply) first" >&2; exit 1; }
-# Create the `apps` namespace BEFORE the IRSA ServiceAccounts. The overlay's
-# namespace.yaml is applied last (inside `kubectl apply -k`), but the IRSA SAs
-# below are stamped and applied imperatively first — both target namespace
-# `apps`, which doesn't exist yet → "namespaces 'apps' not found". Apply the
-# Namespace directly so the SAs land; the later `apply -k` reconciles it
-# idempotently (Namespace apply is a no-op once it exists).
-kubectl apply -f "$ROOT/k8s/apps/overlays/aws/namespace.yaml"
-sed "s|PLACEHOLDER_S3_ROLE_ARN|${S3_ROLE_ARN}|g" \
-  "$ROOT/k8s/apps/overlays/aws/s3-irsa-serviceaccounts.yaml" | kubectl apply -f -
-
-kubectl apply -k "$ROOT/k8s/apps/overlays/aws"
+bash "$ROOT/deploy/scripts/aws-deploy.sh"
 
 # Both gate a post-apps SQL seed: auth-server's ddl-auto creates the account
 # schema (step 7), inventory-service's creates the stock tables (step 8). On
