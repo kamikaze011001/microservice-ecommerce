@@ -570,11 +570,38 @@ k8s-apps-down:
 # declares this; it was missing here. Order-independent now that
 # k8s-app-secrets creates its own namespace (see its recipe above) instead of
 # assuming k8s-infra-helm's templates/namespaces.yaml ran first.
+#
+# DO NOT re-add `--set infra.enabled=false` here. It was correct in Phase 8
+# Task 1 and became DESTRUCTIVE in Task 6, and the reason is worth keeping:
+#
+#   This target and k8s-infra-helm install THE SAME RELEASE NAME (`microecom`)
+#   into THE SAME NAMESPACE (`infra`). A helm release is upgraded as a whole —
+#   you cannot upgrade half of it. So `infra.enabled=false` here does not mean
+#   "leave infra alone", it means "this release no longer contains infra", and
+#   helm DELETES every infra resource: mysql, mongodb, kafka, vault, redis,
+#   minio, schema-registry, kafka-connect.
+#
+#   In Task 1 that was harmless — infra came from the kustomize path
+#   (`make k8s-infra`), so it was not owned by this release and there was
+#   nothing for helm to delete; the flag only suppressed an adoption conflict.
+#   Task 6 wired k8s-infra-helm into the bootstrap chain, so infra IS now owned
+#   by this release, and the flag started tearing down the stack the apps
+#   depend on. Observed 2026-08-15 on the first from-scratch run: helm rev 2
+#   "Upgrade complete" (infra healthy), rev 3 apps upgrade -> all infra gone and
+#   8 services in CrashLoopBackOff. Nothing in the apps chart was wrong.
+#
+#   Ordering still works without the flag: apps.enabled defaults to false, so
+#   k8s-infra-helm installs infra only, seeding runs, then this target adds apps
+#   while infra stays in the release.
+#
+# deploy/scripts/aws-deploy.sh DOES still pass infra.enabled=false, correctly —
+# on AWS the datastores are managed outside the chart, so there is no
+# chart-owned infra for it to delete.
 k8s-apps-helm: k8s-app-secrets
 	@helm upgrade --install microecom deploy/charts/microecom \
 	  --namespace infra --create-namespace \
 	  -f deploy/charts/microecom/envs/$(or $(ENV),local-k8s).yaml \
-	  --set apps.enabled=true --set infra.enabled=false $(HELM_EXTRA) \
+	  --set apps.enabled=true $(HELM_EXTRA) \
 	  --wait --timeout 30m
 	@kubectl -n apps rollout status deployment --timeout=10m
 
