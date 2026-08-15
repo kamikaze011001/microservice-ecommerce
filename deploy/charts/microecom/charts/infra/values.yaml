@@ -1,3 +1,38 @@
+# progressDeadlineSeconds — applied to every Deployment in this subchart.
+#
+# WHY THIS EXISTS (found 2026-08-15 by the first from-scratch `k8s-bootstrap-helm`
+# run this repo has ever done — Phase 8 Task 7):
+#
+#   Error: resource Deployment/infra/kafka-connect not ready.
+#          status: Failed, message: Progress deadline exceeded
+#          resource Deployment/infra/schema-registry not ready. ...
+#
+# Nothing was broken. The Confluent images are enormous and a COLD pull outruns
+# Kubernetes' DEFAULT progressDeadlineSeconds of 600s. Measured on that run:
+#
+#   confluentinc/cp-kafka-connect:7.6.1     1.66 GB, pulled in 7m13.8s
+#   confluentinc/cp-schema-registry:7.7.1   still pulling past 8m48s
+#
+# and kafka-connect's `wait-for-schema-registry` init container then blocks on
+# schema-registry, so the two failures compound rather than run in parallel.
+#
+# The subtlety worth keeping: `k8s-infra-helm` already passes `--wait --timeout 30m`,
+# which looks like it should cover this — but it does NOT. A Deployment's own
+# progress deadline is evaluated by the deployment controller, and once it expires
+# the Deployment is marked Failed; helm then reports that failure immediately,
+# long before its own 30m bound is reached. Raising the helm timeout can never fix
+# this. The deadline has to be raised on the Deployment itself.
+#
+# Set to 1800s to match `--timeout 30m` so helm's bound is the effective one, and
+# applied to ALL Deployments here, not just the two that happened to lose the race:
+# any Deployment whose deadline is shorter than the orchestrating release timeout
+# can fail a release spuriously on a cold node where every image pulls at once.
+#
+# This is the same failure class PR #55 fixed for the kustomize twin (kafka-connect
+# rollout wait 10m -> 15m, measured pull 9m54s). The Helm path never received the
+# equivalent fix because it had never been run from scratch.
+progressDeadlineSeconds: 1800
+
 # Subchart defaults. These are the fallbacks; the umbrella's `infra:` block wins.
 #
 # fullnameOverride on every dependency: today each of these is its own release

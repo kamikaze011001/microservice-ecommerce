@@ -15,6 +15,10 @@ metadata:
     app.kubernetes.io/name: kafka-exporter
 spec:
   replicas: 1
+  # Raised well above the k8s default of 600s: a cold image pull can outrun it
+  # and mark the Deployment Failed mid-pull, which fails the whole helm release.
+  # Full measurements and why --timeout 30m does NOT cover this: values.yaml.
+  progressDeadlineSeconds: {{ $.Values.progressDeadlineSeconds }}
   selector:
     matchLabels:
       app.kubernetes.io/name: kafka-exporter
