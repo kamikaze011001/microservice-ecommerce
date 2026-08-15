@@ -50,10 +50,25 @@ t0_out="$(mktemp)"
 # stdout bytes are identical to the file. A `$()`-captured comparison here
 # can never pass regardless of renderer correctness; that was a bug in this
 # test, not the renderer — see task-3-report.md.
-if diff "$t0_out" "$ROOT/docker/product.json" >/dev/null 2>&1; then
-  ok "compose render reproduces docker/product.json byte-for-byte"
+# ORACLE, FROZEN. This diffs against golden/docker-product.json — a byte-exact
+# copy of the ORIGINAL, hand-maintained docker/product.json, which Phase 8
+# Task 8 deleted. sha256 verified at capture:
+# 36511cdec9581a92727c880d60e1283f2c057b268b3ee0879a6599aebe3d0e33
+#
+# Do NOT "refresh" this fixture from the renderer's own output. It is the
+# strongest equivalence evidence the seed work has: proof that the canonical
+# renderer reproduces the file a human maintained by hand, byte for byte.
+# Regenerating it from the renderer would turn that into a snapshot of the
+# renderer against itself, which catches change but can never catch
+# incorrectness — the exact distinction Phase 8's design (§D3) rejected
+# retargeting the other oracles over.
+#
+# If this check fails, the RENDERER changed. That is the finding. The fixture
+# is not stale, because its source no longer exists to drift from.
+if diff "$t0_out" "$HERE/golden/docker-product.json" >/dev/null 2>&1; then
+  ok "compose render reproduces the original docker/product.json byte-for-byte"
 else
-  bad "compose render differs from docker/product.json"
+  bad "compose render differs from the frozen original docker/product.json"
   printf '       renderer output (first 3 lines):\n'
   head -3 "$t0_out" | sed 's/^/         /'
 fi
