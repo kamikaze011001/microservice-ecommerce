@@ -34,8 +34,8 @@ cd mock-paypal-service && mvn clean test     # 16 unit/slice tests
 mvn spring-boot:run                          # starts on :8585
 ```
 Docker: `mock-paypal-service/Dockerfile` is a standalone multi-stage JDK 25
-build (the shared `k8s/images/Dockerfile.jvm` uses a JDK-17 cores base and can't
-compile it). Build via `SVC=mock-paypal-service k8s/images/build.sh`.
+build (the shared `deploy/images/Dockerfile.jvm` uses a JDK-17 cores base and can't
+compile it). Build via `SVC=mock-paypal-service deploy/images/build.sh`.
 
 ## Run locally (bare JVM, like the other services)
 Registered in `scripts/services.list`; starts with `make up` on port 8585.

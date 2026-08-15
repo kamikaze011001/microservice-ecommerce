@@ -2,9 +2,9 @@
 # Build images for the local minikube cluster and push to its registry addon.
 #
 # Usage:
-#   k8s/images/build.sh                 # build cores + all services
-#   SVC=order-service k8s/images/build.sh   # build cores + one service
-#   SVC=cores k8s/images/build.sh           # rebuild cores only
+#   deploy/images/build.sh                 # build cores + all services
+#   SVC=order-service deploy/images/build.sh   # build cores + one service
+#   SVC=cores deploy/images/build.sh           # rebuild cores only
 set -euo pipefail
 
 # Host builds push through the port-forward on 5001. Pods pull the same
@@ -75,7 +75,7 @@ build_cores() {
   fi
   echo "==> building cores base image"
   docker build \
-    -f k8s/images/Dockerfile.cores \
+    -f deploy/images/Dockerfile.cores \
     -t "${REGISTRY}/maven-cores:${TAG}" \
     .
 }
@@ -85,7 +85,7 @@ build_service() {
   reuse_or_build "${svc}" && return 0
   echo "==> building ${svc}"
   docker build \
-    -f k8s/images/Dockerfile.jvm \
+    -f deploy/images/Dockerfile.jvm \
     --build-arg "SERVICE=${svc}" \
     --build-arg "CORES_IMAGE=${REGISTRY}/maven-cores:${TAG}" \
     -t "${REGISTRY}/${svc}:${TAG}" \

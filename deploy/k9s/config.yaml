@@ -1,6 +1,6 @@
 # k9s global config — committed, env-agnostic (skin + UI prefs only).
 # Per-cluster runtime state (last namespace/view) is written by k9s under
-# k8s/k9s/clusters/** and is git-ignored (see .gitignore in this dir).
+# deploy/k9s/clusters/** and is git-ignored (see .gitignore in this dir).
 k9s:
   liveViewAutoRefresh: true
   refreshRate: 2

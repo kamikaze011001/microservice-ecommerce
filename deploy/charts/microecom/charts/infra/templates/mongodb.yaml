@@ -4,7 +4,7 @@
 # Replaces the Bitnami chart (docker.io/bitnami/mongodb deleted 2025-09-29).
 #
 # Why a replica set with ONE member: the Kafka Connect MongoDB source connector
-# (k8s/infra/jobs/04-kafka-connect-register) uses Change Streams to feed the
+# (deploy/k8s-jobs/04-kafka-connect-register) uses Change Streams to feed the
 # order Saga via CDC. Change Streams require a replica set or sharded cluster —
 # a standalone mongod rejects them. So even locally we run --replSet rs0.
 #

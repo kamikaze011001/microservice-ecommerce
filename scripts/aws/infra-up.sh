@@ -153,7 +153,7 @@ helm upgrade --install grafana grafana/grafana \
 # Phase 2: the connector is the Saga's Mongo→Kafka stream, which no Phase-2
 # workload consumes yet, so a registration hiccup must NOT fail the infra bring-up.
 echo "▶ registering Kafka Connect connectors (best-effort)"
-if kubectl apply -k k8s/infra/jobs/04-kafka-connect-register/; then
+if kubectl apply -k deploy/k8s-jobs/04-kafka-connect-register/; then
   kubectl -n bootstrap wait --for=condition=complete job/kafka-connect-register --timeout=3m \
     || echo "warn: connector register Job did not complete in 3m — not fatal for Phase 2 (check later with: kubectl -n bootstrap logs job/kafka-connect-register)"
 else

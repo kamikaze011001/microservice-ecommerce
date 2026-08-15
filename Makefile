@@ -312,16 +312,16 @@ k8s-tunnel-stop:
 
 # Build and push through the registry forward started by k8s-cluster-up.
 k8s-build:
-	@k8s/images/build.sh
+	@deploy/images/build.sh
 
 # Bootstrap build path: skip images already in the registry (fast down->bootstrap).
 # `make k8s-bootstrap FORCE_BUILD=1` rebuilds everything from scratch instead.
 k8s-build-reuse:
-	@if [ -n "$(FORCE_BUILD)" ]; then k8s/images/build.sh; else REUSE_EXISTING=1 k8s/images/build.sh; fi
+	@if [ -n "$(FORCE_BUILD)" ]; then deploy/images/build.sh; else REUSE_EXISTING=1 deploy/images/build.sh; fi
 
 k8s-rebuild:
 	@if [ -z "$(svc)" ]; then echo "Usage: make k8s-rebuild svc=NAME"; exit 1; fi
-	@SVC=$(svc) SKIP_CORES=1 k8s/images/build.sh
+	@SVC=$(svc) SKIP_CORES=1 deploy/images/build.sh
 	@kubectl -n apps rollout restart deployment/$(svc)
 
 k8s-registry-forward:
@@ -399,6 +399,7 @@ k8s-seed:
 	        --from-file=docker/api_role.json --from-file=docker/product.json \
 	        --from-file=docker/product-quantity-history.json --dry-run=client -o yaml | kubectl apply -f - ; \
 	      kubectl apply -f k8s/infra/jobs/02-mongo-seed/job.yaml ;; \
+	    04-kafka-connect-register) kubectl apply -k deploy/k8s-jobs/04-kafka-connect-register ;; \
 	    *) kubectl apply -k k8s/infra/jobs/$$d ;; \
 	  esac; \
 	  kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/$$job; \
@@ -444,7 +445,7 @@ k8s-seed-inventory:
 k8s-seed-perftest:
 	@echo "==> applying 06-perftest-seed (job/perftest-seed)"
 	@kubectl -n bootstrap delete job perftest-seed --ignore-not-found >/dev/null
-	@kubectl apply -k k8s/infra/jobs/06-perftest-seed
+	@kubectl apply -k deploy/k8s-jobs/06-perftest-seed
 	@kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/perftest-seed
 	@echo "k8s-seed-perftest complete"
 
@@ -671,7 +672,7 @@ k9s:
 	  *) echo "Unknown ENV '$(ENV)' — use ENV=local or ENV=eks"; exit 1 ;; \
 	 esac; \
 	 echo "k9s → context $$ctx (ENV=$${ENV:-local}), namespace apps"; \
-	 K9S_CONFIG_DIR="$(CURDIR)/k8s/k9s" k9s --context "$$ctx" -n apps
+	 K9S_CONFIG_DIR="$(CURDIR)/deploy/k9s" k9s --context "$$ctx" -n apps
 
 .PHONY: k8s-bootstrap k8s-bootstrap-helm k8s-down
 
