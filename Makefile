@@ -30,8 +30,8 @@ help:
 	@echo "  make build            — mvn install all modules"
 	@echo ""
 	@echo "Building blocks:"
-	@echo "  make infra-up / infra-down / vault-init / vault-unseal / vault-import"
-	@echo "  make kafka-topics / mongo-connector / seed-data"
+	@echo "  make infra-up / infra-down / vault-init / vault-unseal"
+	@echo "  make kafka-topics / mongo-connector"
 	@echo ""
 	@echo "Kubernetes (local minikube cluster):"
 	@echo "  make k8s-bootstrap    — one-shot: cluster + infra + images + seed + apps"
@@ -139,13 +139,11 @@ infra-status:
 # Vault
 # ============================================================================
 
-.PHONY: vault-init vault-unseal vault-import vault-login
+.PHONY: vault-init vault-unseal vault-login
 vault-init:
 	@bash scripts/vault/init.sh
 vault-unseal:
 	@bash scripts/vault/unseal.sh
-vault-import:
-	@bash scripts/vault/import-secrets.sh
 vault-login:
 	@bash scripts/vault/login.sh
 
@@ -156,12 +154,14 @@ vault-login:
 .PHONY: secrets-seed secrets-validate secrets-render
 # Canonical secrets (deploy/secrets/). ENV=compose|k8s|aws, default compose.
 # ALWAYS OVERWRITES the backend — the canonical file is authoritative.
+# CONTEXT=NAME is required (by secrets-seed.sh itself) for a real ENV=k8s run
+# — never inherited from an ambient kubectl context. See k8s-bootstrap-helm.
 secrets-seed:
-	@bash deploy/scripts/secrets-seed.sh --env $(or $(ENV),compose)
+	@bash deploy/scripts/secrets-seed.sh $(strip --env $(or $(ENV),compose) $(if $(CONTEXT),--context $(CONTEXT)))
 
 # Resolve only. Writes deploy/.run/secrets-<env>.json; touches no backend.
 secrets-render:
-	@bash deploy/scripts/secrets-seed.sh --env $(or $(ENV),compose) --dry-run
+	@bash deploy/scripts/secrets-seed.sh $(strip --env $(or $(ENV),compose) --dry-run $(if $(CONTEXT),--context $(CONTEXT)))
 
 # Consistency checks. No backend, no credentials — safe to run anywhere.
 secrets-validate:
@@ -178,11 +178,11 @@ secrets-validate:
 # account_role/role/user) + derived inventory rows + the inventory-service reconcile
 # — run after the apps (needs the Hibernate-created schema). See deploy/README.md.
 seed:
-	@bash deploy/scripts/seed.sh --env $(or $(ENV),compose) --stage $(or $(STAGE),pre-apps)
+	@bash deploy/scripts/seed.sh $(strip --env $(or $(ENV),compose) --stage $(or $(STAGE),pre-apps) $(if $(CONTEXT),--context $(CONTEXT)))
 
 # Resolve only. Touches no backend.
 seed-render:
-	@bash deploy/scripts/seed.sh --env $(or $(ENV),compose) --stage $(or $(STAGE),pre-apps) --dry-run
+	@bash deploy/scripts/seed.sh $(strip --env $(or $(ENV),compose) --stage $(or $(STAGE),pre-apps) --dry-run $(if $(CONTEXT),--context $(CONTEXT)))
 
 # ============================================================================
 # Canonical Seed — test suites (deploy/seed/tests/)
@@ -232,21 +232,22 @@ build:
 # Seed
 # ============================================================================
 
-.PHONY: seed-data seed-mysql seed-mongo mongo-seed-ensure
-seed-data:
-	@bash scripts/seed/all.sh
-seed-mysql:
-	@bash scripts/seed/mysql.sh
-seed-mongo:
-	@bash scripts/seed/mongo-roles.sh
-	@bash scripts/seed/mongo-products.sh
+.PHONY: mongo-seed-ensure
 
-# Idempotent: mongo-roles.sh skips when api_role is already populated. Safe to
-# call on every `make up`. Deliberately NOT seed-data / all.sh — mongo-products.sh
-# DROPS its collection before importing, so calling it from `up` would wipe local
-# product data on every start.
+# Idempotent, safe to call on every `make up`. Used to be scoped to api_role
+# only (scripts/seed/mongo-roles.sh) because the OLD mongo-products.sh
+# unconditionally DROPPED its collection before importing — see git history.
+# That rationale no longer applies: deploy/scripts/seed.sh gates the Mongo
+# DROP behind --replace (not passed here), and without it mongoimport runs
+# --mode upsert (matches on _id, never drops) — see seed.sh's header. So this
+# now runs the full pre-apps stage (api_role + product + productQuantityHistory
+# + the 30 product images) non-destructively on every start.
+# Measured cost added to a warm `make up`: ~9.0-9.7s over 3 runs against the
+# live compose stack (2026-08-15) — under the 10s budget in
+# task-6-brief.md's decision rule, so wired directly rather than adding a
+# narrower --only flag. See task-6-report.md.
 mongo-seed-ensure:
-	@bash scripts/seed/mongo-roles.sh
+	@bash deploy/scripts/seed.sh --env compose --stage pre-apps
 
 # ============================================================================
 # Service lifecycle
@@ -370,70 +371,39 @@ k8s-infra-helm: k8s-platform
 	  -f deploy/charts/microecom/envs/$(or $(ENV),local-k8s).yaml \
 	  --wait --timeout 30m
 
-# k8s-seed: run the PRE-APPS bootstrap Jobs in fixed dependency order. Each Job
-# is idempotent (see seed.sh in each dir) so re-running is safe.
-# Order matters: vault must be seeded before any app that imports its Spring
-# config from vault; mongo (api_role) must be seeded before the gateway /
-# authorization-server load their auth rules; minio before any storefront image
-# upload. Kafka Connect registration runs last because Connect itself
-# (Deployment) is started by k8s-infra.
-#
-# NOTE: mysql is deliberately NOT here — see k8s-seed-mysql below. It must run
-# AFTER k8s-apps because docker/ecommerce.sql is data-only (no CREATE TABLE) and
-# the schema is created by Hibernate ddl-auto when the JPA services boot.
-#
-# These four Jobs are applied with `kubectl apply -k` EXCEPT mongo, whose data
-# configmap is built from out-of-tree docker/*.json that kubectl's embedded
-# kustomize refuses to load — so it's created imperatively + applied with plain
-# `kubectl apply -f`. See the kustomize SCAR in k8s/CLAUDE.md.
+# k8s-seed: applies the Kafka Connect registration Job (relocated to
+# deploy/k8s-jobs/04-kafka-connect-register — Task 5). The other three Jobs
+# this loop used to run — 02-mongo-seed, 03-vault-seed, 05-minio-bootstrap —
+# are now covered by the canonical `secrets-seed ENV=k8s CONTEXT=...` /
+# `seed ENV=k8s STAGE=pre-apps CONTEXT=...` calls in k8s-bootstrap-helm
+# (Task 6; see its own comment). This target is kept standalone — the legacy
+# kubectl-path `k8s-bootstrap` still uses it for kafka-connect-register.
 k8s-seed:
-	@for d in 02-mongo-seed 03-vault-seed 05-minio-bootstrap 04-kafka-connect-register; do \
-	  job=$$(echo $$d | sed 's/^[0-9]*-//'); \
-	  echo "==> applying $$d (job/$$job)"; \
-	  kubectl -n bootstrap delete job $$job --ignore-not-found >/dev/null; \
-	  case "$$d" in \
-	    02-mongo-seed) \
-	      kubectl -n bootstrap create configmap mongo-seed-scripts \
-	        --from-file=k8s/infra/jobs/02-mongo-seed/seed.sh --dry-run=client -o yaml | kubectl apply -f - ; \
-	      kubectl -n bootstrap create configmap mongo-seed-data \
-	        --from-file=docker/api_role.json --from-file=docker/product.json \
-	        --from-file=docker/product-quantity-history.json --dry-run=client -o yaml | kubectl apply -f - ; \
-	      kubectl apply -f k8s/infra/jobs/02-mongo-seed/job.yaml ;; \
-	    04-kafka-connect-register) kubectl apply -k deploy/k8s-jobs/04-kafka-connect-register ;; \
-	    *) kubectl apply -k k8s/infra/jobs/$$d ;; \
-	  esac; \
-	  kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/$$job; \
-	done
+	@echo "==> applying 04-kafka-connect-register (job/kafka-connect-register)"
+	@kubectl -n bootstrap delete job kafka-connect-register --ignore-not-found >/dev/null
+	@kubectl apply -k deploy/k8s-jobs/04-kafka-connect-register
+	@kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/kafka-connect-register
 	@echo "k8s-seed complete"
 
-# k8s-seed-mysql: runs SEPARATELY, AFTER k8s-apps. docker/ecommerce.sql is a
-# data-only dump (0 CREATE TABLE); the schema is created by Hibernate ddl-auto
-# during each JPA service's startup. By the time `k8s-apps` reports rollout
-# complete, every service is Ready — which (ddl-auto runs before the web server
-# accepts traffic) means all tables already exist. Seeding earlier fails with
-# "Table 'ecommerce_dev.account' doesn't exist". Both configmaps are created
-# imperatively (out-of-tree docker/ecommerce.sql) and the Job applied with plain
-# `kubectl apply -f`. See k8s/CLAUDE.md.
+# k8s-seed-mysql / k8s-seed-inventory: both superseded by the canonical
+# `seed ENV=k8s STAGE=post-apps` (ecommerce.sql + derived inventory_product /
+# product_quantity_history rows + the inventory-service reconcile, in one
+# idempotent pass — see deploy/scripts/seed.sh). Kept as thin standalone entry
+# points for the legacy kubectl-path `k8s-bootstrap` (which still runs both,
+# back-to-back, in its prerequisite list) and any direct callers (docs/,
+# deploy/k6-stress/*). Both must still run AFTER k8s-apps/k8s-apps-helm:
+# docker/ecommerce.sql — now deploy/seed/ecommerce.sql — is data-only, and the
+# schema is created by Hibernate ddl-auto when the JPA services boot; seed.sh's
+# own post-apps precondition refuses to write a row before every target table
+# exists. Calling both k8s-seed-mysql and k8s-seed-inventory now runs the same
+# post-apps stage twice (row-count gates make the second call a no-op, but the
+# inventory-service reconcile restart also fires twice) — harmless, just
+# redundant. See task-6-report.md.
 k8s-seed-mysql:
-	@echo "==> applying 01-mysql-seed (job/mysql-seed)"
-	@kubectl -n bootstrap delete job mysql-seed --ignore-not-found >/dev/null
-	@kubectl -n bootstrap create configmap mysql-seed-scripts \
-	  --from-file=k8s/infra/jobs/01-mysql-seed/seed.sh --dry-run=client -o yaml | kubectl apply -f -
-	@kubectl -n bootstrap create configmap mysql-seed-sql \
-	  --from-file=docker/ecommerce.sql --dry-run=client -o yaml | kubectl apply -f -
-	@kubectl apply -f k8s/infra/jobs/01-mysql-seed/job.yaml
-	@kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/mysql-seed
-	@echo "k8s-seed-mysql complete"
+	@bash deploy/scripts/seed.sh --env k8s --stage post-apps --context $(K8S_CLUSTER)
 
-# k8s-seed-inventory: populate inventory-service's MySQL tables
-# (inventory_product + product_quantity_history) from the same JSON the Mongo
-# catalog uses. Must run AFTER k8s-apps — inventory-service creates those tables
-# via Hibernate ddl-auto at startup, and they're never written during a clean
-# bootstrap (the Kafka ProductUpdate listener only fires on a real product save,
-# which the Mongo seed bypasses). Without this every cart item shows
-# "0 available". Host-side + idempotent, mirroring k8s-seed-images.
 k8s-seed-inventory:
-	@scripts/seed/k8s-inventory.sh
+	@bash deploy/scripts/seed.sh --env k8s --stage post-apps --context $(K8S_CLUSTER)
 
 # k8s-seed-perftest: seed the k6 load-test fixtures (perftest_admin + 100
 # perftest_user_N + role assignments) into authorization-server MySQL. Runs
@@ -449,12 +419,15 @@ k8s-seed-perftest:
 	@kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/perftest-seed
 	@echo "k8s-seed-perftest complete"
 
-# k8s-seed-images: upload the real product images (docker/seed-images/*) into
-# MinIO at products/<id>/<slug>.jpg. Runs AFTER k8s-seed (needs the
-# ecommerce-media bucket). Host-side because the images live in the repo, not a
-# configMap. Idempotent (mc cp overwrites).
+# k8s-seed-images: superseded by the canonical `seed ENV=k8s STAGE=pre-apps`
+# (uploads the same 30 product images to MinIO alongside the mongo import —
+# see deploy/scripts/seed.sh's "objects" leg). Kept as a thin standalone entry
+# point for the legacy kubectl-path `k8s-bootstrap` and any direct callers.
+# Runs the WHOLE pre-apps stage, not images alone — seed.sh has no
+# images-only scope; idempotent either way (mongoimport upsert + mc cp
+# overwrite). See task-6-report.md.
 k8s-seed-images:
-	@scripts/seed/k8s-product-images.sh
+	@bash deploy/scripts/seed.sh --env k8s --stage pre-apps --context $(K8S_CLUSTER)
 
 .PHONY: k8s-apps k8s-apps-down k8s-apps-helm k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs k8s-storefront-smoke k8s-storefront-soak k8s-storefront-stress k8s-storefront-run k8s-storefront-logs k9s
 
@@ -703,22 +676,42 @@ k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build-reuse k8s-seed k8s-seed-images
 	@echo "================================================================"
 
 # Helm-based one-shot, alongside `k8s-bootstrap` (kubectl/kustomize) — same
-# shape (cluster -> infra -> images -> seed -> apps), with the two Helm swaps:
-# k8s-infra-helm instead of k8s-infra, k8s-apps-helm instead of k8s-apps. The
-# bootstrap-namespace seed Jobs (k8s-seed / k8s-seed-mysql / k8s-seed-inventory
-# / k8s-seed-perftest) are unchanged — they run against the infra/mongo/vault/
-# minio/mysql Services by cluster DNS, which the umbrella chart's infra
-# subchart provisions under the same names k8s-infra does, regardless of which
-# path created them. NOT composable with `k8s-bootstrap` on one live cluster
-# (see k8s-apps-helm's comment above); pick one path per cluster.
+# overall shape (cluster -> infra -> images -> seed -> apps -> seed), with the
+# two Helm swaps: k8s-infra-helm instead of k8s-infra, k8s-apps-helm instead
+# of k8s-apps. NOT composable with `k8s-bootstrap` on one live cluster (see
+# k8s-apps-helm's comment above); pick one path per cluster.
 #
 # Phase 8 Task 1: this is the target VERB_bootstrap_k8s now resolves to (see
 # the dispatch table near the bottom of this file). Verified live 2026-08-14
 # only for its k8s-infra-helm + k8s-apps-helm halves (already-running cluster,
 # no full from-scratch rebuild performed — that takes ~35m and was out of
-# scope for this task); the seed Jobs are unchanged from the already-proven
-# k8s-bootstrap chain.
-k8s-bootstrap-helm: k8s-cluster-up k8s-infra-helm k8s-build-reuse k8s-seed k8s-seed-images k8s-apps-helm k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest
+# scope for that task).
+#
+# Phase 8 Task 6: seeding repointed onto the canonical scripts
+# (deploy/scripts/secrets-seed.sh / deploy/scripts/seed.sh) instead of the old
+# k8s-seed (02-mongo-seed/03-vault-seed/05-minio-bootstrap) / k8s-seed-images /
+# k8s-seed-mysql / k8s-seed-inventory targets, which read k8s/infra/jobs/,
+# docker/*.json and docker/ecommerce.sql — trees a later phase deletes. Order
+# preserved exactly (secrets before apps; pre-apps seed — mongo + images —
+# before apps; post-apps seed — ecommerce.sql + derived inventory rows + the
+# inventory-service reconcile — after apps, because ecommerce.sql is
+# data-only and Hibernate ddl-auto creates the schema at service boot; see
+# seed.sh's own post-apps precondition). The seed calls are in the RECIPE
+# BODY, not the prerequisite list — same reason as bootstrap-compose's own
+# two `seed` calls (STAGE=pre-apps and STAGE=post-apps can't both be
+# prerequisites of one target). Both secrets-seed and seed REQUIRE an
+# explicit kubectl context for --env k8s (never an ambient one) — wired here
+# to $(K8S_CLUSTER) (=microecom, the live local cluster's context).
+# kafka-connect-register (k8s-seed, restructured) and perftest-seed
+# (k8s-seed-perftest, already canonical since Task 5) are unchanged in shape,
+# just re-sequenced into the recipe body alongside the rest.
+k8s-bootstrap-helm: k8s-cluster-up k8s-infra-helm k8s-build-reuse
+	@$(MAKE) --no-print-directory secrets-seed ENV=k8s CONTEXT=$(K8S_CLUSTER)
+	@$(MAKE) --no-print-directory seed ENV=k8s STAGE=pre-apps CONTEXT=$(K8S_CLUSTER)
+	@$(MAKE) --no-print-directory k8s-seed
+	@$(MAKE) --no-print-directory k8s-apps-helm
+	@$(MAKE) --no-print-directory seed ENV=k8s STAGE=post-apps CONTEXT=$(K8S_CLUSTER)
+	@$(MAKE) --no-print-directory k8s-seed-perftest
 	@echo "==> k8s bootstrap (helm) complete"
 	@$(MAKE) k8s-status
 	@echo ""

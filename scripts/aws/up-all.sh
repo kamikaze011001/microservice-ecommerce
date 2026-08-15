@@ -54,16 +54,15 @@ load_env_file() {  # load_env_file <path>  — export its KEY=VALUE pairs if pre
 load_env_file "$ROOT/docker/.env"
 load_env_file "$ROOT/k8s/.env"
 
-# 2) JWK: the canonical copy is hardcoded in the local vault seed; extract it so
-#    the AWS JWK is byte-identical (the gateway caches JWKS by kid). An exported
-#    APPLICATION_JWK wins if set.
-if [ -z "${APPLICATION_JWK:-}" ]; then
-  # 2>/dev/null + || true so a missing/renamed seed.sh yields an empty var and the
-  # friendly `need APPLICATION_JWK` below fires — not a raw sed error under set -e.
-  APPLICATION_JWK="$(sed -n "s/^[[:space:]]*application\.jwk='\(.*\)'[[:space:]]*\\\\\{0,1\}[[:space:]]*$/\1/p" \
-    "$ROOT/k8s/infra/jobs/03-vault-seed/seed.sh" 2>/dev/null | head -n1 || true)"
-  export APPLICATION_JWK
-fi
+# 2) JWK: Phase 8 Task 6 — no longer extracted here. deploy/secrets/
+#    jwk.private.json is now the single canonical copy secrets-seed.sh resolves
+#    for EVERY env (compose/k8s/aws) via the SAME `<file:jwk.private.json>` ref
+#    (see deploy/secrets/authorization-server.yaml), so byte-identical-across-envs
+#    (the gateway caches JWKS by kid) is now guaranteed by construction instead
+#    of by this script sed-extracting it from k8s/infra/jobs/03-vault-seed/
+#    seed.sh — a tree a later phase deletes, and Step 5 below no longer reads
+#    APPLICATION_JWK at all (secrets-seed.sh --env aws resolves the JWK from
+#    the canonical file, not the environment).
 
 # Fail loud, naming the exact file to populate.
 need() {  # need <VAR> <where-to-fill>
@@ -74,7 +73,6 @@ need PAYPAL_CLIENT_ID        "docker/.env"
 need PAYPAL_CLIENT_SECRET    "docker/.env"
 need APPLICATION_MAIL_USERNAME "k8s/.env"
 need APPLICATION_MAIL_PASSWORD "k8s/.env"
-need APPLICATION_JWK         "k8s/infra/jobs/03-vault-seed/seed.sh (could not extract application.jwk)"
 
 # 3) RDS master password must be in the gitignored tfvars (grep, never echo it).
 if ! grep -qE '^[[:space:]]*db_master_password[[:space:]]*=' "$TF/terraform.tfvars" 2>/dev/null; then
@@ -82,7 +80,7 @@ if ! grep -qE '^[[:space:]]*db_master_password[[:space:]]*=' "$TF/terraform.tfva
   echo "  Add:  db_master_password = \"<choose-a-strong-password>\"" >&2
   exit 1
 fi
-echo "✓ creds resolved (PayPal, mail, JWK), db_master_password set, PUSH=${PUSH}"
+echo "✓ creds resolved (PayPal, mail), db_master_password set, PUSH=${PUSH}"
 
 # ── Step 1 — cluster + RDS ────────────────────────────────────────────────────
 banner "Step 1/9 · terraform apply (VPC + EKS + ALB + ESO IRSA + RDS + ElastiCache) — ~15-20 min"
@@ -101,12 +99,33 @@ banner "Step 3/9 · ESO + infra subset (Mongo/Kafka/SR/Connect/VM/Grafana)"
 "$ROOT/scripts/aws/infra-up.sh"
 
 # ── Step 4 — Mongo seed (api_role gates routing; needs Mongo from step 3) ─────
-banner "Step 4/9 · seed Mongo (api_role + product + qty-history)"
-"$ROOT/scripts/aws/seed-mongo.sh"
+# Phase 8 Task 6: repointed off scripts/aws/seed-mongo.sh (k8s/infra/jobs/
+# 02-mongo-seed + docker/*.json — trees a later phase deletes) onto the
+# canonical deploy/scripts/seed.sh, which covers the same ground (api_role +
+# product + productQuantityHistory) plus the 30 product images in one pass —
+# see deploy/seed/tests/equivalence-test.sh (13 matched / 2 declared-different,
+# both on the compose leg — the aws leg matches exactly). --context is
+# REQUIRED for --env aws's mongo leg (kubectl exec into the in-cluster mongo
+# pod) — never inherited from an ambient context; "microecom-eks" matches the
+# hard context check at Step 6 below and scripts/aws/up.sh's own
+# `--alias microecom-eks`.
+banner "Step 4/9 · seed Mongo + product images (api_role + product + qty-history)"
+bash "$ROOT/deploy/scripts/seed.sh" --env aws --stage pre-apps --context microecom-eks
 
 # ── Step 5 — Secrets Manager (reads RDS outputs from step 1) ──────────────────
+# Repointed off scripts/aws/seed-secrets.sh onto the canonical
+# deploy/scripts/secrets-seed.sh (deploy/secrets/tests/equivalence-test.sh:
+# 33/0/0). No --context here: secrets-seed.sh's aws leg talks to AWS Secrets
+# Manager directly (no kubectl) and REJECTS --context for any env but k8s.
+# PAYPAL_CLIENT_ID/SECRET and APPLICATION_MAIL_USERNAME/PASSWORD are resolved
+# from this script's own environment (see the preflight above) via the
+# canonical secrets resolver's ${VAR} substitution (deploy/secrets/
+# payment-service.yaml, deploy/secrets/ecommerce.yaml) — nothing here needs to
+# change to feed them through. application.jwk is NOT one of these — see the
+# preflight's note above: it now resolves from the committed
+# deploy/secrets/jwk.private.json for every env, not from an env var.
 banner "Step 5/9 · seed Secrets Manager (RDS JDBC URLs + app config)"
-"$ROOT/scripts/aws/seed-secrets.sh"
+bash "$ROOT/deploy/scripts/secrets-seed.sh" --env aws
 
 # ── Step 6 — apps + the one hard sequencing gate ──────────────────────────────
 banner "Step 6/9 · deploy apps overlay"
@@ -158,12 +177,26 @@ for d in gateway product-service order-service orchestrator-service \
 done
 
 # ── Step 7 — RDS account data (schema now exists) ─────────────────────────────
+# Repointed off scripts/aws/seed-rds.sh onto the canonical seed.sh post-apps
+# stage, which imports ecommerce.sql (account/account_role/role/user) AND the
+# derived inventory_product/product_quantity_history rows AND runs the
+# inventory-service reconcile restart, all gated behind its own
+# every-target-table-exists precondition (see seed.sh's post-apps case).
 banner "Step 7/9 · seed RDS data (accounts/roles/users)"
-"$ROOT/scripts/aws/seed-rds.sh"
+bash "$ROOT/deploy/scripts/seed.sh" --env aws --stage post-apps --context microecom-eks
 
 # ── Step 8 — RDS inventory stock (tables now exist) ───────────────────────────
+# scripts/aws/seed-inventory.sh's old ground (inventory_product +
+# product_quantity_history) is now covered by the SAME post-apps call as
+# Step 7 above (seed.sh has no inventory-only scope — see deploy/scripts/
+# seed.sh's post-apps case, which imports both in one idempotent pass and
+# restarts inventory-service once already). Calling it again here is
+# redundant but harmless: the row-count gates make the SQL a no-op on the
+# second pass, and the reconcile restart is idempotent (AvailableStockSeeder
+# deletes-then-incrs). Kept as its own numbered step for output-shape parity
+# with the old 9-step script; see task-6-report.md.
 banner "Step 8/9 · seed RDS inventory stock"
-"$ROOT/scripts/aws/seed-inventory.sh"
+bash "$ROOT/deploy/scripts/seed.sh" --env aws --stage post-apps --context microecom-eks
 
 # AvailableStockSeeder runs at inventory-service startup (step 6) and seeds the
 # Redis `available:{productId}` reservation counters from SUM(product_quantity_history).
@@ -180,8 +213,15 @@ kubectl -n apps rollout restart deploy/inventory-service
 kubectl -n apps rollout status deploy/inventory-service --timeout=300s
 
 # ── Step 9 — S3 product images (Phase 4c) ─────────────────────────────────────
+# scripts/aws/seed-images.sh's old ground is covered by the SAME
+# `seed --env aws --stage pre-apps` call as Step 4 above (seed.sh uploads
+# product images alongside the mongo import — no images-only scope exists).
+# Re-running it here re-does the whole pre-apps stage (mongo upsert + mc cp
+# overwrite) — redundant but idempotent either way. Kept as its own numbered
+# step for output-shape parity with the old 9-step script; see
+# task-6-report.md.
 banner "Step 9/9 · seed S3 product images"
-"$ROOT/scripts/aws/seed-images.sh"
+bash "$ROOT/deploy/scripts/seed.sh" --env aws --stage pre-apps --context microecom-eks
 
 banner "DONE · stack is up"
 ALB="$(kubectl -n apps get ingress gateway-alb \

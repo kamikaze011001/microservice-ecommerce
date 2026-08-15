@@ -5,25 +5,17 @@ helm upgrade --install microecom deploy/charts/microecom \
 	  -f deploy/charts/microecom/envs/local-k8s.yaml \
 	  --wait --timeout 30m
 if [ -n "" ]; then deploy/images/build.sh; else REUSE_EXISTING=1 deploy/images/build.sh; fi
-for d in 02-mongo-seed 03-vault-seed 05-minio-bootstrap 04-kafka-connect-register; do \
-	  job=$(echo $d | sed 's/^[0-9]*-//'); \
-	  echo "==> applying $d (job/$job)"; \
-	  kubectl -n bootstrap delete job $job --ignore-not-found >/dev/null; \
-	  case "$d" in \
-	    02-mongo-seed) \
-	      kubectl -n bootstrap create configmap mongo-seed-scripts \
-	        --from-file=k8s/infra/jobs/02-mongo-seed/seed.sh --dry-run=client -o yaml | kubectl apply -f - ; \
-	      kubectl -n bootstrap create configmap mongo-seed-data \
-	        --from-file=docker/api_role.json --from-file=docker/product.json \
-	        --from-file=docker/product-quantity-history.json --dry-run=client -o yaml | kubectl apply -f - ; \
-	      kubectl apply -f k8s/infra/jobs/02-mongo-seed/job.yaml ;; \
-	    04-kafka-connect-register) kubectl apply -k deploy/k8s-jobs/04-kafka-connect-register ;; \
-	    *) kubectl apply -k k8s/infra/jobs/$d ;; \
-	  esac; \
-	  kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/$job; \
-	done
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory secrets-seed ENV=k8s CONTEXT=microecom
+bash deploy/scripts/secrets-seed.sh --env k8s --context microecom
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory seed ENV=k8s STAGE=pre-apps CONTEXT=microecom
+bash deploy/scripts/seed.sh --env k8s --stage pre-apps --context microecom
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory k8s-seed
+echo "==> applying 04-kafka-connect-register (job/kafka-connect-register)"
+kubectl -n bootstrap delete job kafka-connect-register --ignore-not-found >/dev/null
+kubectl apply -k deploy/k8s-jobs/04-kafka-connect-register
+kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/kafka-connect-register
 echo "k8s-seed complete"
-scripts/seed/k8s-product-images.sh
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory k8s-apps-helm
 for ns in apps bootstrap monitoring; do \
 	  kubectl create namespace $ns --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
 	  kubectl label namespace $ns app.kubernetes.io/managed-by=Helm --overwrite >/dev/null; \
@@ -45,16 +37,9 @@ helm upgrade --install microecom deploy/charts/microecom \
 	  --set apps.enabled=true --set infra.enabled=false  \
 	  --wait --timeout 30m
 kubectl -n apps rollout status deployment --timeout=10m
-echo "==> applying 01-mysql-seed (job/mysql-seed)"
-kubectl -n bootstrap delete job mysql-seed --ignore-not-found >/dev/null
-kubectl -n bootstrap create configmap mysql-seed-scripts \
-	  --from-file=k8s/infra/jobs/01-mysql-seed/seed.sh --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n bootstrap create configmap mysql-seed-sql \
-	  --from-file=docker/ecommerce.sql --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -f k8s/infra/jobs/01-mysql-seed/job.yaml
-kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/mysql-seed
-echo "k8s-seed-mysql complete"
-scripts/seed/k8s-inventory.sh
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory seed ENV=k8s STAGE=post-apps CONTEXT=microecom
+bash deploy/scripts/seed.sh --env k8s --stage post-apps --context microecom
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory k8s-seed-perftest
 echo "==> applying 06-perftest-seed (job/perftest-seed)"
 kubectl -n bootstrap delete job perftest-seed --ignore-not-found >/dev/null
 kubectl apply -k deploy/k8s-jobs/06-perftest-seed
