@@ -1,6 +1,0 @@
-controller:
-  # minikube tunnel assigns the LoadBalancer service a host-reachable IP.
-  # Keep the tunnel running while using the ingress hosts.
-  service:
-    type: LoadBalancer
-  watchIngressWithoutClass: true

@@ -34,7 +34,7 @@ help:
 	@echo "  make kafka-topics / mongo-connector"
 	@echo ""
 	@echo "Kubernetes (local minikube cluster):"
-	@echo "  make k8s-bootstrap    — one-shot: cluster + infra + images + seed + apps"
+	@echo "  make bootstrap ENV=k8s — one-shot: cluster + infra + images + seed + apps"
 	@echo "  make k8s-stop         — pause cluster (keep data; fast resume, no rebuild)"
 	@echo "  make k8s-start        — resume a stopped cluster (re-seeds Vault, bounces apps)"
 	@echo "  make k8s-down         — tear down apps + cluster"
@@ -43,7 +43,7 @@ help:
 	@echo "  make k8s-tunnel       — expose ingress :80/:443 in the background (needs 'sudo -v' first)"
 	@echo "  make k8s-registry-forward — expose the image registry on localhost:5001"
 	@echo "  make k8s-mysql-status — MySQL 1-primary/2-replica replication health"
-	@echo "  make k8s-apps         — re-apply just the service overlay"
+	@echo "  make deploy ENV=k8s    — re-apply just the services (Helm)"
 	@echo "  make k8s-rebuild svc=NAME — rebuild one image + rollout restart"
 	@echo "  make k8s-build-cache-prune  — reclaim the per-service Maven build caches"
 	@echo "  make k8s-payment-stress      — fire k6 payment-saga load Job (opt-in)"
@@ -290,7 +290,11 @@ k8s-cluster-down:
 	@deploy/scripts/cluster.sh down
 
 # The registry addon lives inside minikube, so down and nuke both remove it.
-k8s-nuke: k8s-apps-down
+#
+# The `k8s-apps-down` prerequisite was dropped when Phase 8 deleted the kustomize
+# path: `cluster.sh down` runs `minikube delete -p`, which destroys the cluster
+# and everything in it, so deleting the apps first was already redundant.
+k8s-nuke:
 	@deploy/scripts/cluster.sh down
 	@echo "==> cluster destroyed (full clean slate)"
 
@@ -346,10 +350,10 @@ k8s-build-cache-prune:
 	@docker builder prune --filter type=exec.cachemount -f
 	@docker builder du | tail -3
 
-.PHONY: k8s-infra k8s-platform k8s-infra-helm k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest k8s-seed-images k8s-app-secrets
+.PHONY: k8s-platform k8s-infra-helm k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest k8s-seed-images k8s-app-secrets
 
-k8s-infra:
-	@k8s/infra/install.sh
+# `k8s-infra` (which ran k8s/infra/install.sh, the kustomize path) was deleted in
+# Phase 8 along with k8s/. `k8s-infra-helm` below is the only infra path now.
 
 ## k8s-platform: install cluster-wide platform charts + vendor Helm deps
 k8s-platform:
@@ -445,7 +449,7 @@ k8s-seed-perftest:
 k8s-seed-images:
 	@bash deploy/scripts/seed.sh --env k8s --stage pre-apps --context $(K8S_CLUSTER)
 
-.PHONY: k8s-apps k8s-apps-down k8s-apps-helm k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs k8s-storefront-smoke k8s-storefront-soak k8s-storefront-stress k8s-storefront-run k8s-storefront-logs k9s
+.PHONY: k8s-apps-helm k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs k8s-storefront-smoke k8s-storefront-soak k8s-storefront-stress k8s-storefront-run k8s-storefront-logs k9s
 
 # Apply all 8 service Deployments via the local overlay.
 # k8s-app-secrets: build the `app-secrets` Secret in the apps namespace from
@@ -511,9 +515,11 @@ k8s-seed-images:
 # With the fix, `k8s-apps-down` + `k8s-apps-helm` deploys cleanly (10/10 pods,
 # catalog serving 30 products through the gateway).
 #
-# It is still NOT a drop-in after `make k8s-bootstrap` (kubectl path) without
-# first running `k8s-apps-down` — the two app paths remain mutually exclusive
-# on one cluster (see the target comment below). `make k8s-apps` restored the
+# That mutual-exclusion caveat is now HISTORY: Phase 8 deleted the kustomize
+# app path (`k8s-apps` / `k8s-apps-down` / `k8s/apps/overlays/local`), so there
+# is only one app path on a cluster and nothing to be exclusive with. Kept
+# because it explains why this target passes the flag at all. `make k8s-apps`
+# restored the
 # kustomize path cleanly on 2026-08-07 (10/10 pods, catalog 200) when this was
 # last needed as a rollback.
 #
@@ -537,12 +543,10 @@ k8s-app-secrets:
 	    --dry-run=client -o yaml | kubectl apply -f - ; \
 	fi
 
-k8s-apps: k8s-app-secrets
-	@kubectl apply -k k8s/apps/overlays/local
-	@kubectl -n apps rollout status deployment --timeout=10m
-
-k8s-apps-down:
-	@kubectl delete -k k8s/apps/overlays/local --ignore-not-found
+# `k8s-apps` and `k8s-apps-down` (kubectl apply/delete -k on
+# k8s/apps/overlays/local) were deleted in Phase 8 along with k8s/. The Helm
+# path below is the only app path now, so the two are no longer mutually
+# exclusive on one cluster — there is only one.
 
 # Helm path for the apps, alongside `make k8s-apps` (kubectl/kustomize).
 # Both bring-up paths stay in the tree this phase; rolling back is reverting this
@@ -698,33 +702,12 @@ k9s:
 	 echo "k9s → context $$ctx (ENV=$${ENV:-local}), namespace apps"; \
 	 K9S_CONFIG_DIR="$(CURDIR)/deploy/k9s" k9s --context "$$ctx" -n apps
 
-.PHONY: k8s-bootstrap k8s-bootstrap-helm k8s-down
+.PHONY: k8s-bootstrap-helm k8s-down
 
-# One-shot: cluster -> infra -> images -> seed -> apps. Idempotent —
-# safe to re-run after editing manifests or pulling new code. Mirrors
-# the docker-compose `make bootstrap` flow but for the minikube cluster.
-k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build-reuse k8s-seed k8s-seed-images k8s-apps k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest
-	@echo "==> k8s bootstrap complete"
-	@$(MAKE) k8s-status
-	@echo ""
-	@echo "================================================================"
-	@echo "  Final steps:"
-	@echo ""
-	@echo "  1. Add these lines to /etc/hosts (one-time):"
-	@echo "       127.0.0.1 microecom.local"
-	@echo "       127.0.0.1 api.microecom.local"
-	@echo "       127.0.0.1 media.microecom.local"
-	@echo "       127.0.0.1 grafana.microecom.local"
-	@echo "       127.0.0.1 vm.microecom.local"
-	@echo ""
-	@echo "  2. Make sure the ingress tunnel is up (k8s-cluster-up starts it when"
-	@echo "     sudo is already cached; otherwise start it by hand):"
-	@echo "       sudo -v && make k8s-tunnel"
-	@echo ""
-	@echo "  3. Verify:"
-	@echo "       curl -i http://api.microecom.local/product-service/v1/products"
-	@echo "       open http://microecom.local"
-	@echo "================================================================"
+# The legacy `k8s-bootstrap` (kustomize: k8s-infra + k8s-apps + the seed Jobs
+# under k8s/infra/jobs/) was deleted in Phase 8 with the k8s/ tree it drove.
+# k8s-bootstrap-helm below is the only k8s bring-up now, and it is what
+# `make bootstrap ENV=k8s` dispatches to.
 
 # Helm-based one-shot, alongside `k8s-bootstrap` (kubectl/kustomize) — same
 # overall shape (cluster -> infra -> images -> seed -> apps -> seed), with the
@@ -786,8 +769,11 @@ k8s-bootstrap-helm: k8s-cluster-up k8s-infra-helm k8s-build-reuse
 	@echo "================================================================"
 
 # Tear it ALL down — apps, infra, and the minikube cluster itself.
-# Use k8s-apps-down for a softer reset (keeps infra/data).
-k8s-down: k8s-apps-down k8s-cluster-down
+# The `k8s-apps-down` prerequisite went with the kustomize path in Phase 8;
+# k8s-cluster-down destroys the cluster wholesale, so it was redundant anyway.
+# For a softer reset today, `helm uninstall microecom -n infra` keeps the
+# cluster and its PVCs.
+k8s-down: k8s-cluster-down
 	@echo "==> k8s cluster destroyed"
 
 # ============================================================================
@@ -852,13 +838,16 @@ aws-deploy-apps:
 # deploy/README.md's "AWS cut-over" section for what each layer proves.
 
 .PHONY: aws-oracle-capture aws-diff-test
-# Rebuilds tests/aws-oracle/oracle.yaml from `kubectl kustomize
-# k8s/apps/overlays/aws` (pure local build, no cluster contact) PLUS
-# s3-irsa-serviceaccounts.yaml with PLACEHOLDER_S3_ROLE_ARN substituted from
-# the offline fixture — the same out-of-band step up-all.sh:127-137 performs
-# live (D1). Re-run this after any change under k8s/apps/overlays/aws; the
-# oracle is captured output, not hand-written, and aws-diff-test always
-# compares against whatever oracle.yaml currently holds on disk.
+# FROZEN. This rebuilt tests/aws-oracle/oracle.yaml from `kubectl kustomize
+# k8s/apps/overlays/aws` PLUS s3-irsa-serviceaccounts.yaml with the ARN
+# substituted from the offline fixture. **That source was DELETED in Phase 8**,
+# so this can no longer regenerate anything — the capture script refuses to run
+# without FORCE=1 (frozen in Task 4) and the committed oracle.yaml is now the
+# only record of what the old aws overlay produced.
+#
+# It is evidence, not a cache. aws-diff-test compares the chart's aws render
+# against it, so a failure means the CHART changed; the oracle cannot go stale
+# because its source no longer exists to drift from.
 aws-oracle-capture:
 	@bash deploy/charts/microecom/tests/aws-oracle/capture.sh
 

@@ -76,9 +76,18 @@ OUT="$HERE/baseline"
 # target before this cut-over. The OLD k8s-apps / k8s-bootstrap baselines stay
 # in TARGETS and in the tree unchanged (those targets aren't deleted, only no
 # longer what the verbs dispatch to).
+# `k8s-bootstrap` and `k8s-apps` were REMOVED from this list in Phase 8 Task 8:
+# both targets were deleted with the kustomize path they drove. Their baseline
+# FILES are deliberately kept (baseline/k8s-bootstrap.txt, baseline/k8s-apps.txt)
+# — they are the only surviving record of what that path expanded to, and
+# verb-equivalence-test.sh's header already documents k8s-bootstrap.txt as
+# orphaned pre-cutover history that no assertion reads. But they cannot be
+# listed here: this script would try to capture a target that no longer exists,
+# `make -n` would emit nothing, and its own "captured NOTHING — oracle is broken"
+# guard would fire. A kept file and a regenerable target are different things.
 TARGETS=(
-  bootstrap-compose  k8s-bootstrap   aws-all
-  svc-start   k8s-apps        aws-deploy-apps
+  bootstrap-compose   aws-all
+  svc-start           aws-deploy-apps
   status-compose      k8s-status
   down        k8s-down        aws-down
   k8s-build   aws-push
