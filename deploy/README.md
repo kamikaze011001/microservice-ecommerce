@@ -262,10 +262,12 @@ Per-env specifics:
   ```
 
 The old paths — `make vault-import`, the `03-vault-seed` Job, and
-`scripts/aws/seed-secrets.sh` — still work today and are **not** being
-removed by this change. They are retired in Phase 8, once both the compose
-and k8s seeding paths have been run against a live backend and proven
-equivalent (Phase 7).
+`scripts/aws/seed-secrets.sh` — coexisted with `secrets-seed` through Phases
+4-7 while both were proven equivalent against a live backend. Phase 8
+(2026-08-14/15) retired them: the `vault-import` Make target is gone, and
+`docker/vault-configs/` / `k8s/infra/jobs/03-vault-seed/` are slated for
+deletion by a later cleanup task. `secrets-seed` is now the only supported
+path.
 
 ### Verification status
 

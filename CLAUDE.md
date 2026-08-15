@@ -137,7 +137,9 @@ handles the prefix. Don't add `StripPrefix` and don't repeat the service name in
 `GET /product-service/v1/products/**` and `GET /bff-service/v1/products/**` are
 `PERMIT_ALL` (storefront browse + detail work without login). All other routes
 require authentication; admin routes require the `ADMIN` role. Auth rules live in
-`docker/api_role.json` and are loaded into MongoDB by `make seed-data`.
+`deploy/seed/api_role.json` and are loaded into MongoDB by `make seed`
+(ENV=compose STAGE=pre-apps, the default — also run automatically on every
+`make up` via `mongo-seed-ensure`).
 
 ### Cross-service JSON: map keys are snake_case, not camelCase
 Every downstream DTO in this codebase is annotated `@JsonNaming(SnakeCaseStrategy)`,

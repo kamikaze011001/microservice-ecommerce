@@ -197,6 +197,63 @@ MINIO_BUCKET="${MINIO_BUCKET:-ecommerce-media}"
 MINIO_HOST="${MINIO_HOST:-minio}"
 SEED_IMAGES_DIR="$ROOT/docker/seed-images"
 
+# --- compose-only readiness poll --------------------------------------------
+# scripts/infra/up.sh runs `docker compose up -d` with no `--wait` — it
+# returns as soon as containers are STARTED, not once they're actually
+# accepting connections. A started Mongo/MinIO container is not an accepting
+# Mongo/MinIO: without this poll, the mongoimport loop below (and the mc
+# calls after it) run against a not-yet-listening server, mongoimport/mc
+# fail, seed.sh accumulates FAIL and exits non-zero, and — because the
+# Makefile's `mongo-seed-ensure` recipe has no `-`/`|| true` — that aborts
+# `make up` on a cold start before `svc-start` ever runs. This is why
+# scripts/seed/mongo-roles.sh (the script this stage replaced) carried the
+# same poll.
+#
+# Scoped to compose ONLY, deliberately: the k8s and aws legs reach Mongo/
+# MinIO via `kubectl exec` after `helm ... --wait` (k8s-infra-helm) has
+# already gated on pod readiness — deploy/charts/microecom/charts/infra's
+# mongodb/minio templates carry their own readiness probes/setup-sidecar
+# gate, so there is no started-but-not-ready window on those legs to guard
+# against here.
+#
+# 15 x 2s = 30s, matching scripts/seed/mongo-roles.sh and
+# scripts/kafka/ensure-connector.sh.
+if [ "$ENV_NAME" = "compose" ]; then
+  mongo_ready=0
+  for i in $(seq 1 15); do
+    if docker exec "$MONGO_CONTAINER" mongosh --quiet \
+        --authenticationDatabase admin -u "$MONGO_USER" -p "$MONGO_PASS" \
+        --eval 'db.adminCommand({ ping: 1 })' >/dev/null 2>&1; then
+      mongo_ready=1
+      break
+    fi
+    [ "$i" -eq 15 ] || sleep 2
+  done
+  if [ "$mongo_ready" -ne 1 ]; then
+    log_err "MongoDB ($MONGO_CONTAINER) not accepting connections after 30s"
+    exit 1
+  fi
+
+  # docker/minio.yml sets no `container_name:`, so compose derives one from
+  # the compose *file's directory* basename ("docker") — verified live:
+  # `docker-minio-1`. Overridable via MINIO_CONTAINER for anyone running a
+  # differently-named stack.
+  MINIO_CONTAINER="${MINIO_CONTAINER:-docker-minio-1}"
+  minio_ready=0
+  for i in $(seq 1 15); do
+    if docker exec "$MINIO_CONTAINER" curl -sf http://localhost:9000/minio/health/live >/dev/null 2>&1; then
+      minio_ready=1
+      break
+    fi
+    [ "$i" -eq 15 ] || sleep 2
+  done
+  if [ "$minio_ready" -ne 1 ]; then
+    log_err "MinIO ($MINIO_CONTAINER) not accepting connections after 30s"
+    exit 1
+  fi
+  log_ok "compose readiness: MongoDB ($MONGO_CONTAINER) and MinIO ($MINIO_CONTAINER) are accepting connections"
+fi
+
 is_drop_flag() {
   jq -e --arg c "$1" '.drop | index($c) != null' "$RENDERED" >/dev/null 2>&1 && echo 1 || echo 0
 }

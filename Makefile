@@ -372,12 +372,22 @@ k8s-infra-helm: k8s-platform
 	  --wait --timeout 30m
 
 # k8s-seed: applies the Kafka Connect registration Job (relocated to
-# deploy/k8s-jobs/04-kafka-connect-register — Task 5). The other three Jobs
-# this loop used to run — 02-mongo-seed, 03-vault-seed, 05-minio-bootstrap —
-# are now covered by the canonical `secrets-seed ENV=k8s CONTEXT=...` /
-# `seed ENV=k8s STAGE=pre-apps CONTEXT=...` calls in k8s-bootstrap-helm
-# (Task 6; see its own comment). This target is kept standalone — the legacy
-# kubectl-path `k8s-bootstrap` still uses it for kafka-connect-register.
+# deploy/k8s-jobs/04-kafka-connect-register — Task 5). Of the other three
+# Jobs this loop used to run: 02-mongo-seed and 03-vault-seed are now covered
+# by the canonical `seed ENV=k8s STAGE=pre-apps CONTEXT=...` / `secrets-seed
+# ENV=k8s CONTEXT=...` calls in k8s-bootstrap-helm (Task 6; see its own
+# comment). 05-minio-bootstrap's bucket-creation and anonymous-download-policy
+# work is NOT covered by seed.sh — seed.sh's bucket-setup case (deploy/scripts/
+# seed.sh, the "objects" leg) has arms for --env compose and --env aws only,
+# no k8s arm. Its coverage is deploy/charts/microecom/charts/infra/templates/
+# minio.yaml's `setup` sidecar, which runs `mc mb --ignore-existing` and
+# `mc anonymous set download` on every k8s-infra-helm rollout and gates pod
+# readiness on it — so nothing is functionally missing (k8s-infra-helm runs
+# before the seed), it's just a different mechanism than the mongo/vault
+# legs. (The image *upload* half of pre-apps DOES have a k8s arm, via
+# `kubectl exec minio-0 -c setup` in seed.sh.) This target is kept standalone
+# — the legacy kubectl-path `k8s-bootstrap` still uses it for
+# kafka-connect-register.
 k8s-seed:
 	@echo "==> applying 04-kafka-connect-register (job/kafka-connect-register)"
 	@kubectl -n bootstrap delete job kafka-connect-register --ignore-not-found >/dev/null
