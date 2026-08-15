@@ -188,10 +188,16 @@ cmd_start() {
     -l app.kubernetes.io/name=vault \
     --timeout=5m
 
+  # Re-seed Vault through the canonical secrets path. This used to apply
+  # k8s/infra/jobs/03-vault-seed, deleted with the rest of k8s/ in Phase 8 —
+  # missed by the deletion sweep because this is a SCRIPT the Makefile calls,
+  # and `make -n` shows which commands run, never which files they open.
+  #
+  # --context is passed explicitly and never inherited: secrets-seed.sh refuses
+  # an ambient context for --env k8s, and this function has just started that
+  # exact profile, so $CLUSTER_NAME is the only correct target.
   log_info "re-seeding Vault"
-  kubectl -n bootstrap delete job vault-seed --ignore-not-found >/dev/null
-  kubectl apply -k k8s/infra/jobs/03-vault-seed
-  kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/vault-seed
+  "$ROOT/deploy/scripts/secrets-seed.sh" --env k8s --context "$CLUSTER_NAME"
 
   log_info "restarting applications"
   kubectl -n apps rollout restart deployment

@@ -202,9 +202,12 @@ seed-test-render:
 seed-test-equivalence:
 	@bash deploy/seed/tests/equivalence-test.sh
 
-# Layer B — live state diff (old way vs new way, by content hash). ENV=compose|k8s,
-# default compose. Re-seeds the target backend and takes several minutes; only
-# run against a stack you're fine re-seeding. See deploy/README.md.
+# Layer B — RETIRED in Phase 8. It was a live old-way-vs-new-way state diff by
+# content hash, and Phase 8 deleted the old way (scripts/seed/, k8s/infra/jobs/),
+# so there is nothing left to diff against. The script now refuses to run and
+# says so; it is kept because it documents what the old transports did.
+# The surviving checks are offline: `make seed-test-equivalence` against the
+# frozen goldens, and `make seed-test-render`.
 seed-live-verify:
 	@bash deploy/seed/tests/live-verify.sh --env $(or $(ENV),compose)
 

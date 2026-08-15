@@ -37,7 +37,7 @@ log_info "installing ingress-nginx"
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace infra --create-namespace \
   --version 4.10.0 \
-  -f k8s/infra/values/ingress-nginx.yaml \
+  -f deploy/platform-values/ingress-nginx.yaml \
   --wait --timeout 5m
 
 # --kubelet-insecure-tls: minikube kubelet serving certs are self-signed.
