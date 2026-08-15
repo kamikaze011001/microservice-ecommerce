@@ -2,7 +2,8 @@
 # Deploy the Phase 2 self-hosted infra SUBSET onto the CURRENT kubectl context:
 #   Kafka (KRaft) · Schema Registry · Kafka Connect · MongoDB · VictoriaMetrics · Grafana
 #
-# This mirrors the relevant steps of k8s/infra/install.sh — it does NOT rewrite
+# This mirrored the relevant steps of the old k8s/infra/install.sh (deleted in
+# Phase 8). Its inputs now live in deploy/aws-infra/ — it does NOT rewrite
 # them. The manifests are context-agnostic: because gp3 is the default
 # StorageClass (Task 4) and the EBS CSI driver is installed (Task 3), the very
 # same kafka.yaml / mongodb.yaml that bind kind local-path volumes now bind real
@@ -17,7 +18,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 export AWS_PROFILE="${AWS_PROFILE:-microecom}"
 
-MANIFESTS="k8s/infra/manifests"
+MANIFESTS="deploy/aws-infra/manifests"
 
 # ── Guard: never run this against the local kind cluster by accident ─────────
 CTX="$(kubectl config current-context)"
@@ -42,7 +43,7 @@ done
 # statefulsets below create their PVCs, or those PVCs sit Pending forever with
 # "no storage class is set". Idempotent: apply + patch both re-run cleanly.
 echo "▶ applying gp3 default StorageClass (xfs) + demoting gp2"
-kubectl apply -f k8s/infra/overlays/aws/storageclass-gp3.yaml
+kubectl apply -f deploy/aws-infra/storageclass-gp3.yaml
 kubectl patch storageclass gp2 \
   -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}' \
   >/dev/null 2>&1 || true
@@ -128,7 +129,7 @@ kubectl -n infra rollout status deployment/kafka-connect --timeout=10m
 echo "▶ installing VictoriaMetrics (single)"
 helm upgrade --install vmsingle vm/victoria-metrics-single \
   --namespace monitoring --version 0.39.0 \
-  -f k8s/infra/values/victoria-metrics.yaml \
+  -f deploy/aws-infra/values/victoria-metrics.yaml \
   --set server.ingress.enabled=false \
   --wait --timeout 5m
 
@@ -138,13 +139,13 @@ helm upgrade --install vmsingle vm/victoria-metrics-single \
 echo "▶ creating grafana-custom-dashboards ConfigMap"
 kubectl create configmap grafana-custom-dashboards \
   --namespace monitoring \
-  $(find k8s/infra/dashboards -name '*.json' | sort | sed 's/^/--from-file=/') \
+  $(find deploy/aws-infra/dashboards -name '*.json' | sort | sed 's/^/--from-file=/') \
   --dry-run=client -o yaml | kubectl apply -f -
 
 echo "▶ installing Grafana"
 helm upgrade --install grafana grafana/grafana \
   --namespace monitoring --version 10.5.15 \
-  -f k8s/infra/values/grafana.yaml \
+  -f deploy/aws-infra/values/grafana.yaml \
   --set ingress.enabled=false \
   --wait --timeout 5m
 
@@ -153,7 +154,7 @@ helm upgrade --install grafana grafana/grafana \
 # Phase 2: the connector is the Saga's Mongo→Kafka stream, which no Phase-2
 # workload consumes yet, so a registration hiccup must NOT fail the infra bring-up.
 echo "▶ registering Kafka Connect connectors (best-effort)"
-if kubectl apply -k k8s/infra/jobs/04-kafka-connect-register/; then
+if kubectl apply -k deploy/k8s-jobs/04-kafka-connect-register/; then
   kubectl -n bootstrap wait --for=condition=complete job/kafka-connect-register --timeout=3m \
     || echo "warn: connector register Job did not complete in 3m — not fatal for Phase 2 (check later with: kubectl -n bootstrap logs job/kafka-connect-register)"
 else

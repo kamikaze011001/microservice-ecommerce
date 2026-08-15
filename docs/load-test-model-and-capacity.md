@@ -8,7 +8,7 @@ Companions: [`performance-test-guide.md`](performance-test-guide.md) (how to run
 
 ## 1. The load model (current settings)
 
-Source: `k8s/apps/base/k6-stress/payment-flow.js` + `payment-job.yaml`. Run with `make k8s-payment-stress`.
+Source: `deploy/k6-stress/payment-flow.js` + `payment-job.yaml`. Run with `make k8s-payment-stress`.
 
 | Setting | Value |
 |---|---|
@@ -79,7 +79,7 @@ Login verifies a password with **bcrypt (cost 10 ≈ 60–100ms of CPU per attem
 
 Alongside the pure-saga regression test (`payment-flow.js`, every VU pays), a
 production-shaped **conversion funnel** lives in
-`k8s/apps/base/k6-stress/storefront-flow.js`. Most sessions only browse; a
+`deploy/k6-stress/storefront-flow.js`. Most sessions only browse; a
 checkout-heavy minority pay. One script, three profiles via the `PROFILE` env.
 
 ### Per-session funnel (cumulative reach)

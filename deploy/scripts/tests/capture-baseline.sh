@@ -68,13 +68,31 @@ OUT="$HERE/baseline"
 # the REFUSE-TO-OVERWRITE / frozen-evidence comment above. `bootstrap-compose`
 # / `status-compose` capture the same recipes under the names that actually
 # hold them today.
+#
+# k8s-apps-helm / k8s-bootstrap-helm added in Phase 8 Task 1 (the k8s Helm
+# cut-over): VERB_deploy_k8s / VERB_bootstrap_k8s now resolve to these targets
+# instead of k8s-apps / k8s-bootstrap, so verb-equivalence-test.sh needs a
+# baseline for each — captured fresh here since neither existed as a wrapped
+# target before this cut-over. The OLD k8s-apps / k8s-bootstrap baselines stay
+# in TARGETS and in the tree unchanged (those targets aren't deleted, only no
+# longer what the verbs dispatch to).
+# `k8s-bootstrap` and `k8s-apps` were REMOVED from this list in Phase 8 Task 8:
+# both targets were deleted with the kustomize path they drove. Their baseline
+# FILES are deliberately kept (baseline/k8s-bootstrap.txt, baseline/k8s-apps.txt)
+# — they are the only surviving record of what that path expanded to, and
+# verb-equivalence-test.sh's header already documents k8s-bootstrap.txt as
+# orphaned pre-cutover history that no assertion reads. But they cannot be
+# listed here: this script would try to capture a target that no longer exists,
+# `make -n` would emit nothing, and its own "captured NOTHING — oracle is broken"
+# guard would fire. A kept file and a regenerable target are different things.
 TARGETS=(
-  bootstrap-compose  k8s-bootstrap   aws-all
-  svc-start   k8s-apps        aws-deploy-apps
+  bootstrap-compose   aws-all
+  svc-start           aws-deploy-apps
   status-compose      k8s-status
   down        k8s-down        aws-down
   k8s-build   aws-push
   svc-restart k8s-rebuild
+  k8s-apps-helm       k8s-bootstrap-helm
 )
 
 mkdir -p "$OUT"

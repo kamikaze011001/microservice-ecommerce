@@ -32,7 +32,7 @@
 #
 #   image tag:
 #     TAG env var, else "dev" — the SAME convention scripts/aws/push-images.sh
-#     and k8s/images/build.sh already default to, and what
+#     and deploy/images/build.sh already default to, and what
 #     k8s/apps/overlays/aws/*/kustomization.yaml pins via `newTag: dev`. This
 #     used to default to `git rev-parse --short HEAD` instead, which is WRONG:
 #     nothing in this repo ever pushes a sha-tagged image (`rev-parse --short`
@@ -155,7 +155,7 @@ fi
 [ -n "$ECR_REGISTRY" ] || fail "ecr_registry is empty" "run terraform apply in aws/bootstrap first (see scripts/aws/push-images.sh), or set AWS_TF_OUTPUTS_JSON to a fixture for offline testing"
 
 # ── Resolve image tag ────────────────────────────────────────────────────────
-# Default "dev", NOT a git sha: matches scripts/aws/push-images.sh, k8s/images/build.sh,
+# Default "dev", NOT a git sha: matches scripts/aws/push-images.sh, deploy/images/build.sh,
 # and k8s/apps/overlays/aws/*/kustomization.yaml's `newTag: dev`. A sha default here would
 # name a tag that has never once been pushed to ECR by anything in this repo (see header).
 IMAGE_TAG="${TAG:-dev}"

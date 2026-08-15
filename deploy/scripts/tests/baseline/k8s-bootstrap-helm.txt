@@ -1,12 +1,21 @@
 deploy/scripts/cluster.sh up
-k8s/infra/install.sh
+./deploy/scripts/platform.sh local-k8s
+helm upgrade --install microecom deploy/charts/microecom \
+	  --namespace infra --create-namespace \
+	  -f deploy/charts/microecom/envs/local-k8s.yaml \
+	  --wait --timeout 30m
 if [ -n "" ]; then deploy/images/build.sh; else REUSE_EXISTING=1 deploy/images/build.sh; fi
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory secrets-seed ENV=k8s CONTEXT=microecom
+bash deploy/scripts/secrets-seed.sh --env k8s --context microecom
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory seed ENV=k8s STAGE=pre-apps CONTEXT=microecom
+bash deploy/scripts/seed.sh --env k8s --stage pre-apps --context microecom
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory k8s-seed
 echo "==> applying 04-kafka-connect-register (job/kafka-connect-register)"
 kubectl -n bootstrap delete job kafka-connect-register --ignore-not-found >/dev/null
 kubectl apply -k deploy/k8s-jobs/04-kafka-connect-register
 kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/kafka-connect-register
 echo "k8s-seed complete"
-bash deploy/scripts/seed.sh --env k8s --stage pre-apps --context microecom
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory k8s-apps-helm
 for ns in apps bootstrap monitoring; do \
 	  kubectl create namespace $ns --dry-run=client -o yaml | kubectl apply -f - >/dev/null; \
 	  kubectl label namespace $ns app.kubernetes.io/managed-by=Helm --overwrite >/dev/null; \
@@ -22,16 +31,21 @@ if [ -f deploy/.env ]; then \
 	  kubectl create secret generic app-secrets --namespace apps \
 	    --dry-run=client -o yaml | kubectl apply -f - ; \
 	fi
-kubectl apply -k k8s/apps/overlays/local
+helm upgrade --install microecom deploy/charts/microecom \
+	  --namespace infra --create-namespace \
+	  -f deploy/charts/microecom/envs/local-k8s.yaml \
+	  --set apps.enabled=true  \
+	  --wait --timeout 30m
 kubectl -n apps rollout status deployment --timeout=10m
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory seed ENV=k8s STAGE=post-apps CONTEXT=microecom
 bash deploy/scripts/seed.sh --env k8s --stage post-apps --context microecom
-bash deploy/scripts/seed.sh --env k8s --stage post-apps --context microecom
+/Library/Developer/CommandLineTools/usr/bin/make --no-print-directory k8s-seed-perftest
 echo "==> applying 06-perftest-seed (job/perftest-seed)"
 kubectl -n bootstrap delete job perftest-seed --ignore-not-found >/dev/null
 kubectl apply -k deploy/k8s-jobs/06-perftest-seed
 kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/perftest-seed
 echo "k8s-seed-perftest complete"
-echo "==> k8s bootstrap complete"
+echo "==> k8s bootstrap (helm) complete"
 /Library/Developer/CommandLineTools/usr/bin/make k8s-status
 echo "== nodes =="; kubectl get nodes
 echo "== infra =="; kubectl -n infra get pods

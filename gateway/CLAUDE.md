@@ -9,14 +9,14 @@ Spring Cloud Gateway. Single entry point for all browser traffic. JWT validation
 ## Layout
 - `configuration/` — route definitions, CORS bean (`CorsConfigurationSource`), security
 - `filter/` — JWT validation, `X-User-Id` header injection
-- `repository/`, `entity/` — auth rules loaded from MongoDB (`api_role` collection, seeded from `docker/api_role.json`)
+- `repository/`, `entity/` — auth rules loaded from MongoDB (`api_role` collection, seeded from `deploy/seed/api_role.json`)
 
 ## Routing rules (don't violate)
 - Routes use `Path=/<service-name>/**` → `lb://<SERVICE-NAME>` (uppercase, **no `StripPrefix`**)
 - Each downstream sets `server.servlet.context-path: /<service-name>` so the prefix lands naturally
 - `GET /product-service/v1/products/**` and `GET /bff-service/v1/products/**` are `PERMIT_ALL`
 - All other routes need auth; admin routes require `ADMIN` role
-- Auth rules live in MongoDB (`api_role`), edited via `docker/api_role.json` + `make seed-data`
+- Auth rules live in MongoDB (`api_role`), edited via `deploy/seed/api_role.json` + `make seed` (ENV=compose STAGE=pre-apps; also run automatically by `make up`)
 - **`/actuator/**` is intentionally NOT routed** — management ports are internal-only
 
 ## CORS

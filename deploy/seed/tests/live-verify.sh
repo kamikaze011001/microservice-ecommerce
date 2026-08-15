@@ -64,6 +64,37 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 . "$ROOT/deploy/scripts/lib/colors.sh"
 
+# ── RETIRED (Phase 8, 2026-08-15) ────────────────────────────────────────────
+# This is an OLD-path-vs-NEW-path differential: it seeds the old way, snapshots,
+# resets, seeds the new way, snapshots, and diffs. **Phase 8 deleted the old
+# path**, so the comparison it exists to make can no longer be performed:
+#
+#   compose leg -> scripts/seed/all.sh              (deleted)
+#   k8s leg     -> k8s-seed / k8s-seed-mysql / ...  (targets deleted with k8s/)
+#
+# It is kept, not deleted, because the file documents exactly what the old
+# transports did and how the two were compared — the same reason the frozen
+# oracles were kept. But it must REFUSE rather than run: with the old half
+# missing it would either die at a missing script or, worse, "succeed" by
+# diffing the new path against an empty snapshot and reporting a match.
+#
+# The evidence it produced lives on in the committed goldens
+# (deploy/seed/tests/golden/) and in equivalence-test.sh, which compares the
+# renderer against them offline. Overriding this guard cannot restore the old
+# path; recover it from git history instead:
+#   git log --diff-filter=D -- scripts/seed/all.sh
+if [ "${I_UNDERSTAND_THE_OLD_PATH_IS_GONE:-0}" != "1" ]; then
+  echo "REFUSED: live-verify.sh compares the OLD seed path against the NEW one, and the" >&2
+  echo "         old path was deleted in Phase 8 (scripts/seed/, k8s/infra/jobs/)." >&2
+  echo "         There is nothing left to diff against, so a run here would compare the" >&2
+  echo "         new path with an empty snapshot and report a false match." >&2
+  echo "" >&2
+  echo "         Offline equivalence against the frozen goldens is the surviving check:" >&2
+  echo "           bash deploy/seed/tests/equivalence-test.sh   (13 matched, 2 declared)" >&2
+  echo "           bash deploy/seed/tests/render-test.sh        (7 passed)" >&2
+  exit 2
+fi
+
 ENV_NAME=""
 KUBE_CONTEXT="${KUBE_CONTEXT:-}"
 

@@ -1,0 +1,15 @@
+# Values for the THIRD-PARTY ingress-nginx chart, installed by
+# deploy/scripts/platform.sh. Not part of the microecom umbrella chart — that
+# lives in deploy/charts/microecom/ with its own envs/.
+#
+# Recovered verbatim from k8s/infra/values/ingress-nginx.yaml, which Phase 8
+# deleted along with the rest of k8s/ while platform.sh still read it. The
+# deletion sweep missed it because platform.sh is a SCRIPT the Makefile calls,
+# not a Makefile recipe line: `make -n` prints `@deploy/scripts/platform.sh
+# local-k8s` and never reveals which files that script opens.
+controller:
+  # minikube tunnel assigns the LoadBalancer service a host-reachable IP.
+  # Keep the tunnel running while using the ingress hosts.
+  service:
+    type: LoadBalancer
+  watchIngressWithoutClass: true

@@ -76,9 +76,9 @@ rm -rf "$T"
 # Unioning the files is what let the real docker/.env.example ship without any
 # MAIL line while this check stayed green.
 T="$(mktemp -d)"; copy_tree "$T"
-mkdir -p "$T/docker" "$T/k8s"
+mkdir -p "$T/docker" "$T/deploy"
 cp "$ROOT/docker/.env.example" "$T/docker/.env.example"
-cp "$ROOT/k8s/.env.example" "$T/k8s/.env.example"
+cp "$ROOT/deploy/.env.example" "$T/deploy/.env.example"
 python3 - "$T/docker/.env.example" <<'PY'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1])
@@ -89,7 +89,7 @@ assert len(kept) == len(lines) - 1, \
 p.write_text("".join(kept))
 PY
 out="$(bash "$VALIDATE" --secrets-dir "$T" \
-        --env-examples "compose=$T/docker/.env.example,k8s=$T/k8s/.env.example" 2>&1)"
+        --env-examples "compose=$T/docker/.env.example,k8s=$T/deploy/.env.example" 2>&1)"
 assert_contains "check 3 fires per-env when only one .env.example documents the variable" \
   "APPLICATION_MAIL_USERNAME" "$out"
 assert_contains "check 3 names the env whose file is missing it" "on 'compose'" "$out"

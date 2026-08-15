@@ -6,10 +6,37 @@
 # and terraform needed shims the brief's list omitted, and per-env counts).
 #
 #   bash deploy/seed/tests/capture-golden.sh
+#
+# ── FROZEN — Phase 8 Task 4 (docs/superpowers/specs/2026-08-14-cleanup-cutover-
+# design.md D3). Task 5 of this same phase deletes this script's source:
+# docker/*.sql|json, scripts/seed/, and k8s/infra/jobs/{01-mysql-seed,
+# 02-mongo-seed,05-minio-bootstrap}/seed.sh (part of k8s/). THE SOURCE IS
+# GOING AWAY AND golden/{compose,k8s,aws}.json MUST NEVER BE REGENERATED
+# AGAINST IT AGAIN. These three files are the last known-good capture of the
+# OLD per-env seeding paths' writes and are committed evidence, not a cache —
+# deploy/seed/tests/equivalence-test.sh diffs the new canonical seeder
+# against exactly these bytes. Regenerating destroys the only thing that
+# suite has left to check against once the source is gone.
+#
+# This is the fourth instance in this project of an oracle that can be
+# silently invalidated by regeneration (see deploy/scripts/tests/
+# capture-baseline.sh's header for the other three and the incident that
+# motivated this treatment). Refuses to run unless FORCE=1 is set:
+#   FORCE=1 bash deploy/seed/tests/capture-golden.sh   (regenerate on purpose)
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
+
+GOLDEN_ENVS=(compose k8s aws)
+existing=0
+for e in "${GOLDEN_ENVS[@]}"; do
+  [ -s "$HERE/golden/$e.json" ] && existing=$((existing + 1))
+done
+if [ "$existing" -eq "${#GOLDEN_ENVS[@]}" ] && [ "${FORCE:-0}" != "1" ]; then
+  echo "REFUSED: all ${#GOLDEN_ENVS[@]} golden files already exist under deploy/seed/tests/golden/ -- committed evidence, not a cache. The source (docker/*.sql|json, scripts/seed/, k8s/infra/jobs/*/seed.sh) is scheduled for deletion; do not regenerate. Set FORCE=1 to override on purpose." >&2
+  exit 1
+fi
 
 chmod +x "$HERE/shims/"* "$HERE/fixtures/"*.sh
 mkdir -p "$HERE/golden"

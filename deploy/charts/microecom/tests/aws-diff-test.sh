@@ -345,10 +345,65 @@ def alb_frontend_port_style(c, o):
     return c2, o, desc, ok
 
 
+def hpa_no_replicas(c, o):
+    """The chart omits spec.replicas on any Deployment that has an HPA; the oracle
+    sets it. The chart is more correct, and this one is not cosmetic — it broke a
+    real bootstrap.
+
+    Once an HPA scales a Deployment, kube-controller-manager takes ownership of
+    `.spec.replicas` via the `scale` subresource. A chart that also declares the
+    field then loses a server-side-apply ownership fight and fails the WHOLE
+    release:
+
+      UPGRADE FAILED: conflict occurred while applying object apps/gateway
+      Kind=Deployment: conflict with "kube-controller-manager" with subresource
+      "scale" using apps/v1: .spec.replicas
+
+    It cannot happen on a first install, only on an upgrade after the HPA has
+    acted, which is why it survived every prior verification. Found 2026-08-15
+    (Phase 8 Task 7) on the first from-scratch k8s bootstrap.
+
+    The oracle (the old kustomize aws overlay) still carries the bug. If this
+    check ever starts MATCHING, that means the chart has re-added `replicas` and
+    the release-breaking conflict is back — so it must FAIL, not be skipped.
+    """
+    ok = ("replicas" not in c["spec"]) and (o["spec"].get("replicas") is not None)
+    o2 = copy.deepcopy(o)
+    o2["spec"].pop("replicas", None)
+    desc = ("oracle sets spec.replicas on an HPA-managed Deployment; chart omits it -- "
+            "declaring it loses a server-side-apply ownership fight with "
+            "kube-controller-manager's `scale` subresource and fails the entire helm "
+            "release on any upgrade after the HPA has scaled")
+    return c, o2, desc, ok
+
+
+def compose(*handlers):
+    """Apply several declared-difference handlers to the same object.
+
+    Each handler narrows the docs further; ALL must report their own difference
+    as actually present, so one reverting still fails the suite rather than being
+    masked by its neighbour."""
+    def composed(c, o):
+        descs, all_ok = [], True
+        for h in handlers:
+            c, o, d, ok = h(c, o)
+            descs.append(d)
+            all_ok = all_ok and ok
+        return c, o, "; ".join(descs), all_ok
+    return composed
+
+
+# The 5 services carrying an `hpa:` block (charts/apps/values.yaml). They also
+# carry the vault-leftover difference, so their two declared differences compose.
+_HPA_SERVICES = ("authorization-server", "gateway", "inventory-service",
+                 "order-service", "product-service")
+
 CONTENT_DECLARED = {}
 for _name in ("authorization-server", "bff-service", "gateway", "inventory-service",
               "orchestrator-service", "order-service", "payment-service", "product-service"):
-    CONTENT_DECLARED[("Deployment", _name)] = vault_leftover
+    CONTENT_DECLARED[("Deployment", _name)] = (
+        compose(vault_leftover, hpa_no_replicas) if _name in _HPA_SERVICES
+        else vault_leftover)
 CONTENT_DECLARED[("Deployment", "frontend")] = frontend_probe_threshold
 CONTENT_DECLARED[("Ingress", "gateway-alb")] = alb_frontend_port_style
 

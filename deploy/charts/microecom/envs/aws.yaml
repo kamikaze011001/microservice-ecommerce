@@ -5,7 +5,7 @@ global:
     registry: ""            # filled from terraform output (ECR registry) by the deploy script
     tag: ""                 # filled by deploy/scripts/aws-deploy.sh: $TAG, else "dev"
                               # (same default as scripts/aws/push-images.sh /
-                              # k8s/images/build.sh -- NOT a git sha; nothing in
+                              # deploy/images/build.sh -- NOT a git sha; nothing in
                               # this repo pushes sha-tagged images)
     # No pullPolicy override here (previously IfNotPresent): nothing in the
     # apps subchart ever read global.appImage.pullPolicy — imagePullPolicy is

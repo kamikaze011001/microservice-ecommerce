@@ -43,18 +43,18 @@ make bootstrap
 make status                # all 9 services should show "● running"
 ```
 
-`make bootstrap` runs in this order (see Makefile L41):
+`make bootstrap` runs in this order (`bootstrap-compose` in the Makefile):
 1. **`infra-up`** — Docker compose: MySQL master+2 slaves, Redis, Mongo, Kafka, Schema Registry, Vault, MinIO
 2. **`vault-init`** — initialize Vault, write keys to `vault-keys.json`
 3. **`vault-unseal`** — unseal Vault using the keys
-4. **`vault-import`** — load app secrets from `docker/secrets/*.json` into Vault
+4. **`secrets-seed`** — resolve `deploy/secrets/*.yaml` and push every service's config into Vault (the canonical replacement for the old `vault-import` target — see `deploy/README.md`)
 5. **`kafka-topics`** — create topics
 6. **`mongo-connector`** — register the Debezium MongoDB → Kafka CDC connector (drives the saga)
 7. **`build`** — `mvn install` core modules then services in correct order
 8. **`svc-start`** — boot the 9 JVM services in tier order (Hibernate `ddl-auto: update` creates MySQL schemas on first boot)
-9. **`seed-data`** — seed MySQL (`ecommerce_dev`) + Mongo collections (`api_role`, `product`)
+9. **`seed ENV=compose STAGE=pre-apps`** then **`seed ENV=compose STAGE=post-apps`** — seed Mongo collections (`api_role`, `product`, `productQuantityHistory`) + product images before the apps start, then MySQL (`ecommerce_dev`) + derived inventory rows after (the canonical replacement for the old `seed-data` target — see `deploy/README.md`'s "Canonical seed data" section)
 
-> Why services boot *before* seeding: `docker/ecommerce.sql` is a data-only mysqldump (no `CREATE TABLE`). The schema is owned by JPA / Hibernate, not the SQL file. Seeding before services have ever run fails with `Table 'ecommerce_dev.account' doesn't exist`.
+> Why services boot *before* the post-apps seed: `deploy/seed/ecommerce.sql` is a data-only mysqldump (no `CREATE TABLE`). The schema is owned by JPA / Hibernate, not the SQL file. Seeding before services have ever run fails with `Table 'ecommerce_dev.account' doesn't exist` — `seed.sh`'s post-apps stage checks for this and refuses to write a row until it's satisfied.
 
 If bootstrap fails partway through, fix the underlying cause and re-run — each step is idempotent.
 
@@ -83,7 +83,7 @@ make restart   # equivalent to: make down && make up
 make status    # health table for every service + infra container
 ```
 
-`make down` keeps Docker volumes intact — your DBs, Mongo collections, MinIO buckets, and Vault data persist across restarts.
+`make down` keeps Docker volumes intact — your DBs, Mongo collections, MinIO buckets, and Vault data persist across restarts. Note: `make down` doesn't actually stop the MinIO container (a known gap — `scripts/infra/down.sh` omits `minio.yml`), so it stays running underneath a "stopped" stack; no data is at risk either way, but this means `make down && make up` isn't a true cold start today.
 
 After laptop reboot or Docker restart, `make up` is all you need. Vault re-seals on container restart; the `up` target unseals it before services try to read secrets.
 
@@ -152,9 +152,9 @@ After `make nuke`, you must run `make bootstrap` again before `make up`.
 |---|---|---|
 | Service crashes with "vault sealed" | Vault re-sealed after Docker restart | `make up` (it auto-unseals); or `make vault-unseal` directly |
 | `make up` fails with "port already in use" | Another stack / leftover process bound the port | `lsof -iTCP:PORT -sTCP:LISTEN` to find owner; kill or rebind |
-| Service starts then exits with `Failed to load ApplicationContext` | Vault returned no secrets for that service | `make vault-import` — re-loads `docker/secrets/*.json` |
+| Service starts then exits with `Failed to load ApplicationContext` | Vault returned no secrets for that service | `make secrets-seed` — re-pushes `deploy/secrets/*.yaml` |
 | inventory-service "stuck starting" | gRPC port `:9090` not yet bound | Wait — order-service correctly blocks until both ports are up |
-| Cart shows "0 available" right after bootstrap | inventory tables not seeded | `make seed-data` (or `make seed-mysql`); see `memory/project_inventory_seed.md` |
+| Cart shows "0 available" right after bootstrap | inventory tables not seeded | `make seed ENV=compose STAGE=post-apps`; see `memory/project_inventory_seed.md` |
 | Saga not firing on order create | Mongo CDC connector unregistered | `make mongo-connector-ensure` (also runs in `make up`) |
 | `make build` fails with "package … does not exist" | Core modules not installed before services | `make build` always installs core modules first; if it still fails, run `mvn -pl core/<module> install` manually |
 | Maven build slow / inconsistent | `~/.m2` cache contains stale local artifacts | `mvn -q -U clean install` to force-update |

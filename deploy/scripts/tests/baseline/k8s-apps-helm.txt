@@ -13,5 +13,9 @@ if [ -f deploy/.env ]; then \
 	  kubectl create secret generic app-secrets --namespace apps \
 	    --dry-run=client -o yaml | kubectl apply -f - ; \
 	fi
-kubectl apply -k k8s/apps/overlays/local
+helm upgrade --install microecom deploy/charts/microecom \
+	  --namespace infra --create-namespace \
+	  -f deploy/charts/microecom/envs/local-k8s.yaml \
+	  --set apps.enabled=true  \
+	  --wait --timeout 30m
 kubectl -n apps rollout status deployment --timeout=10m

@@ -1,1 +1,1 @@
-k8s/images/build.sh
+deploy/images/build.sh

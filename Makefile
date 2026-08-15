@@ -30,11 +30,11 @@ help:
 	@echo "  make build            — mvn install all modules"
 	@echo ""
 	@echo "Building blocks:"
-	@echo "  make infra-up / infra-down / vault-init / vault-unseal / vault-import"
-	@echo "  make kafka-topics / mongo-connector / seed-data"
+	@echo "  make infra-up / infra-down / vault-init / vault-unseal"
+	@echo "  make kafka-topics / mongo-connector"
 	@echo ""
 	@echo "Kubernetes (local minikube cluster):"
-	@echo "  make k8s-bootstrap    — one-shot: cluster + infra + images + seed + apps"
+	@echo "  make bootstrap ENV=k8s — one-shot: cluster + infra + images + seed + apps"
 	@echo "  make k8s-stop         — pause cluster (keep data; fast resume, no rebuild)"
 	@echo "  make k8s-start        — resume a stopped cluster (re-seeds Vault, bounces apps)"
 	@echo "  make k8s-down         — tear down apps + cluster"
@@ -43,7 +43,7 @@ help:
 	@echo "  make k8s-tunnel       — expose ingress :80/:443 in the background (needs 'sudo -v' first)"
 	@echo "  make k8s-registry-forward — expose the image registry on localhost:5001"
 	@echo "  make k8s-mysql-status — MySQL 1-primary/2-replica replication health"
-	@echo "  make k8s-apps         — re-apply just the service overlay"
+	@echo "  make deploy ENV=k8s    — re-apply just the services (Helm)"
 	@echo "  make k8s-rebuild svc=NAME — rebuild one image + rollout restart"
 	@echo "  make k8s-build-cache-prune  — reclaim the per-service Maven build caches"
 	@echo "  make k8s-payment-stress      — fire k6 payment-saga load Job (opt-in)"
@@ -72,10 +72,27 @@ help:
 # recipe and prerequisites, moved here verbatim under the exception documented
 # there — do not add a `bootstrap:` target in this file.
 .PHONY: bootstrap-compose
-# NOTE: svc-start runs BEFORE seed-data because docker/ecommerce.sql is a
-# data-only dump. Tables are created by Hibernate ddl-auto on first service
-# boot, then the seed inserts rows. Reordering these breaks fresh bootstrap.
-bootstrap-compose: infra-up vault-init vault-unseal vault-import kafka-topics mongo-connector build svc-start seed-data
+# NOTE: svc-start runs BEFORE the post-apps seed stage because docker/
+# ecommerce.sql is a data-only dump. Tables are created by Hibernate ddl-auto
+# on first service boot, then the seed inserts rows. Reordering this breaks
+# fresh bootstrap (ERROR 1146 — see deploy/CLAUDE.md and deploy/scripts/seed.sh's
+# post-apps precondition, which exists precisely to catch this).
+#
+# Phase 8 Task 2: repointed off the pre-Phase-4/5 `vault-import` /
+# `seed-data` prerequisites (which read docker/vault-configs/ and
+# scripts/seed/ — trees Phase 8 later deleted) onto the canonical
+# `secrets-seed` (Phase 4) and `seed` (Phase 5) paths. secrets-seed relies on
+# its own ENV default (compose) since prerequisites can't carry variable
+# assignments; the two `seed` stages are invoked explicitly in the recipe
+# body (not as prerequisites) because the same target name can't appear twice
+# in one prerequisite list with different STAGE values — pre-apps (mongo +
+# product images) must run before svc-start, post-apps (ecommerce.sql +
+# derived inventory rows + the inventory-service reconcile) must run after.
+# Verified live 2026-08-14: `make infra-up && make bootstrap ENV=compose`.
+bootstrap-compose: infra-up vault-init vault-unseal secrets-seed kafka-topics mongo-connector build
+	@$(MAKE) --no-print-directory seed ENV=compose STAGE=pre-apps
+	@$(MAKE) --no-print-directory svc-start
+	@$(MAKE) --no-print-directory seed ENV=compose STAGE=post-apps
 	@echo "✓ Bootstrap complete — stack is up"
 
 .PHONY: up
@@ -122,13 +139,11 @@ infra-status:
 # Vault
 # ============================================================================
 
-.PHONY: vault-init vault-unseal vault-import vault-login
+.PHONY: vault-init vault-unseal vault-login
 vault-init:
 	@bash scripts/vault/init.sh
 vault-unseal:
 	@bash scripts/vault/unseal.sh
-vault-import:
-	@bash scripts/vault/import-secrets.sh
 vault-login:
 	@bash scripts/vault/login.sh
 
@@ -139,12 +154,14 @@ vault-login:
 .PHONY: secrets-seed secrets-validate secrets-render
 # Canonical secrets (deploy/secrets/). ENV=compose|k8s|aws, default compose.
 # ALWAYS OVERWRITES the backend — the canonical file is authoritative.
+# CONTEXT=NAME is required (by secrets-seed.sh itself) for a real ENV=k8s run
+# — never inherited from an ambient kubectl context. See k8s-bootstrap-helm.
 secrets-seed:
-	@bash deploy/scripts/secrets-seed.sh --env $(or $(ENV),compose)
+	@bash deploy/scripts/secrets-seed.sh $(strip --env $(or $(ENV),compose) $(if $(CONTEXT),--context $(CONTEXT)))
 
 # Resolve only. Writes deploy/.run/secrets-<env>.json; touches no backend.
 secrets-render:
-	@bash deploy/scripts/secrets-seed.sh --env $(or $(ENV),compose) --dry-run
+	@bash deploy/scripts/secrets-seed.sh $(strip --env $(or $(ENV),compose) --dry-run $(if $(CONTEXT),--context $(CONTEXT)))
 
 # Consistency checks. No backend, no credentials — safe to run anywhere.
 secrets-validate:
@@ -161,11 +178,11 @@ secrets-validate:
 # account_role/role/user) + derived inventory rows + the inventory-service reconcile
 # — run after the apps (needs the Hibernate-created schema). See deploy/README.md.
 seed:
-	@bash deploy/scripts/seed.sh --env $(or $(ENV),compose) --stage $(or $(STAGE),pre-apps)
+	@bash deploy/scripts/seed.sh $(strip --env $(or $(ENV),compose) --stage $(or $(STAGE),pre-apps) $(if $(CONTEXT),--context $(CONTEXT)))
 
 # Resolve only. Touches no backend.
 seed-render:
-	@bash deploy/scripts/seed.sh --env $(or $(ENV),compose) --stage $(or $(STAGE),pre-apps) --dry-run
+	@bash deploy/scripts/seed.sh $(strip --env $(or $(ENV),compose) --stage $(or $(STAGE),pre-apps) --dry-run $(if $(CONTEXT),--context $(CONTEXT)))
 
 # ============================================================================
 # Canonical Seed — test suites (deploy/seed/tests/)
@@ -185,9 +202,12 @@ seed-test-render:
 seed-test-equivalence:
 	@bash deploy/seed/tests/equivalence-test.sh
 
-# Layer B — live state diff (old way vs new way, by content hash). ENV=compose|k8s,
-# default compose. Re-seeds the target backend and takes several minutes; only
-# run against a stack you're fine re-seeding. See deploy/README.md.
+# Layer B — RETIRED in Phase 8. It was a live old-way-vs-new-way state diff by
+# content hash, and Phase 8 deleted the old way (scripts/seed/, k8s/infra/jobs/),
+# so there is nothing left to diff against. The script now refuses to run and
+# says so; it is kept because it documents what the old transports did.
+# The surviving checks are offline: `make seed-test-equivalence` against the
+# frozen goldens, and `make seed-test-render`.
 seed-live-verify:
 	@bash deploy/seed/tests/live-verify.sh --env $(or $(ENV),compose)
 
@@ -215,21 +235,28 @@ build:
 # Seed
 # ============================================================================
 
-.PHONY: seed-data seed-mysql seed-mongo mongo-seed-ensure
-seed-data:
-	@bash scripts/seed/all.sh
-seed-mysql:
-	@bash scripts/seed/mysql.sh
-seed-mongo:
-	@bash scripts/seed/mongo-roles.sh
-	@bash scripts/seed/mongo-products.sh
+.PHONY: mongo-seed-ensure
 
-# Idempotent: mongo-roles.sh skips when api_role is already populated. Safe to
-# call on every `make up`. Deliberately NOT seed-data / all.sh — mongo-products.sh
-# DROPS its collection before importing, so calling it from `up` would wipe local
-# product data on every start.
+# Idempotent, safe to call on every `make up`. Used to be scoped to api_role
+# only (scripts/seed/mongo-roles.sh) because the OLD mongo-products.sh
+# unconditionally DROPPED its collection before importing — see git history.
+# That rationale no longer applies: deploy/scripts/seed.sh gates the Mongo
+# DROP behind --replace (not passed here), and without it mongoimport runs
+# --mode upsert (matches on _id, never drops) — see seed.sh's header. So this
+# now runs the full pre-apps stage (api_role + product + productQuantityHistory
+# + the 30 product images) non-destructively on every start.
+# Measured cost added to a warm `make up`: ~9.0-9.7s over 3 runs against the
+# live compose stack (2026-08-15) — under the 10s budget in task-6-brief.md's
+# decision rule, so wired directly rather than adding a narrower --only flag.
+# After the readiness polls were added the margin narrowed: a later sample
+# measured 10.18s (others 9.69s / 9.79s), i.e. it now straddles 10s rather
+# than sitting under it. The polls are two sub-100ms `docker exec` probes
+# against an already-healthy stack, so this is sampling noise, not the polls'
+# cost — but do NOT quote "under 10s" as a guarantee. If this ever needs to be
+# genuinely fast, the fix is the --only flag, not removing the guards.
+# See task-6-report.md.
 mongo-seed-ensure:
-	@bash scripts/seed/mongo-roles.sh
+	@bash deploy/scripts/seed.sh --env compose --stage pre-apps
 
 # ============================================================================
 # Service lifecycle
@@ -266,7 +293,11 @@ k8s-cluster-down:
 	@deploy/scripts/cluster.sh down
 
 # The registry addon lives inside minikube, so down and nuke both remove it.
-k8s-nuke: k8s-apps-down
+#
+# The `k8s-apps-down` prerequisite was dropped when Phase 8 deleted the kustomize
+# path: `cluster.sh down` runs `minikube delete -p`, which destroys the cluster
+# and everything in it, so deleting the apps first was already redundant.
+k8s-nuke:
 	@deploy/scripts/cluster.sh down
 	@echo "==> cluster destroyed (full clean slate)"
 
@@ -295,16 +326,16 @@ k8s-tunnel-stop:
 
 # Build and push through the registry forward started by k8s-cluster-up.
 k8s-build:
-	@k8s/images/build.sh
+	@deploy/images/build.sh
 
 # Bootstrap build path: skip images already in the registry (fast down->bootstrap).
 # `make k8s-bootstrap FORCE_BUILD=1` rebuilds everything from scratch instead.
 k8s-build-reuse:
-	@if [ -n "$(FORCE_BUILD)" ]; then k8s/images/build.sh; else REUSE_EXISTING=1 k8s/images/build.sh; fi
+	@if [ -n "$(FORCE_BUILD)" ]; then deploy/images/build.sh; else REUSE_EXISTING=1 deploy/images/build.sh; fi
 
 k8s-rebuild:
 	@if [ -z "$(svc)" ]; then echo "Usage: make k8s-rebuild svc=NAME"; exit 1; fi
-	@SVC=$(svc) SKIP_CORES=1 k8s/images/build.sh
+	@SVC=$(svc) SKIP_CORES=1 deploy/images/build.sh
 	@kubectl -n apps rollout restart deployment/$(svc)
 
 k8s-registry-forward:
@@ -322,10 +353,10 @@ k8s-build-cache-prune:
 	@docker builder prune --filter type=exec.cachemount -f
 	@docker builder du | tail -3
 
-.PHONY: k8s-infra k8s-platform k8s-infra-helm k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest k8s-seed-images k8s-app-secrets
+.PHONY: k8s-platform k8s-infra-helm k8s-seed k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest k8s-seed-images k8s-app-secrets
 
-k8s-infra:
-	@k8s/infra/install.sh
+# `k8s-infra` (which ran k8s/infra/install.sh, the kustomize path) was deleted in
+# Phase 8 along with k8s/. `k8s-infra-helm` below is the only infra path now.
 
 ## k8s-platform: install cluster-wide platform charts + vendor Helm deps
 k8s-platform:
@@ -353,69 +384,53 @@ k8s-infra-helm: k8s-platform
 	  -f deploy/charts/microecom/envs/$(or $(ENV),local-k8s).yaml \
 	  --wait --timeout 30m
 
-# k8s-seed: run the PRE-APPS bootstrap Jobs in fixed dependency order. Each Job
-# is idempotent (see seed.sh in each dir) so re-running is safe.
-# Order matters: vault must be seeded before any app that imports its Spring
-# config from vault; mongo (api_role) must be seeded before the gateway /
-# authorization-server load their auth rules; minio before any storefront image
-# upload. Kafka Connect registration runs last because Connect itself
-# (Deployment) is started by k8s-infra.
-#
-# NOTE: mysql is deliberately NOT here — see k8s-seed-mysql below. It must run
-# AFTER k8s-apps because docker/ecommerce.sql is data-only (no CREATE TABLE) and
-# the schema is created by Hibernate ddl-auto when the JPA services boot.
-#
-# These four Jobs are applied with `kubectl apply -k` EXCEPT mongo, whose data
-# configmap is built from out-of-tree docker/*.json that kubectl's embedded
-# kustomize refuses to load — so it's created imperatively + applied with plain
-# `kubectl apply -f`. See the kustomize SCAR in k8s/CLAUDE.md.
+# k8s-seed: applies the Kafka Connect registration Job (relocated to
+# deploy/k8s-jobs/04-kafka-connect-register — Task 5). Of the other three
+# Jobs this loop used to run: 02-mongo-seed and 03-vault-seed are now covered
+# by the canonical `seed ENV=k8s STAGE=pre-apps CONTEXT=...` / `secrets-seed
+# ENV=k8s CONTEXT=...` calls in k8s-bootstrap-helm (Task 6; see its own
+# comment). 05-minio-bootstrap's bucket-creation and anonymous-download-policy
+# work is NOT covered by seed.sh — seed.sh's bucket-setup case (deploy/scripts/
+# seed.sh, the "objects" leg) has arms for --env compose and --env aws only,
+# no k8s arm. Its coverage is deploy/charts/microecom/charts/infra/templates/
+# minio.yaml's `setup` sidecar, which runs `mc mb --ignore-existing` and
+# `mc anonymous set download` on every k8s-infra-helm rollout and gates pod
+# readiness on it — so nothing is functionally missing (k8s-infra-helm runs
+# before the seed), it's just a different mechanism than the mongo/vault
+# legs. (The image *upload* half of pre-apps DOES have a k8s arm, via
+# `kubectl exec minio-0 -c setup` in seed.sh.) This target is kept standalone
+# — the legacy kubectl-path `k8s-bootstrap` still uses it for
+# kafka-connect-register.
 k8s-seed:
-	@for d in 02-mongo-seed 03-vault-seed 05-minio-bootstrap 04-kafka-connect-register; do \
-	  job=$$(echo $$d | sed 's/^[0-9]*-//'); \
-	  echo "==> applying $$d (job/$$job)"; \
-	  kubectl -n bootstrap delete job $$job --ignore-not-found >/dev/null; \
-	  case "$$d" in \
-	    02-mongo-seed) \
-	      kubectl -n bootstrap create configmap mongo-seed-scripts \
-	        --from-file=k8s/infra/jobs/02-mongo-seed/seed.sh --dry-run=client -o yaml | kubectl apply -f - ; \
-	      kubectl -n bootstrap create configmap mongo-seed-data \
-	        --from-file=docker/api_role.json --from-file=docker/product.json \
-	        --from-file=docker/product-quantity-history.json --dry-run=client -o yaml | kubectl apply -f - ; \
-	      kubectl apply -f k8s/infra/jobs/02-mongo-seed/job.yaml ;; \
-	    *) kubectl apply -k k8s/infra/jobs/$$d ;; \
-	  esac; \
-	  kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/$$job; \
-	done
+	@echo "==> applying 04-kafka-connect-register (job/kafka-connect-register)"
+	@kubectl -n bootstrap delete job kafka-connect-register --ignore-not-found >/dev/null
+	@kubectl apply -k deploy/k8s-jobs/04-kafka-connect-register
+	@kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/kafka-connect-register
 	@echo "k8s-seed complete"
 
-# k8s-seed-mysql: runs SEPARATELY, AFTER k8s-apps. docker/ecommerce.sql is a
-# data-only dump (0 CREATE TABLE); the schema is created by Hibernate ddl-auto
-# during each JPA service's startup. By the time `k8s-apps` reports rollout
-# complete, every service is Ready — which (ddl-auto runs before the web server
-# accepts traffic) means all tables already exist. Seeding earlier fails with
-# "Table 'ecommerce_dev.account' doesn't exist". Both configmaps are created
-# imperatively (out-of-tree docker/ecommerce.sql) and the Job applied with plain
-# `kubectl apply -f`. See k8s/CLAUDE.md.
+# k8s-seed-mysql / k8s-seed-inventory: both superseded by the canonical
+# `seed ENV=k8s STAGE=post-apps` (ecommerce.sql + derived inventory_product /
+# product_quantity_history rows + the inventory-service reconcile, in one
+# idempotent pass — see deploy/scripts/seed.sh). No longer wired into any
+# automatic bootstrap chain (the legacy kustomize `k8s-bootstrap` that used to
+# run them back-to-back was deleted in Phase 8; `k8s-bootstrap-helm` calls
+# `seed ENV=k8s STAGE=post-apps` directly instead — see its recipe above).
+# Kept as thin standalone entry points for MANUAL re-seeding of a running
+# cluster. (They were also called by deploy/seed/tests/live-verify.sh — that
+# reason died with it: live-verify was retired in Phase 8 and now refuses to
+# run, since the old path it compared against is gone.) Both must still run AFTER k8s-apps-helm:
+# deploy/seed/ecommerce.sql is data-only, and the schema is created by
+# Hibernate ddl-auto when the JPA services boot; seed.sh's own post-apps
+# precondition refuses to write a row before every target table exists.
+# Calling both k8s-seed-mysql and k8s-seed-inventory now runs the same
+# post-apps stage twice (row-count gates make the second call a no-op, but
+# the inventory-service reconcile restart also fires twice) — harmless, just
+# redundant. See task-6-report.md.
 k8s-seed-mysql:
-	@echo "==> applying 01-mysql-seed (job/mysql-seed)"
-	@kubectl -n bootstrap delete job mysql-seed --ignore-not-found >/dev/null
-	@kubectl -n bootstrap create configmap mysql-seed-scripts \
-	  --from-file=k8s/infra/jobs/01-mysql-seed/seed.sh --dry-run=client -o yaml | kubectl apply -f -
-	@kubectl -n bootstrap create configmap mysql-seed-sql \
-	  --from-file=docker/ecommerce.sql --dry-run=client -o yaml | kubectl apply -f -
-	@kubectl apply -f k8s/infra/jobs/01-mysql-seed/job.yaml
-	@kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/mysql-seed
-	@echo "k8s-seed-mysql complete"
+	@bash deploy/scripts/seed.sh --env k8s --stage post-apps --context $(K8S_CLUSTER)
 
-# k8s-seed-inventory: populate inventory-service's MySQL tables
-# (inventory_product + product_quantity_history) from the same JSON the Mongo
-# catalog uses. Must run AFTER k8s-apps — inventory-service creates those tables
-# via Hibernate ddl-auto at startup, and they're never written during a clean
-# bootstrap (the Kafka ProductUpdate listener only fires on a real product save,
-# which the Mongo seed bypasses). Without this every cart item shows
-# "0 available". Host-side + idempotent, mirroring k8s-seed-images.
 k8s-seed-inventory:
-	@scripts/seed/k8s-inventory.sh
+	@bash deploy/scripts/seed.sh --env k8s --stage post-apps --context $(K8S_CLUSTER)
 
 # k8s-seed-perftest: seed the k6 load-test fixtures (perftest_admin + 100
 # perftest_user_N + role assignments) into authorization-server MySQL. Runs
@@ -427,25 +442,36 @@ k8s-seed-inventory:
 k8s-seed-perftest:
 	@echo "==> applying 06-perftest-seed (job/perftest-seed)"
 	@kubectl -n bootstrap delete job perftest-seed --ignore-not-found >/dev/null
-	@kubectl apply -k k8s/infra/jobs/06-perftest-seed
+	@kubectl apply -k deploy/k8s-jobs/06-perftest-seed
 	@kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/perftest-seed
 	@echo "k8s-seed-perftest complete"
 
-# k8s-seed-images: upload the real product images (docker/seed-images/*) into
-# MinIO at products/<id>/<slug>.jpg. Runs AFTER k8s-seed (needs the
-# ecommerce-media bucket). Host-side because the images live in the repo, not a
-# configMap. Idempotent (mc cp overwrites).
+# k8s-seed-images: superseded by the canonical `seed ENV=k8s STAGE=pre-apps`
+# (uploads the same 30 product images to MinIO alongside the mongo import —
+# see deploy/scripts/seed.sh's "objects" leg). Kept as a thin standalone entry
+# point for the legacy kubectl-path `k8s-bootstrap` and any direct callers.
+# Runs the WHOLE pre-apps stage, not images alone — seed.sh has no
+# images-only scope; idempotent either way (mongoimport upsert + mc cp
+# overwrite). See task-6-report.md.
 k8s-seed-images:
-	@scripts/seed/k8s-product-images.sh
+	@bash deploy/scripts/seed.sh --env k8s --stage pre-apps --context $(K8S_CLUSTER)
 
-.PHONY: k8s-apps k8s-apps-down k8s-apps-helm k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs k8s-storefront-smoke k8s-storefront-soak k8s-storefront-stress k8s-storefront-run k8s-storefront-logs k9s
+.PHONY: k8s-apps-helm k8s-status k8s-mysql-status k8s-payment-stress k8s-payment-stress-logs k8s-storefront-smoke k8s-storefront-soak k8s-storefront-stress k8s-storefront-run k8s-storefront-logs k9s
 
 # Apply all 8 service Deployments via the local overlay.
 # k8s-app-secrets: build the `app-secrets` Secret in the apps namespace from
-# k8s/.env (user-owned mail + PayPal creds). authorization-server and
-# payment-service envFrom it. Kept out of git (k8s/.env is gitignored) and out
-# of Vault. If k8s/.env is missing we create an empty Secret so the optional
-# secretRef resolves (mail/PayPal just stay unset). Idempotent (apply).
+# deploy/.env (user-owned mail + PayPal creds). authorization-server and
+# payment-service envFrom it. Kept out of git (deploy/.env is gitignored) and
+# out of Vault. If deploy/.env is missing we create an empty Secret so the
+# optional secretRef resolves (mail/PayPal just stay unset). Idempotent (apply).
+#
+# Phase 8 Task 6 (follow-up): relocated from k8s/.env — a tree a later phase
+# deletes. k8s/.env was gitignored, so `git rm -r k8s/` would not have removed
+# it from disk, but it would have been left stranded in an otherwise-empty
+# directory with nothing pointing at it any more, and this target's own
+# else-branch would then silently create an EMPTY app-secrets Secret (the
+# human's mail + PayPal config quietly stops working, with only a warn-level
+# log to notice it by). See task-6-report.md's Follow-up section.
 #
 # Ensures the namespaces exist FIRST, idempotently, rather than assuming some
 # other target already created them. This makes the target self-sufficient
@@ -478,20 +504,31 @@ k8s-seed-images:
 # (2026-08-07) — the 268 render tests cannot catch it, because the conflict is
 # between the chart and pre-existing cluster state, not inside the rendered YAML.
 #
-# NECESSARY BUT NOT SUFFICIENT. This unblocks the namespaces only. On a cluster
-# brought up the kubectl way (`make k8s-bootstrap`), `make k8s-apps-helm` still
-# aborts afterwards, because it does NOT set infra.enabled=false — the umbrella
-# renders the whole infra subchart, which vendors grafana
-# (charts/infra/charts/grafana), while `k8s-platform` has already installed
-# grafana as its OWN standalone Helm release. Helm then refuses to adopt
-# ServiceAccount/grafana out of release "grafana" into release "microecom".
-# Same applies to the other standalone platform releases.
+# NECESSARY BUT NOT SUFFICIENT (historically). This unblocked the namespaces
+# only. Before Phase 8 Task 1, `make k8s-apps-helm` still aborted afterwards,
+# because it did NOT set infra.enabled=false — the umbrella rendered the whole
+# infra subchart, which vendors grafana (charts/infra/charts/grafana), while
+# `k8s-platform` had already installed grafana as its OWN standalone Helm
+# release. Helm then refused to adopt ServiceAccount/grafana out of release
+# "grafana" into release "microecom". Same applies to the other standalone
+# platform releases.
 #
-# So the Helm app path is only reachable on a cluster brought up the Helm way:
-#   make k8s-cluster-up && make k8s-infra-helm && make k8s-apps-helm
-# It is NOT a drop-in after `make k8s-bootstrap`. Verified live 2026-08-07:
-# k8s-apps-down + k8s-apps-helm aborted on ServiceAccount/grafana, and
-# `make k8s-apps` restored the kustomize path cleanly (10/10 pods, catalog 200).
+# FIXED (Phase 8 Task 1): the recipe below now passes --set infra.enabled=false
+# itself, mirroring deploy/scripts/aws-deploy.sh, so the umbrella never renders
+# the infra subchart here and the collision cannot occur. Reproduced live
+# 2026-08-14 on this exact cluster: `k8s-apps-down` + `k8s-apps-helm` (pre-fix)
+# aborted with "ServiceAccount \"grafana\" in namespace \"monitoring\" ...
+# current value is \"grafana\"" — confirming the diagnosis above verbatim.
+# With the fix, `k8s-apps-down` + `k8s-apps-helm` deploys cleanly (10/10 pods,
+# catalog serving 30 products through the gateway).
+#
+# That mutual-exclusion caveat is now HISTORY: Phase 8 deleted the kustomize
+# app path (`k8s-apps` / `k8s-apps-down` / `k8s/apps/overlays/local`), so there
+# is only one app path on a cluster and nothing to be exclusive with. Kept
+# because it explains why this target passes the flag at all. `make k8s-apps`
+# restored the
+# kustomize path cleanly on 2026-08-07 (10/10 pods, catalog 200) when this was
+# last needed as a rollback.
 #
 # On the pure kubectl path (`k8s-apps`) no Helm release exists and the keys are
 # inert — Helm deletes what its release manifest lists, never what merely
@@ -504,27 +541,27 @@ k8s-app-secrets:
 	    meta.helm.sh/release-name=microecom \
 	    meta.helm.sh/release-namespace=infra --overwrite >/dev/null; \
 	done
-	@if [ -f k8s/.env ]; then \
+	@if [ -f deploy/.env ]; then \
 	  kubectl create secret generic app-secrets --namespace apps \
-	    --from-env-file=k8s/.env --dry-run=client -o yaml | kubectl apply -f - ; \
+	    --from-env-file=deploy/.env --dry-run=client -o yaml | kubectl apply -f - ; \
 	else \
-	  echo "warn: k8s/.env missing — creating empty app-secrets Secret. Copy k8s/.env.example to k8s/.env and re-run k8s-app-secrets for working mail/PayPal."; \
+	  echo "warn: deploy/.env missing — creating empty app-secrets Secret. Copy deploy/.env.example to deploy/.env and re-run k8s-app-secrets for working mail/PayPal."; \
 	  kubectl create secret generic app-secrets --namespace apps \
 	    --dry-run=client -o yaml | kubectl apply -f - ; \
 	fi
 
-k8s-apps: k8s-app-secrets
-	@kubectl apply -k k8s/apps/overlays/local
-	@kubectl -n apps rollout status deployment --timeout=10m
+# `k8s-apps` and `k8s-apps-down` (kubectl apply/delete -k on
+# k8s/apps/overlays/local) were deleted in Phase 8 along with k8s/. The Helm
+# path below is the only app path now, so the two are no longer mutually
+# exclusive on one cluster — there is only one.
 
-k8s-apps-down:
-	@kubectl delete -k k8s/apps/overlays/local --ignore-not-found
-
-# Helm path for the apps, alongside `make k8s-apps` (kubectl/kustomize).
-# Both bring-up paths stay in the tree this phase; rolling back is reverting this
-# target. They are NOT composable on one cluster — the Helm chart selects on
-# app.kubernetes.io/name while the base manifests use a bare `app:` key, and
-# spec.selector is immutable on a Deployment. Pick one path per cluster.
+# Helm path for the apps — the only one now (see the correction immediately
+# above: `k8s-apps`/`k8s-apps-down` and the kustomize base manifests they
+# drove were deleted in Phase 8). While both paths coexisted (Phases 3-7) they
+# were NOT composable on one cluster — the Helm chart selects on
+# app.kubernetes.io/name while the base manifests used a bare `app:` key, and
+# spec.selector is immutable on a Deployment — so picking one path per cluster
+# was an operational rule. Nothing is left to pick between now.
 #
 # --timeout stays 30m. The drift guard in tests/render-test.sh only parses the
 # k8s-infra-helm recipe (activeDeadlineSeconds + 330s); this target's --timeout
@@ -546,6 +583,33 @@ k8s-apps-down:
 # declares this; it was missing here. Order-independent now that
 # k8s-app-secrets creates its own namespace (see its recipe above) instead of
 # assuming k8s-infra-helm's templates/namespaces.yaml ran first.
+#
+# DO NOT re-add `--set infra.enabled=false` here. It was correct in Phase 8
+# Task 1 and became DESTRUCTIVE in Task 6, and the reason is worth keeping:
+#
+#   This target and k8s-infra-helm install THE SAME RELEASE NAME (`microecom`)
+#   into THE SAME NAMESPACE (`infra`). A helm release is upgraded as a whole —
+#   you cannot upgrade half of it. So `infra.enabled=false` here does not mean
+#   "leave infra alone", it means "this release no longer contains infra", and
+#   helm DELETES every infra resource: mysql, mongodb, kafka, vault, redis,
+#   minio, schema-registry, kafka-connect.
+#
+#   In Task 1 that was harmless — infra came from the kustomize path
+#   (`make k8s-infra`), so it was not owned by this release and there was
+#   nothing for helm to delete; the flag only suppressed an adoption conflict.
+#   Task 6 wired k8s-infra-helm into the bootstrap chain, so infra IS now owned
+#   by this release, and the flag started tearing down the stack the apps
+#   depend on. Observed 2026-08-15 on the first from-scratch run: helm rev 2
+#   "Upgrade complete" (infra healthy), rev 3 apps upgrade -> all infra gone and
+#   8 services in CrashLoopBackOff. Nothing in the apps chart was wrong.
+#
+#   Ordering still works without the flag: apps.enabled defaults to false, so
+#   k8s-infra-helm installs infra only, seeding runs, then this target adds apps
+#   while infra stays in the release.
+#
+# deploy/scripts/aws-deploy.sh DOES still pass infra.enabled=false, correctly —
+# on AWS the datastores are managed outside the chart, so there is no
+# chart-owned infra for it to delete.
 k8s-apps-helm: k8s-app-secrets
 	@helm upgrade --install microecom deploy/charts/microecom \
 	  --namespace infra --create-namespace \
@@ -587,8 +651,8 @@ k8s-mysql-status:
 k8s-payment-stress:
 	@kubectl -n apps delete job k6-payment-stress --ignore-not-found
 	@kubectl -n apps create configmap k6-payment-script \
-	  --from-file=k8s/apps/base/k6-stress/payment-flow.js --dry-run=client -o yaml | kubectl apply -f -
-	@kubectl apply -f k8s/apps/base/k6-stress/payment-job.yaml
+	  --from-file=deploy/k6-stress/payment-flow.js --dry-run=client -o yaml | kubectl apply -f -
+	@kubectl apply -f deploy/k6-stress/payment-job.yaml
 	@echo "k6 payment stress running. Watch with: make k8s-payment-stress-logs"
 	@echo "Watch HPA: kubectl -n apps get hpa -w"
 
@@ -619,12 +683,12 @@ k8s-storefront-stress:
 k8s-storefront-run:
 	@kubectl -n apps delete job k6-storefront --ignore-not-found
 	@kubectl -n apps create configmap k6-storefront-script \
-	  --from-file=k8s/apps/base/k6-stress/storefront-flow.js --dry-run=client -o yaml | kubectl apply -f -
+	  --from-file=deploy/k6-stress/storefront-flow.js --dry-run=client -o yaml | kubectl apply -f -
 	@sed -e 's/PROFILE_PLACEHOLDER/$(PROFILE)/' \
 	     -e 's/PEAK_RATE_PLACEHOLDER/$(PEAK_RATE)/' \
 	     -e 's/MAX_VUS_PLACEHOLDER/$(MAX_VUS)/' \
 	     -e 's/DURATION_PLACEHOLDER/$(STRESS_DUR)/' \
-	     k8s/apps/base/k6-stress/storefront-job.yaml | kubectl apply -f -
+	     deploy/k6-stress/storefront-job.yaml | kubectl apply -f -
 	@echo "k6 storefront [$(PROFILE)] running. Watch with: make k8s-storefront-logs"
 	@echo "Watch HPA: kubectl -n apps get hpa -w"
 
@@ -645,15 +709,54 @@ k9s:
 	  *) echo "Unknown ENV '$(ENV)' — use ENV=local or ENV=eks"; exit 1 ;; \
 	 esac; \
 	 echo "k9s → context $$ctx (ENV=$${ENV:-local}), namespace apps"; \
-	 K9S_CONFIG_DIR="$(CURDIR)/k8s/k9s" k9s --context "$$ctx" -n apps
+	 K9S_CONFIG_DIR="$(CURDIR)/deploy/k9s" k9s --context "$$ctx" -n apps
 
-.PHONY: k8s-bootstrap k8s-down
+.PHONY: k8s-bootstrap-helm k8s-down
 
-# One-shot: cluster -> infra -> images -> seed -> apps. Idempotent —
-# safe to re-run after editing manifests or pulling new code. Mirrors
-# the docker-compose `make bootstrap` flow but for the minikube cluster.
-k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build-reuse k8s-seed k8s-seed-images k8s-apps k8s-seed-mysql k8s-seed-inventory k8s-seed-perftest
-	@echo "==> k8s bootstrap complete"
+# The legacy `k8s-bootstrap` (kustomize: k8s-infra + k8s-apps + the seed Jobs
+# under k8s/infra/jobs/) was deleted in Phase 8 with the k8s/ tree it drove.
+# k8s-bootstrap-helm below is the only k8s bring-up now, and it is what
+# `make bootstrap ENV=k8s` dispatches to.
+
+# Helm-based one-shot: same overall shape the deleted kustomize path had
+# (cluster -> infra -> images -> seed -> apps -> seed), all-Helm now that
+# k8s-infra / k8s-apps are gone — k8s-infra-helm, then k8s-apps-helm.
+#
+# Phase 8 Task 1: this is the target VERB_bootstrap_k8s now resolves to (see
+# the dispatch table near the bottom of this file). Verified live 2026-08-14
+# initially only for its k8s-infra-helm + k8s-apps-helm halves
+# (already-running cluster, no full from-scratch rebuild). Task 7 later ran
+# this exact target end-to-end from a torn-down cluster (~25 min, exit 0,
+# 10/10 app pods, 30 products) — see deploy/CLAUDE.md and
+# .superpowers/sdd/progress.md for the three release-breaking bugs that run
+# found and fixed.
+#
+# Phase 8 Task 6: seeding repointed onto the canonical scripts
+# (deploy/scripts/secrets-seed.sh / deploy/scripts/seed.sh) instead of the old
+# k8s-seed (02-mongo-seed/03-vault-seed/05-minio-bootstrap) / k8s-seed-images /
+# k8s-seed-mysql / k8s-seed-inventory targets, which read k8s/infra/jobs/,
+# docker/*.json and docker/ecommerce.sql — trees Task 8 later deleted. Order
+# preserved exactly (secrets before apps; pre-apps seed — mongo + images —
+# before apps; post-apps seed — ecommerce.sql + derived inventory rows + the
+# inventory-service reconcile — after apps, because ecommerce.sql is
+# data-only and Hibernate ddl-auto creates the schema at service boot; see
+# seed.sh's own post-apps precondition). The seed calls are in the RECIPE
+# BODY, not the prerequisite list — same reason as bootstrap-compose's own
+# two `seed` calls (STAGE=pre-apps and STAGE=post-apps can't both be
+# prerequisites of one target). Both secrets-seed and seed REQUIRE an
+# explicit kubectl context for --env k8s (never an ambient one) — wired here
+# to $(K8S_CLUSTER) (=microecom, the live local cluster's context).
+# kafka-connect-register (k8s-seed, restructured) and perftest-seed
+# (k8s-seed-perftest, already canonical since Task 5) are unchanged in shape,
+# just re-sequenced into the recipe body alongside the rest.
+k8s-bootstrap-helm: k8s-cluster-up k8s-infra-helm k8s-build-reuse
+	@$(MAKE) --no-print-directory secrets-seed ENV=k8s CONTEXT=$(K8S_CLUSTER)
+	@$(MAKE) --no-print-directory seed ENV=k8s STAGE=pre-apps CONTEXT=$(K8S_CLUSTER)
+	@$(MAKE) --no-print-directory k8s-seed
+	@$(MAKE) --no-print-directory k8s-apps-helm
+	@$(MAKE) --no-print-directory seed ENV=k8s STAGE=post-apps CONTEXT=$(K8S_CLUSTER)
+	@$(MAKE) --no-print-directory k8s-seed-perftest
+	@echo "==> k8s bootstrap (helm) complete"
 	@$(MAKE) k8s-status
 	@echo ""
 	@echo "================================================================"
@@ -676,8 +779,11 @@ k8s-bootstrap: k8s-cluster-up k8s-infra k8s-build-reuse k8s-seed k8s-seed-images
 	@echo "================================================================"
 
 # Tear it ALL down — apps, infra, and the minikube cluster itself.
-# Use k8s-apps-down for a softer reset (keeps infra/data).
-k8s-down: k8s-apps-down k8s-cluster-down
+# The `k8s-apps-down` prerequisite went with the kustomize path in Phase 8;
+# k8s-cluster-down destroys the cluster wholesale, so it was redundant anyway.
+# For a softer reset today, `helm uninstall microecom -n infra` keeps the
+# cluster and its PVCs.
+k8s-down: k8s-cluster-down
 	@echo "==> k8s cluster destroyed"
 
 # ============================================================================
@@ -742,13 +848,16 @@ aws-deploy-apps:
 # deploy/README.md's "AWS cut-over" section for what each layer proves.
 
 .PHONY: aws-oracle-capture aws-diff-test
-# Rebuilds tests/aws-oracle/oracle.yaml from `kubectl kustomize
-# k8s/apps/overlays/aws` (pure local build, no cluster contact) PLUS
-# s3-irsa-serviceaccounts.yaml with PLACEHOLDER_S3_ROLE_ARN substituted from
-# the offline fixture — the same out-of-band step up-all.sh:127-137 performs
-# live (D1). Re-run this after any change under k8s/apps/overlays/aws; the
-# oracle is captured output, not hand-written, and aws-diff-test always
-# compares against whatever oracle.yaml currently holds on disk.
+# FROZEN. This rebuilt tests/aws-oracle/oracle.yaml from `kubectl kustomize
+# k8s/apps/overlays/aws` PLUS s3-irsa-serviceaccounts.yaml with the ARN
+# substituted from the offline fixture. **That source was DELETED in Phase 8**,
+# so this can no longer regenerate anything — the capture script refuses to run
+# without FORCE=1 (frozen in Task 4) and the committed oracle.yaml is now the
+# only record of what the old aws overlay produced.
+#
+# It is evidence, not a cache. aws-diff-test compares the chart's aws render
+# against it, so a failure means the CHART changed; the oracle cannot go stale
+# because its source no longer exists to drift from.
 aws-oracle-capture:
 	@bash deploy/charts/microecom/tests/aws-oracle/capture.sh
 
@@ -793,7 +902,7 @@ k8s-use:
 # just the dispatch macro below, via the same $(or $(ENV),...) idiom.
 
 VERB_deploy_compose    := svc-start
-VERB_deploy_k8s        := k8s-apps
+VERB_deploy_k8s        := k8s-apps-helm
 VERB_deploy_aws        := aws-deploy-apps
 VERB_status_compose    := status-compose
 VERB_status_k8s        := k8s-status
@@ -810,7 +919,7 @@ VERB_rebuild_k8s       := k8s-rebuild
 # mapping points at `bootstrap-compose`, not `bootstrap` (which would recurse
 # into this dispatcher).
 VERB_bootstrap_compose := bootstrap-compose
-VERB_bootstrap_k8s     := k8s-bootstrap
+VERB_bootstrap_k8s     := k8s-bootstrap-helm
 VERB_bootstrap_aws     := aws-all
 
 # image-build: deliberately NO VERB_image-build_compose. Compose builds no
@@ -849,12 +958,35 @@ VERB_ENV := $(if $(filter command line,$(origin ENV)),$(ENV),)
 # An unmapped (verb, env) pair fails HERE, by construction — no per-verb
 # special case. A verb that silently succeeds where it has nothing to do is
 # indistinguishable from one that worked.
+#
+# `ENV=` on the recursive $(MAKE) call (Phase 8 Task 1): the verb-env
+# vocabulary this dispatch resolves on (compose/k8s/aws, selected via
+# VERB_ENV above) is a DIFFERENT namespace from the bare $(ENV) some resolved
+# targets read for themselves (k8s-apps-helm / k8s-bootstrap-helm default to
+# "local-k8s", not "k8s"). GNU Make automatically forwards a command-line
+# variable override to recursive $(MAKE) invocations, so without this,
+# `make deploy ENV=k8s` resolves t="k8s-apps-helm" but then leaks the literal
+# string "k8s" into that target's own $(or $(ENV),local-k8s) — which is
+# non-empty, so the default never fires, and it looks for the nonexistent
+# deploy/charts/microecom/envs/k8s.yaml instead of envs/local-k8s.yaml.
+# Measured live 2026-08-14 via verb-equivalence-test.sh Part 1 going from
+# 21/21 to 19/21 the moment VERB_deploy_k8s / VERB_bootstrap_k8s were
+# repointed at these two ENV-aware targets — every one of the 12 previously
+# resolved targets was ENV-blind (see verb-equivalence-test.sh's own
+# comment), so this exact leak was latent, never triggered, until now.
+# `ENV=` (empty) resets the sub-make's command-line override back to unset,
+# so `$(or $(ENV),local-k8s)` correctly falls through to the target's own
+# default — restoring old behaviour (VERB_deploy_k8s used to point at the
+# ENV-blind k8s-apps, where this never mattered) rather than the target's own
+# `ENV=aws` direct-invocation path silently changing. Safe for every current
+# VERB_* mapping: aws-deploy-apps / aws-all / aws-push / aws-down are all
+# ENV-blind scripts that never read $(ENV) themselves.
 dispatch = t="$(VERB_$(1)_$(or $(VERB_ENV),compose))"; \
   if [ -z "$$t" ]; then \
     echo "make $(1): not applicable for ENV=$(or $(VERB_ENV),compose)$(if $(VERB_$(1)_$(or $(VERB_ENV),compose)_WHY), — $(VERB_$(1)_$(or $(VERB_ENV),compose)_WHY))" >&2; \
     exit 1; \
   fi; \
-  $(MAKE) --no-print-directory $$t
+  $(MAKE) --no-print-directory $$t ENV=
 
 .PHONY: deploy status teardown rebuild bootstrap image-build
 deploy:

@@ -36,7 +36,29 @@ metadata:
   labels:
     {{- include "apps.labels" (dict "name" $name "root" $) | nindent 4 }}
 spec:
+  {{- if $s.hpa }}
+  # NO `replicas` when this service has an HPA (hpas.yaml renders one for every
+  # service with an `hpa:` block). Two reasons, and the second is the one that
+  # actually broke a bootstrap:
+  #
+  #  1. Declaring it fights the autoscaler — each `helm upgrade` would reset the
+  #     Deployment to the static count, undoing whatever the HPA had scaled to.
+  #  2. Once the HPA scales, `kube-controller-manager` takes ownership of
+  #     `.spec.replicas` through the `scale` subresource. Helm's server-side apply
+  #     then conflicts with that owner and the WHOLE RELEASE fails:
+  #
+  #       UPGRADE FAILED: conflict occurred while applying object apps/gateway
+  #       Kind=Deployment: conflict with "kube-controller-manager" with
+  #       subresource "scale" using apps/v1: .spec.replicas
+  #
+  # Found 2026-08-15 (Phase 8 Task 7). It cannot appear on a FIRST install — only
+  # on an upgrade after an HPA has acted — which is exactly why Task 1's
+  # single-shot deploy verified this path as healthy and shipped the bug.
+  # `$s.replicas` stays meaningful for services without an `hpa:` block, and the
+  # HPA's own `minReplicas` governs the initial count for those that have one.
+  {{- else }}
   replicas: {{ $s.replicas }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "apps.selectorLabels" (dict "name" $name "root" $) | nindent 6 }}
