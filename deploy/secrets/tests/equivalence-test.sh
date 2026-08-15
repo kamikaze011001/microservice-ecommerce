@@ -15,8 +15,21 @@ RESOLVER="$ROOT/deploy/scripts/lib/secrets_resolve.py"
 TF="$HERE/fixtures/terraform-outputs.json"
 
 set -a; . "$HERE/fixtures/user-creds.env"; set +a
-export APPLICATION_JWK
-APPLICATION_JWK="$(jq -r '."application.jwk"' "$ROOT/docker/vault-configs/authorization-server.json")"
+
+# APPLICATION_JWK used to be exported here, read out of
+# docker/vault-configs/authorization-server.json. Removed when that tree was
+# deleted (Phase 8 Task 8, step 1), and it was already dead: the canonical
+# source declares `application.jwk: "<file:jwk.private.json>"`
+# (deploy/secrets/authorization-server.yaml:11), so the resolver reads the
+# committed key file and never consults this variable.
+#
+# Worth recording HOW it was found, because the suite did not notice. After the
+# deletion `jq` failed, the assignment produced an EMPTY string, and this suite
+# still reported 33 passed / 0 failed — a pass that proved nothing about the
+# vanished input. Only a path-qualified grep for the deleted directory surfaced
+# it. Compare capture-golden.sh, which reads the same file but GUARDS it
+# (`[ -n "$APPLICATION_JWK" ] && [ "$APPLICATION_JWK" != "null" ]`) and so fails
+# loudly instead. The guard is the whole difference.
 
 pass=0; fail=0; pending=0
 

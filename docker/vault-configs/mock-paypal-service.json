@@ -1,4 +1,0 @@
-{
-  "server.port": "8585",
-  "mock.public-base-url": "http://localhost:8585/mock-paypal-service"
-}
