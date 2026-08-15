@@ -4,7 +4,7 @@ helm upgrade --install microecom deploy/charts/microecom \
 	  --namespace infra --create-namespace \
 	  -f deploy/charts/microecom/envs/local-k8s.yaml \
 	  --wait --timeout 30m
-if [ -n "" ]; then k8s/images/build.sh; else REUSE_EXISTING=1 k8s/images/build.sh; fi
+if [ -n "" ]; then deploy/images/build.sh; else REUSE_EXISTING=1 deploy/images/build.sh; fi
 for d in 02-mongo-seed 03-vault-seed 05-minio-bootstrap 04-kafka-connect-register; do \
 	  job=$(echo $d | sed 's/^[0-9]*-//'); \
 	  echo "==> applying $d (job/$job)"; \
@@ -17,6 +17,7 @@ for d in 02-mongo-seed 03-vault-seed 05-minio-bootstrap 04-kafka-connect-registe
 	        --from-file=docker/api_role.json --from-file=docker/product.json \
 	        --from-file=docker/product-quantity-history.json --dry-run=client -o yaml | kubectl apply -f - ; \
 	      kubectl apply -f k8s/infra/jobs/02-mongo-seed/job.yaml ;; \
+	    04-kafka-connect-register) kubectl apply -k deploy/k8s-jobs/04-kafka-connect-register ;; \
 	    *) kubectl apply -k k8s/infra/jobs/$d ;; \
 	  esac; \
 	  kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/$job; \
@@ -56,7 +57,7 @@ echo "k8s-seed-mysql complete"
 scripts/seed/k8s-inventory.sh
 echo "==> applying 06-perftest-seed (job/perftest-seed)"
 kubectl -n bootstrap delete job perftest-seed --ignore-not-found >/dev/null
-kubectl apply -k k8s/infra/jobs/06-perftest-seed
+kubectl apply -k deploy/k8s-jobs/06-perftest-seed
 kubectl -n bootstrap wait --for=condition=complete --timeout=5m job/perftest-seed
 echo "k8s-seed-perftest complete"
 echo "==> k8s bootstrap (helm) complete"
