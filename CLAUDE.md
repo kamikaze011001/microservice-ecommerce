@@ -17,18 +17,29 @@ make up
 ```
 
 `make bootstrap` is idempotent and seeds MySQL (`ecommerce_dev`) plus
-MongoDB collections `api_role` and `product` from `docker/*.{sql,json}`.
+MongoDB collections `api_role` and `product` from the canonical
+`deploy/seed/` tree (via `make secrets-seed` and `make seed` — see
+`deploy/README.md`), not from `docker/` — the old `docker/vault-configs/`,
+`docker/ecommerce.sql` and top-level `docker/*.json` seed sources were
+deleted once the canonical path replaced them.
 
 ### Daily Loop (after Docker restart)
 ```bash
 make up      # starts infra, auto-unseals vault, starts services
-make down    # stops everything (preserves data)
+make down    # stops services + infra (preserves data)
 make status  # health table for every service
 make logs svc=order-service
 ```
 
 `make up` always re-runs vault unseal — no more "vault sealed" crashes
 after Docker restarts.
+
+**`make down` does not stop everything.** `scripts/infra/down.sh` stops
+`vault/kafka/mongodb/redis/mysql.yml` but omits `minio.yml`, so MinIO is
+left running across a `make down`. Volumes are preserved either way, so no
+data is at risk, but a `make down && make up` today is not a genuine cold
+start of the whole stack — this is a known, unfixed gap (see
+`deploy/README.md`'s Verification status for how it was found).
 
 ### Adding a New Service
 Add one line to `scripts/services.list`:

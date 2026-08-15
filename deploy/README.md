@@ -6,21 +6,113 @@ This directory consolidates deployment artifacts for three target environments:
 
 ## Status
 
-This is a work-in-progress refactor. See:
-`docs/superpowers/specs/2026-08-01-deploy-refactor-design.md`.
+**The cut-over is complete.** As of Phase 8 (2026-08-14/15), `deploy/` is the
+**only** path for each concern below — the duplicate trees it replaced
+(`docker/vault-configs/`, `scripts/vault/import-secrets.sh`, `scripts/seed/`,
+`scripts/aws/seed-*.sh`, `docker/ecommerce.sql`, the three top-level
+`docker/*.json`, and all of `k8s/`, 155 files across 4 commits) are deleted,
+not merely superseded. See "Verification status" below for exactly what that
+means was proven live versus offline versus never run, and "Losses and
+leftovers" for what the deletion took with it. Design history:
+`docs/superpowers/specs/2026-08-01-deploy-refactor-design.md` through
+`docs/superpowers/specs/2026-08-14-cleanup-cutover-design.md`.
+
+`aws/` (Terraform, repo root) is the one tree this refactor deliberately did
+**not** fold in — see "What `aws/` still is" below.
 
 ## Target layout
 
 ```text
 deploy/
-├── charts/microecom/   # Helm umbrella chart
+├── charts/microecom/   # Helm umbrella chart (infra + apps subcharts)
 ├── compose/            # docker-compose files
-├── terraform/          # AWS infrastructure
+├── terraform/          # empty placeholder (.gitkeep only) — real AWS Terraform
+│                        # lives at repo-root aws/, deliberately not moved here
+│                        # (D2 — see "What aws/ still is" below)
 ├── secrets/            # canonical secret definitions and contexts
 ├── seed/               # canonical seed data
 ├── scripts/            # environment-aware deployment scripts
-└── images/             # image build definitions
+├── images/             # image build definitions (k8s/aws image builds)
+├── k8s-jobs/            # standalone Jobs with no chart equivalent (kafka-connect
+│                        # register, perftest seed) — relocated from k8s/, Task 5
+├── k6-stress/           # k6 load-test scripts + Job manifests — relocated from
+│                        # k8s/apps/base/k6-stress/, Task 3
+├── k9s/                 # k9s monitor config for `make k9s`
+└── .env                # gitignored — k8s/aws user credentials (mail, etc.);
+                         # moved from the deleted k8s/.env, see below
 ```
+
+## What `aws/` still is
+
+Repo-root `aws/` (Terraform: `aws/bootstrap`, `aws/main`, `aws/manifests`) is
+the one tree this refactor deliberately left in place — spec D2 named it
+explicitly out of scope, not silently skipped. Why: 58 files reference it
+(`scripts/aws/RUNBOOK.md`, `up-all.sh`, `aws-deploy.sh`, `secrets.tf`, …),
+so moving it is pure churn with no functional gain — it is already
+env-scoped and already touched only by `aws-*` targets. The harder reason:
+there is no way to verify a Terraform move without a real `terraform plan`
+/`apply` against it, and this refactor's AWS leg has never been allowed to
+touch real infrastructure (see "Verification status" below). Moving
+state-bearing Terraform on faith, with no plan/apply to confirm nothing
+broke, was judged a worse risk than leaving one tree outside the `deploy/`
+umbrella. `deploy/terraform/` (see "Target layout" above) exists only as a
+placeholder for a hypothetical future move.
+
+## Losses and leftovers (Phase 8, 2026-08-14/15)
+
+- **No replacement for `fetch-seed-images.sh`.** The script that originally
+  generated `docker/seed-images/`'s 31 product JPEGs from
+  `scripts/seed/products-manifest.json` was deleted with `scripts/seed/`
+  and never ported. The 31 images are still committed at
+  `docker/seed-images/<category>/<slug>.jpg` and are consumed fine by
+  `deploy/scripts/seed.sh`'s image-upload leg — only *regeneration* is
+  gone. `docker/seed-images/README.md` already documents the by-hand
+  replacement procedure (pick/crop/compress an image per missing slug);
+  this file doesn't repeat it, just confirms it's still the only way.
+- **`k8s/.env` moved to `deploy/.env`.** Real credentials (mail, etc.),
+  gitignored, never opened by anyone working on this refactor. Anyone with
+  an old checkout who still has `k8s/.env` on disk (it was gitignored, so
+  `git rm -r k8s/` never touched it) needs to move it to `deploy/.env` by
+  hand — `k8s-app-secrets` and every `ENV=k8s`/`ENV=aws` script now read
+  from there, not from the deleted path.
+- **Four frozen oracles that cannot regenerate, ever, by design:**
+  1. **Secrets goldens** (`deploy/secrets/tests/golden/`) — captured
+     against a live Vault seeded by the now-deleted
+     `docker/vault-configs/*.json` + `import-secrets.sh`.
+  2. **Seed goldens** (`deploy/seed/tests/golden/`) — captured against the
+     now-deleted old seed paths.
+  3. **The AWS oracle**
+     (`deploy/charts/microecom/tests/aws-oracle/oracle.yaml`) — a composed
+     capture of the now-deleted `k8s/apps/overlays/aws` kustomize build.
+  4. **`deploy/seed/tests/golden/docker-product.json`** — a byte-for-byte
+     capture of the now-deleted `docker/product.json`, proving the seed
+     renderer reproduces it exactly.
+
+  All four are **committed evidence, not caches.** Their capture scripts
+  refuse to re-run (see each test directory's own guard) because there is
+  nothing left to re-capture *from* — the source tree is gone. A future
+  failure in any of these suites means the chart, renderer, or resolver
+  **changed** — never that the fixture went stale, because the fixture's
+  source can no longer drift out from under it.
+
+## Known gaps carried forward (raised, not fixed, in this phase)
+
+- **`scripts/aws/up-all.sh` has no confirmation prompt** before a real,
+  billed EKS `terraform apply`. Anyone running it fat-fingers straight into
+  real spend.
+- **`make down` never stops MinIO.** `scripts/infra/down.sh` lists
+  `vault/kafka/mongodb/redis/mysql.yml` but omits `minio.yml`. Root
+  `CLAUDE.md` describes `make down` as stopping "everything"; that has been
+  inaccurate since MinIO joined the stack. Practical effect: the repo
+  currently cannot produce a genuine cold start via `make down && make up`
+  — MinIO just keeps running underneath it.
+- **`make bootstrap` never force-restarts already-running services.** After
+  a host IP change (new wifi network, VPN toggle, etc.), a compose stack
+  left up serves stale Eureka registrations, and re-running `make
+  bootstrap` doesn't detect or fix it — `make svc-restart` does.
+
+None of these are fixed here — this task is documentation only. They're
+recorded so the next person doesn't have to rediscover them.
 
 ## Unified verbs (`make <verb> ENV=<env>`)
 
@@ -36,8 +128,8 @@ design doc §2/§7 for what was deliberately left alone.
 
 | verb | compose | k8s | aws |
 |---|---|---|---|
-| `bootstrap` | `bootstrap-compose` | `k8s-bootstrap` | `aws-all` |
-| `deploy` | `svc-start` | `k8s-apps` | `aws-deploy-apps` (Phase 7) |
+| `bootstrap` | `bootstrap-compose` | `k8s-bootstrap-helm` | `aws-all` |
+| `deploy` | `svc-start` | `k8s-apps-helm` | `aws-deploy-apps` (Phase 7) |
 | `seed` | ✅ (Phase 5, `deploy/seed/`) | ✅ | ✅ |
 | `secrets-seed` | ✅ (Phase 4, `deploy/secrets/`) | ✅ | ✅ |
 | `status` | `status-compose` | `k8s-status` | *(unmapped, fails)* |
@@ -152,22 +244,47 @@ ENV=compose` failure, and the 5 bare-`$(ENV)` default resolutions (`k9s`,
 `k8s-use`, `k8s-platform`, `k8s-infra-helm`, `k8s-apps-helm`). No backend, no
 credentials, no cluster; runs from any cwd.
 
-**NOT proven: no verb has ever been executed against k8s or aws.** No
-cluster exists — the minikube profile used earlier in this workstream was
-destroyed during Phase 5, and `kubectl` has no current context. Every
-k8s-mapped verb (`deploy ENV=k8s`, `status ENV=k8s`, `rebuild ENV=k8s`,
-`bootstrap ENV=k8s`, `image-build ENV=k8s`) is verified only by Layer A's
-offline expansion diff against a baseline — never run for real in this
-phase. `deploy ENV=aws` is now **mapped** (Phase 7, `aws-deploy-apps`) but,
-like every other aws-mapped verb, has never run for real — see "AWS
-cut-over" below for what closing that gap actually proved and what it
-didn't. `status ENV=aws` and `rebuild ENV=aws` remain deliberately
-**unmapped** and fail by design, the same way `image-build ENV=compose`
-does, just without a `_WHY` message yet. `bootstrap ENV=aws` (`aws-all`) and
-`teardown ENV=aws` (`aws-down`) resolve to real targets but were not run —
-`aws-all` spends real money and is out of scope for this phase's
-verification. Don't read more into the evidence above than what it actually
-measured — the same caveat Phases 1, 3 and 4 of this refactor each needed.
+**Proven live, k8s (Phase 8, superseding the "NOT proven" verdict earlier
+phases left here).** A minikube cluster (profile `microecom`) was rebuilt for
+Phase 8 and `deploy ENV=k8s` (→ `k8s-apps-helm`) deployed successfully —
+10/10 app pods Running, 0 restarts, catalog returning 30 products through the
+gateway. **`bootstrap ENV=k8s` (→ `k8s-bootstrap-helm`) was run end-to-end
+from a torn-down cluster exactly once**, uninterrupted, ~25 minutes,
+`make` exit 0, helm release `deployed` at revision 2 (infra install + apps
+upgrade), all 10 app pods Running with 0 restarts, catalog 30/30 products
+with `image_url` populated. Getting there took three release-breaking bugs
+found and fixed by that same from-scratch run (a `progressDeadlineSeconds`
+too low for a cold Confluent image pull, `k8s-apps-helm` deleting the whole
+infra release out from under itself, and an HPA/`spec.replicas` ownership
+conflict) — see `deploy/CLAUDE.md` migration note and the SDD ledger
+(`.superpowers/sdd/progress.md`, Task 7) for the full account. `status
+ENV=k8s`, `rebuild ENV=k8s`, `image-build ENV=k8s` remain verified only by
+Layer A's offline expansion diff — the live gate exercised `deploy` and
+`bootstrap`, not every k8s-mapped verb individually.
+
+**NOT proven: `ENV=aws` has still never been deployed, full stop.** No EKS
+cluster has ever been created, `terraform apply` has never run against
+`aws/main`, and every aws-mapped verb — `deploy ENV=aws` (Phase 7,
+`aws-deploy-apps`), `bootstrap ENV=aws` (`aws-all`), `teardown ENV=aws`
+(`aws-down`) — is verified only by an offline `helm template` render diffed
+against a composed oracle (see "AWS cut-over" below), never by a real apply.
+**This is the fifth consecutive phase of this refactor to ship an
+unexercised AWS transport** (Phases 1, 3, 4, and 7 each shipped one before
+it). `status ENV=aws` and `rebuild ENV=aws` remain deliberately **unmapped**
+and fail by design, the same way `image-build ENV=compose` does, just
+without a `_WHY` message yet. Deciding whether to spend the money on a real
+`aws-all` run is explicitly out of scope here (spec D2) — don't read more
+into the evidence above than what it actually measured, the same caveat
+every earlier phase of this refactor needed.
+
+Also unproven live, but by construction rather than by omission:
+`scripts/aws/up-all.sh`'s seed calls (Step 4/5/7/8/9) and its apps-deploy
+step (Step 6) were repointed in Phase 8 Task 6 onto the canonical
+`deploy/scripts/seed.sh` / `secrets-seed.sh` / `aws-deploy.sh` **without
+ever executing `up-all.sh` itself** — the repoint is justified by the seed
+equivalence suite's `aws` leg matching exactly (13 matched / 2
+declared-different, both compose-only — see "Canonical seed data" below),
+not by a real run of the script that calls it.
 
 ## Canonical secrets (`deploy/secrets/`)
 
@@ -264,10 +381,11 @@ Per-env specifics:
 The old paths — `make vault-import`, the `03-vault-seed` Job, and
 `scripts/aws/seed-secrets.sh` — coexisted with `secrets-seed` through Phases
 4-7 while both were proven equivalent against a live backend. Phase 8
-(2026-08-14/15) retired them: the `vault-import` Make target is gone, and
-`docker/vault-configs/` / `k8s/infra/jobs/03-vault-seed/` are slated for
-deletion by a later cleanup task. `secrets-seed` is now the only supported
-path.
+(2026-08-14/15) deleted them: the `vault-import` Make target, `scripts/vault/
+import-secrets.sh`, `docker/vault-configs/`, `k8s/infra/jobs/03-vault-seed/`
+(with the rest of `k8s/`), and `scripts/aws/seed-secrets.sh` are all gone
+from the working tree. `secrets-seed` is now the **only** path — not merely
+the recommended one.
 
 ### Verification status
 
@@ -512,13 +630,18 @@ read more into the evidence above than what it actually measured.
 ## Current minikube workflow
 
 ```bash
-make k8s-bootstrap
+make bootstrap ENV=k8s   # -> k8s-bootstrap-helm (cluster + infra + images + seed + apps)
 make k8s-tunnel
 make k8s-status
 make k8s-down
 ```
 
-Kustomize remains in use until the Helm migration phase.
+`k8s-bootstrap-helm` is the **only** k8s bring-up path — Helm, not
+kustomize. The old kustomize path (`k8s-bootstrap`, `k8s-infra`, `k8s-apps`,
+`k8s-apps-down`, and the `k8s/` tree they drove) was deleted in Phase 8
+alongside the rest of the cleanup; see "Helm umbrella chart" and "Helm apps
+subchart" below for what it replaced and why the two paths could never
+coexist on one cluster while both existed.
 
 Host image builds push through `localhost:5001`; minikube nodes pull those
 repositories through the registry addon's `localhost:5000` proxy.
@@ -526,11 +649,11 @@ repositories through the registry addon's `localhost:5000` proxy.
 ## Helm umbrella chart (Phase 2 path)
 
 `deploy/charts/microecom` is a Helm umbrella chart that renders every
-infrastructure workload previously brought up by `k8s/infra/install.sh`
-(MySQL + replicas, MongoDB, Redis, Kafka + Schema Registry + Connect +
-exporters, MinIO, VictoriaMetrics, Grafana, Vault) via an `infra` subchart,
-plus a post-install replication hook Job, a dashboards ConfigMap, and
-AWS-gated resources.
+infrastructure workload previously brought up by the now-deleted
+`k8s/infra/install.sh` (MySQL + replicas, MongoDB, Redis, Kafka + Schema
+Registry + Connect + exporters, MinIO, VictoriaMetrics, Grafana, Vault) via
+an `infra` subchart, plus a post-install replication hook Job, a dashboards
+ConfigMap, and AWS-gated resources.
 
 ```bash
 make k8s-platform     # cluster-wide platform charts (ingress-nginx, metrics-server)
@@ -538,41 +661,15 @@ make k8s-platform     # cluster-wide platform charts (ingress-nginx, metrics-ser
 make k8s-infra-helm   # brings up infra via the umbrella chart (runs k8s-platform first)
 ```
 
-**`make k8s-infra` is still the default path for this phase.** `k8s-infra-helm`
-runs *alongside* it, not in place of it — rollback is reverting one target.
-"Runs alongside it" is a codebase-level statement (both bring-up paths stay in
-the tree, either can be chosen), **not** a claim that both are safe to run
-against the *same already-provisioned cluster*. See the next section.
-
-### The two infra bring-up paths are alternatives, not composable, on one cluster
-
-`k8s-infra` (`k8s/infra/install.sh`) creates mysql/mongodb/redis/minio/kafka/
-schema-registry/kafka-connect/mysqld-exporter/vault via plain `kubectl apply
--f`. The `infra` subchart deliberately renders the **same object names** in
-the same `infra` namespace (`charts/infra/values.yaml`'s `fullnameOverride`
-comments say so explicitly — the whole point is to keep app-facing DNS names
-byte-identical across both paths). Plain `kubectl`-created objects carry none
-of Helm's ownership annotations (`meta.helm.sh/release-name`,
-`app.kubernetes.io/managed-by: Helm`), and Helm 3+ refuses to adopt an
-existing unmanaged object into a release ("... exists and cannot be imported
-into the current release: invalid ownership metadata"). So running
-`make k8s-infra` and then `make k8s-infra-helm` against the **same** cluster
-(or the reverse order) should be expected to fail `helm upgrade --install`
-on essentially every stateful workload it tries to create — not a graceful
-no-op. `ingress-nginx` and `metrics-server` (installed by `make k8s-platform`,
-a genuine Helm release either way) are the one exception: both paths use the
-same release name/namespace/chart version there, so sharing a cluster across
-paths is fine for those two specifically.
-
-**Operational rule: pick one infra bring-up path per cluster.** Tear the
-cluster down (or use a fresh one) before switching from `k8s-infra` to
-`k8s-infra-helm` or back.
-
-Caveat: this is reasoned from documented Helm ownership-metadata behavior,
-not verified against a live cluster in this repo — nobody has run both paths
-back-to-back against one cluster and captured the actual error text. Treat
-the *rule* (don't mix them) as solid and the *exact failure mode/error text*
-as inferred, not observed.
+**`k8s-infra-helm` is the only infra bring-up path.** Through Phases 2-7 it
+ran *alongside* the older kustomize path, `k8s-infra` (`k8s/infra/
+install.sh`, plain `kubectl apply -f`) — the two were never safe to run
+against the same already-provisioned cluster (Helm 3+ refuses to adopt
+kustomize-created objects that carry none of its ownership annotations), so
+picking one path per cluster was an operational rule throughout that
+window. Phase 8 deleted `k8s-infra` and the `k8s/` tree it drove, which
+removed the alternative rather than the rule — there is now nothing left to
+pick between.
 
 ### `--dry-run` / `helm template` keyfile hazard
 
@@ -661,12 +758,15 @@ would expect, so the pod event reads like a credentials problem. It is
 per-IP — the host's own `docker pull` fails identically, and
 `~/.docker/config.json` holds no Hub login on either side.
 
-Downstream, `k8s/infra/install.sh` aborts at its `kubectl wait` with a bare
-`error: timed out waiting for the condition`, and every stage *after* that
-wait is never applied. The cluster then looks "mostly up" while
-schema-registry, kafka-connect, vault, VictoriaMetrics and Grafana are simply
-absent. Re-running is idempotent and resumes — one bring-up needed three
-invocations of `make k8s-infra` to get through.
+Downstream, the old kustomize `k8s/infra/install.sh` (deleted in Phase 8)
+used to abort at its `kubectl wait` with a bare `error: timed out waiting
+for the condition`, and every stage *after* that wait was never applied.
+The cluster then looked "mostly up" while schema-registry, kafka-connect,
+vault, VictoriaMetrics and Grafana were simply absent. Re-running was
+idempotent and resumed — one bring-up needed three invocations of
+`make k8s-infra` (today: `make k8s-infra-helm`) to get through. The same
+Docker Hub exhaustion hazard applies to `k8s-infra-helm` today; it also
+retries idempotently.
 
 It is transient and self-healing: kubelet backoff eventually lands every
 image. Waiting is the correct first response. To skip Hub entirely, pre-load
@@ -714,27 +814,31 @@ helm dependency build deploy/charts/microecom/charts/infra
 ## Helm apps subchart (Phase 3 path)
 
 `deploy/charts/microecom/charts/apps` renders the ten application workloads
-previously brought up by `kubectl apply -k k8s/apps/overlays/local`: nine JVM
-services plus the storefront SPA, with their Services, five HPAs, the gateway's
-discovery RBAC, the nginx Ingresses, and — on AWS — the ExternalSecrets,
-`app-config` configtree mounts and S3 IRSA ServiceAccounts.
+previously brought up by the now-deleted `kubectl apply -k
+k8s/apps/overlays/local`: nine JVM services plus the storefront SPA, with
+their Services, five HPAs, the gateway's discovery RBAC, the nginx
+Ingresses, and — on AWS — the ExternalSecrets, `app-config` configtree
+mounts and S3 IRSA ServiceAccounts.
 
 ```bash
-make k8s-apps        # kubectl/kustomize path (still the default)
-make k8s-apps-helm   # Helm path (ENV=aws selects envs/aws.yaml)
+make k8s-apps-helm   # the only apps path now (ENV=aws selects envs/aws.yaml)
 ```
 
 The subchart is gated `apps.enabled: false` in the umbrella `values.yaml`, so
 `make k8s-infra-helm` renders exactly what it rendered in Phase 2.
 `k8s-apps-helm` passes `--set apps.enabled=true`.
 
-### The apps paths are alternatives too — same rule, different reason
+### The apps paths WERE alternatives too — same rule, different reason (historical)
 
-The infra rule above is about Helm ownership metadata. For apps the reason is
-sharper: the base manifests use a bare `app: <name>` as their
-`spec.selector.matchLabels`, the chart uses `app.kubernetes.io/name`, and
-**`spec.selector` is immutable on a Deployment**. Neither path can be installed
-over the other. Tear the cluster down before switching.
+Through Phases 3-7, `k8s-apps-helm` ran alongside the older kustomize path,
+`k8s-apps` (`kubectl apply -k k8s/apps/overlays/local`) — for a sharper
+reason than the infra rule above: the base manifests used a bare
+`app: <name>` as their `spec.selector.matchLabels`, the chart uses
+`app.kubernetes.io/name`, and **`spec.selector` is immutable on a
+Deployment**. Neither could be installed over the other; a cluster had to be
+torn down to switch between them. Phase 8 deleted `k8s-apps`, `k8s-apps-down`,
+and the `k8s/apps/` tree they drove, so there is nothing left to switch
+between — `k8s-apps-helm` is simply the apps path now.
 
 ### One shared template, variation in values
 
@@ -920,27 +1024,33 @@ default of 3) is a deliberate inherited value, documented in
 `charts/apps/values.yaml`'s `frontend.probes` comment — neither side is
 "more correct," it's just different by design.
 
-**NOT proven: no AWS deployment has ever been executed.** No EKS cluster was
-created, `terraform apply` never ran, and fixture outputs (`AWS_TF_OUTPUTS_JSON`)
-stood in for real ones throughout — the same offline-only shape Phases 1, 3
-and 4 of this refactor each shipped with. **This is the fourth consecutive
-phase shipping an unexercised transport.** `deploy ENV=aws` is mapped and
-its offline render is proven byte-for-byte against ground truth, but nobody
-has watched a real pod come up on a real EKS cluster wired this way. Deciding
-whether to spend money on that live run is explicitly deferred (design doc
-D2) — closing the offline gaps was free, a billed run is a decision for
-whoever picks this up next.
+**NOT proven: no AWS deployment has ever been executed — still true as of
+Phase 8.** No EKS cluster was created, `terraform apply` never ran, and
+fixture outputs (`AWS_TF_OUTPUTS_JSON`) stood in for real ones throughout —
+the same offline-only shape Phases 1, 3 and 4 of this refactor each shipped
+with. **This is now the fifth consecutive phase shipping an unexercised
+transport** (this cleanup phase included — it repointed `up-all.sh` onto
+the canonical seed/secrets/deploy scripts and never ran it either; see the
+top-level Verification status section above). `deploy ENV=aws` is mapped
+and its offline render is proven byte-for-byte against ground truth, but
+nobody has watched a real pod come up on a real EKS cluster wired this way.
+Deciding whether to spend money on that live run is explicitly deferred
+(design doc D2) — closing the offline gaps was free, a billed run is a
+decision for whoever picks this up next.
 
-### Finding for Phase 8
+### Finding from Phase 7, closed by Phase 8's deletion
 
 The VAULT env leftover above (8 Deployments' oracle-only `VAULT_TOKEN` /
-`SPRING_CLOUD_VAULT_URI`) is harmless on AWS today — the chart already omits
-both keys, and nothing reads them from the overlay-deployed pods either,
-since AWS has no in-cluster Vault to reach. But it is a genuine, real gap in
-the *old* kustomize path (out of scope to fix here — `k8s/` must stay
-byte-identical through this phase), and it is exactly the kind of thing that
-should be cleaned up **before**, not after, Phase 8 deletes the overlay:
-once `k8s/apps/overlays/aws` is gone, this residue disappears along with it
-either way, but fixing it first turns "delete the file" into a verifiable
-no-op instead of quietly erasing a known bug along with everything else.
+`SPRING_CLOUD_VAULT_URI`) was harmless on AWS — the chart already omitted
+both keys, and nothing read them from the overlay-deployed pods either,
+since AWS had no in-cluster Vault to reach. It was a genuine, real gap in
+the *old* kustomize path (`k8s/apps/base/*/deployment.yaml` /
+`k8s/apps/overlays/aws`), out of scope to fix while `k8s/` had to stay
+byte-identical for the Phase 7 diff. Phase 8 deleted `k8s/` entirely, which
+closes this finding by removing the file the residue lived in — the
+`aws-diff-test.sh` comparison above still shows the difference because its
+oracle (`deploy/charts/microecom/tests/aws-oracle/oracle.yaml`) is a frozen
+**capture** of that now-deleted overlay, taken before deletion — see
+"Losses and leftovers" near the top of this file for why that capture is
+never regenerated.
 

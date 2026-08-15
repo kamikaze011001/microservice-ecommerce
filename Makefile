@@ -75,12 +75,12 @@ help:
 # NOTE: svc-start runs BEFORE the post-apps seed stage because docker/
 # ecommerce.sql is a data-only dump. Tables are created by Hibernate ddl-auto
 # on first service boot, then the seed inserts rows. Reordering this breaks
-# fresh bootstrap (ERROR 1146 — see k8s/CLAUDE.md and deploy/scripts/seed.sh's
+# fresh bootstrap (ERROR 1146 — see deploy/CLAUDE.md and deploy/scripts/seed.sh's
 # post-apps precondition, which exists precisely to catch this).
 #
 # Phase 8 Task 2: repointed off the pre-Phase-4/5 `vault-import` /
 # `seed-data` prerequisites (which read docker/vault-configs/ and
-# scripts/seed/ — trees Phase 8 will delete) onto the canonical
+# scripts/seed/ — trees Phase 8 later deleted) onto the canonical
 # `secrets-seed` (Phase 4) and `seed` (Phase 5) paths. secrets-seed relies on
 # its own ENV default (compose) since prerequisites can't carry variable
 # assignments; the two `seed` stages are invoked explicitly in the recipe
@@ -408,16 +408,19 @@ k8s-seed:
 # k8s-seed-mysql / k8s-seed-inventory: both superseded by the canonical
 # `seed ENV=k8s STAGE=post-apps` (ecommerce.sql + derived inventory_product /
 # product_quantity_history rows + the inventory-service reconcile, in one
-# idempotent pass — see deploy/scripts/seed.sh). Kept as thin standalone entry
-# points for the legacy kubectl-path `k8s-bootstrap` (which still runs both,
-# back-to-back, in its prerequisite list) and any direct callers (docs/,
-# deploy/k6-stress/*). Both must still run AFTER k8s-apps/k8s-apps-helm:
-# docker/ecommerce.sql — now deploy/seed/ecommerce.sql — is data-only, and the
-# schema is created by Hibernate ddl-auto when the JPA services boot; seed.sh's
-# own post-apps precondition refuses to write a row before every target table
-# exists. Calling both k8s-seed-mysql and k8s-seed-inventory now runs the same
-# post-apps stage twice (row-count gates make the second call a no-op, but the
-# inventory-service reconcile restart also fires twice) — harmless, just
+# idempotent pass — see deploy/scripts/seed.sh). No longer wired into any
+# automatic bootstrap chain (the legacy kustomize `k8s-bootstrap` that used to
+# run them back-to-back was deleted in Phase 8; `k8s-bootstrap-helm` calls
+# `seed ENV=k8s STAGE=post-apps` directly instead — see its recipe above).
+# Kept as thin standalone entry points: deploy/seed/tests/live-verify.sh
+# calls both directly (old-way-vs-new-way live comparison), and they remain
+# valid for manual invocation. Both must still run AFTER k8s-apps-helm:
+# deploy/seed/ecommerce.sql is data-only, and the schema is created by
+# Hibernate ddl-auto when the JPA services boot; seed.sh's own post-apps
+# precondition refuses to write a row before every target table exists.
+# Calling both k8s-seed-mysql and k8s-seed-inventory now runs the same
+# post-apps stage twice (row-count gates make the second call a no-op, but
+# the inventory-service reconcile restart also fires twice) — harmless, just
 # redundant. See task-6-report.md.
 k8s-seed-mysql:
 	@bash deploy/scripts/seed.sh --env k8s --stage post-apps --context $(K8S_CLUSTER)
@@ -548,11 +551,13 @@ k8s-app-secrets:
 # path below is the only app path now, so the two are no longer mutually
 # exclusive on one cluster — there is only one.
 
-# Helm path for the apps, alongside `make k8s-apps` (kubectl/kustomize).
-# Both bring-up paths stay in the tree this phase; rolling back is reverting this
-# target. They are NOT composable on one cluster — the Helm chart selects on
-# app.kubernetes.io/name while the base manifests use a bare `app:` key, and
-# spec.selector is immutable on a Deployment. Pick one path per cluster.
+# Helm path for the apps — the only one now (see the correction immediately
+# above: `k8s-apps`/`k8s-apps-down` and the kustomize base manifests they
+# drove were deleted in Phase 8). While both paths coexisted (Phases 3-7) they
+# were NOT composable on one cluster — the Helm chart selects on
+# app.kubernetes.io/name while the base manifests used a bare `app:` key, and
+# spec.selector is immutable on a Deployment — so picking one path per cluster
+# was an operational rule. Nothing is left to pick between now.
 #
 # --timeout stays 30m. The drift guard in tests/render-test.sh only parses the
 # k8s-infra-helm recipe (activeDeadlineSeconds + 330s); this target's --timeout
@@ -709,23 +714,24 @@ k9s:
 # k8s-bootstrap-helm below is the only k8s bring-up now, and it is what
 # `make bootstrap ENV=k8s` dispatches to.
 
-# Helm-based one-shot, alongside `k8s-bootstrap` (kubectl/kustomize) — same
-# overall shape (cluster -> infra -> images -> seed -> apps -> seed), with the
-# two Helm swaps: k8s-infra-helm instead of k8s-infra, k8s-apps-helm instead
-# of k8s-apps. NOT composable with `k8s-bootstrap` on one live cluster (see
-# k8s-apps-helm's comment above); pick one path per cluster.
+# Helm-based one-shot: same overall shape the deleted kustomize path had
+# (cluster -> infra -> images -> seed -> apps -> seed), all-Helm now that
+# k8s-infra / k8s-apps are gone — k8s-infra-helm, then k8s-apps-helm.
 #
 # Phase 8 Task 1: this is the target VERB_bootstrap_k8s now resolves to (see
 # the dispatch table near the bottom of this file). Verified live 2026-08-14
-# only for its k8s-infra-helm + k8s-apps-helm halves (already-running cluster,
-# no full from-scratch rebuild performed — that takes ~35m and was out of
-# scope for that task).
+# initially only for its k8s-infra-helm + k8s-apps-helm halves
+# (already-running cluster, no full from-scratch rebuild). Task 7 later ran
+# this exact target end-to-end from a torn-down cluster (~25 min, exit 0,
+# 10/10 app pods, 30 products) — see deploy/CLAUDE.md and
+# .superpowers/sdd/progress.md for the three release-breaking bugs that run
+# found and fixed.
 #
 # Phase 8 Task 6: seeding repointed onto the canonical scripts
 # (deploy/scripts/secrets-seed.sh / deploy/scripts/seed.sh) instead of the old
 # k8s-seed (02-mongo-seed/03-vault-seed/05-minio-bootstrap) / k8s-seed-images /
 # k8s-seed-mysql / k8s-seed-inventory targets, which read k8s/infra/jobs/,
-# docker/*.json and docker/ecommerce.sql — trees a later phase deletes. Order
+# docker/*.json and docker/ecommerce.sql — trees Task 8 later deleted. Order
 # preserved exactly (secrets before apps; pre-apps seed — mongo + images —
 # before apps; post-apps seed — ecommerce.sql + derived inventory rows + the
 # inventory-service reconcile — after apps, because ecommerce.sql is

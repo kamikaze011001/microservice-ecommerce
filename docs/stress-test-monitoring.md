@@ -109,9 +109,13 @@ rate(http_server_requests_seconds_count[1m])           # request rate per servic
 
 ## Known caveat: stock depletion
 
-Seeded stock is small (product `…001/002/003` = **28 / 18 / 6** units, 52 total). Approved payments decrement stock via `PaymentSuccess`, so a sustained run **depletes it**, after which order-creation fails with out-of-stock — this shows up as rising k6 check failures *partway through*, not a latency problem. For a clean run, raise the quantities in `k8s/infra/jobs/06-perftest-seed` / the inventory seed first. (The 90/5/5 approve/cancel/fail decision mix means only ~90% of iterations decrement.)
+Seeded stock is small (product `…001/002/003` = **28 / 18 / 6** units, 52 total). Approved payments decrement stock via `PaymentSuccess`, so a sustained run **depletes it**, after which order-creation fails with out-of-stock — this shows up as rising k6 check failures *partway through*, not a latency problem. For a clean run, raise the quantities in `deploy/k8s-jobs/06-perftest-seed` / the inventory seed first. (The 90/5/5 approve/cancel/fail decision mix means only ~90% of iterations decrement.)
 
 ## See also
 
 - [`performance-test-guide.md`](performance-test-guide.md) — how to run, load model, SLO definitions, calibration & troubleshooting.
-- `k8s/README.md` — k9s setup, namespace hotkeys (`Shift-A/I/B`), and the `Shift-Z` infra-health plugin.
+- `deploy/k9s/` (`hotkeys.yaml`, `plugins.yaml`, `aliases.yaml`) — the k9s
+  config itself: namespace hotkeys (`Shift-A/I/B`) and the `Shift-Z`
+  infra-health plugin. The explanatory `k8s/README.md` that used to walk
+  through these did not survive Phase 8's `k8s/` deletion — read the YAML
+  directly, or `make k9s` and press `?` for k9s's own built-in help.

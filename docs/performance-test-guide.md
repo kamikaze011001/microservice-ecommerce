@@ -26,9 +26,9 @@ you can quote. The run also produces a populated Grafana dashboard and an
 **autoscaling (HPA) scale-up** you can point to.
 
 Source files:
-- Load script: `k8s/apps/base/k6-stress/payment-flow.js`
-- k6 Job manifest: `k8s/apps/base/k6-stress/payment-job.yaml`
-- User seed: `k8s/infra/jobs/06-perftest-seed/` (run by `make k8s-seed-perftest`)
+- Load script: `deploy/k6-stress/payment-flow.js`
+- k6 Job manifest: `deploy/k6-stress/payment-job.yaml`
+- User seed: `deploy/k8s-jobs/06-perftest-seed/` (run by `make k8s-seed-perftest`)
 
 ---
 
@@ -97,7 +97,7 @@ Total ≈ **4.5 minutes**, peak **50 concurrent VUs**.
 The 50 VUs authenticate as real accounts seeded into MySQL:
 `perftest_user_1 … perftest_user_100` (VU *n* uses `perftest_user_(n mod 100)+1`),
 plus one `perftest_admin`. They are created by the `06-perftest-seed` bootstrap
-Job (`make k8s-seed-perftest`, run automatically inside `make k8s-bootstrap`).
+Job (`make k8s-seed-perftest`, run automatically inside `make bootstrap ENV=k8s`).
 Regular users need no special role (order/payment endpoints require only
 `AUTHORIZED`); `perftest_admin` has the `ADMIN` role because the test's `setup()`
 phase tops up product stock via the admin-only `PATCH /inventory-service/...`.
@@ -209,7 +209,7 @@ SLO and p95 create-payment under 2 s."* (Fill N and the latencies from the run.)
 ### Step 1 — Bring the whole platform up (first run, ~20–40 min)
 
 ```bash
-make k8s-bootstrap
+make bootstrap ENV=k8s   # -> k8s-bootstrap-helm
 ```
 
 This is one-shot: create cluster → infra → build all images (incl. the Java-25
@@ -246,7 +246,7 @@ Prove one full saga goes green before applying load. (Runs the same script with
 ```bash
 kubectl -n apps delete pod k6-payment-dryrun --ignore-not-found
 kubectl -n apps create configmap k6-payment-script \
-  --from-file=k8s/apps/base/k6-stress/payment-flow.js --dry-run=client -o yaml | kubectl apply -f -
+  --from-file=deploy/k6-stress/payment-flow.js --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n apps run k6-payment-dryrun --image=grafana/k6:0.54.0 --restart=Never \
   --overrides='{"spec":{"containers":[{"name":"k6","image":"grafana/k6:0.54.0","args":["run","--vus","1","--iterations","1","/scripts/payment-flow.js"],"env":[{"name":"BASE_URL","value":"http://gateway.apps.svc.cluster.local:6868"},{"name":"INGRESS_ORIGIN","value":"http://api.microecom.local"},{"name":"PRODUCT_IDS","value":"67c000000000000000000001,67c000000000000000000002,67c000000000000000000003"}],"volumeMounts":[{"name":"script","mountPath":"/scripts"}]}],"volumes":[{"name":"script","configMap":{"name":"k6-payment-script"}}]}}'
 kubectl -n apps wait --for=condition=Ready pod/k6-payment-dryrun --timeout=60s || true
@@ -295,7 +295,7 @@ pods under load."*
 | `admin login failed` in setup() | perftest users not seeded → `make k8s-seed-perftest` |
 | `gateway/product-service not reachable` | apps not Ready, or wrong `BASE_URL` |
 | `http_req_failed` > 5% with timeouts/503s | cluster saturated → lower `target: 50` to 30/20 and re-run; the highest passing level is your quoted figure |
-| orders stuck (saga not settling) | check the Mongo-CDC → Kafka → orchestrator path (see `k8s/CLAUDE.md`) |
+| orders stuck (saga not settling) | check the Mongo-CDC → Kafka → orchestrator path (see `deploy/CLAUDE.md`) |
 | k6 Job errors immediately on metrics | VictoriaMetrics endpoint unreachable — verify `vmsingle` svc, or drop the `-o experimental-prometheus-rw` output |
 | Grafana dashboard empty | confirm the run used remote-write and you're viewing dashboard #19665 over the run's time window |
 
@@ -315,8 +315,8 @@ pods under load."*
   gateway out under load; payment-service is intentionally fixed (single-replica
   dependency boundary), which is itself a discussion point.
 - **Reproducibility:** users are seeded by a bootstrap Job wired into
-  `make k8s-bootstrap`; the test points at real catalog product IDs; metrics
-  flow to Grafana — so anyone can re-run and get comparable numbers.
+  `make bootstrap ENV=k8s`; the test points at real catalog product IDs;
+  metrics flow to Grafana — so anyone can re-run and get comparable numbers.
 
 ## Running the production-shaped funnel (storefront-flow.js)
 

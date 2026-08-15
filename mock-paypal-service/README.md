@@ -41,18 +41,21 @@ compile it). Build via `SVC=mock-paypal-service deploy/images/build.sh`.
 Registered in `scripts/services.list`; starts with `make up` on port 8585.
 Because `make up` launches every service with `mvn spring-boot:run`, run it with
 `JAVA_HOME` pointing at a JDK 25 (JDK 25 also runs the Java-17 services). To make
-payment-service use the mock locally, follow the `_comment_mock_paypal` note in
-`docker/vault-configs/payment-service.json`.
+payment-service use the mock locally, override `application.paypal.base-url` in
+`deploy/secrets/payment-service.yaml` (canonical source for this key — see the
+comment above it and `deploy/README.md`'s "Canonical secrets" section) to point
+at `http://<host>:8585/mock-paypal-service`, then `make secrets-seed`.
 
 ## k8s
-- Base manifests: `k8s/apps/base/mock-paypal-service/` (single replica — no HPA,
-  state is in-memory per token). Wired into `k8s/apps/overlays/local`, which also
-  patches payment-service to point `application.paypal.base-url` at the mock.
+- Rendered by the Helm chart's `apps` subchart — the `mock-paypal-service:`
+  block in `deploy/charts/microecom/charts/apps/values.yaml` (single replica —
+  no HPA, state is in-memory per token). `MOCK_PUBLIC_BASE_URL` there already
+  points payment-service's mock traffic at the in-cluster ingress host.
 - Gateway route `Path=/mock-paypal-service/**` (no StripPrefix); the browser-facing
-  `/mock-paypal-service/checkout` is PERMIT_ALL in `docker/api_role.json`.
+  `/mock-paypal-service/checkout` is PERMIT_ALL in `deploy/seed/api_role.json`.
 
 ## k6 stress
-- In-cluster Job `k6-payment-stress` (`k8s/apps/base/k6-stress/payment-flow.js`,
+- In-cluster Job `k6-payment-stress` (`deploy/k6-stress/payment-flow.js`,
   fired via `make k8s-payment-stress`) runs the full payment saga under load with
   a 90/5/5 approve/cancel/fail mix. It rewrites the mock's browser-facing
   `api.microecom.local` origin back to the in-cluster gateway Service DNS (so no
