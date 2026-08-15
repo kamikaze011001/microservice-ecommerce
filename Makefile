@@ -415,9 +415,10 @@ k8s-seed:
 # automatic bootstrap chain (the legacy kustomize `k8s-bootstrap` that used to
 # run them back-to-back was deleted in Phase 8; `k8s-bootstrap-helm` calls
 # `seed ENV=k8s STAGE=post-apps` directly instead — see its recipe above).
-# Kept as thin standalone entry points: deploy/seed/tests/live-verify.sh
-# calls both directly (old-way-vs-new-way live comparison), and they remain
-# valid for manual invocation. Both must still run AFTER k8s-apps-helm:
+# Kept as thin standalone entry points for MANUAL re-seeding of a running
+# cluster. (They were also called by deploy/seed/tests/live-verify.sh — that
+# reason died with it: live-verify was retired in Phase 8 and now refuses to
+# run, since the old path it compared against is gone.) Both must still run AFTER k8s-apps-helm:
 # deploy/seed/ecommerce.sql is data-only, and the schema is created by
 # Hibernate ddl-auto when the JPA services boot; seed.sh's own post-apps
 # precondition refuses to write a row before every target table exists.

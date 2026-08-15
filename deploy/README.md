@@ -38,6 +38,18 @@ deploy/
 ├── k6-stress/           # k6 load-test scripts + Job manifests — relocated from
 │                        # k8s/apps/base/k6-stress/, Task 3
 ├── k9s/                 # k9s monitor config for `make k9s`
+├── platform-values/     # values for THIRD-PARTY platform charts (ingress-nginx),
+│                        # installed by scripts/platform.sh — not part of the
+│                        # umbrella chart. Sole input to `make k8s-platform`.
+├── aws-infra/           # manifests + chart values + dashboards that
+│                        # scripts/aws/infra-up.sh applies on EKS. Sole input to
+│                        # `make aws-infra-up`. Recovered from k8s/infra/ in
+│                        # Phase 8 — deliberately NOT folded into the umbrella
+│                        # chart, because the chart's infra subchart would land
+│                        # under release `microecom`, which aws-deploy.sh's next
+│                        # upgrade (infra disabled) would delete. That
+│                        # consolidation needs a release-name decision and a
+│                        # phase that can test it on real AWS.
 └── .env                # gitignored — k8s/aws user credentials (mail, etc.);
                          # moved from the deleted k8s/.env, see below
 ```
@@ -579,10 +591,13 @@ make seed-test-equivalence   # Layer A — offline equivalence across all three
                               # envs against captured goldens. No backend, no
                               # credentials, no cluster; the only verification
                               # `aws` gets.
-make seed-live-verify ENV=compose   # Layer B — live state diff, old way vs
-                              # new way, by content hash. Re-seeds the target
-                              # backend; takes several minutes. ENV=compose|k8s,
-                              # default compose. See "Verification status" below.
+# make seed-live-verify        # RETIRED in Phase 8 — always exits 2 now.
+                              # It was a live old-way-vs-new-way state diff, and
+                              # Phase 8 deleted the old way, so there is nothing
+                              # left to diff against. The script refuses rather
+                              # than run, because diffing the new path against an
+                              # empty snapshot would report a FALSE MATCH. The
+                              # goldens it produced live on in seed-test-*.
 ```
 
 ### Verification status
