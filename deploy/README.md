@@ -139,7 +139,7 @@ as unhandled — but still deliberately never force-restart everything.**
 `scripts/services/start.sh`'s `start_one()` (via `svc-start`, which both
 `make bootstrap` and `make up` run) now checks, for every already-running
 service, whether its Eureka registration's `ipAddr` still matches the
-current host IP (`scripts/lib/eureka.sh`'s `registration_is_stale()`). On a
+current host IP (`scripts/lib/eureka.sh`'s `eureka_staleness()`). On a
 mismatch — the "new wifi network / VPN toggle leaves a stale registration"
 case — it kills and restarts *just that service*; everything else stays on
 the fast "already running, skip" path. Any ambiguous signal (Eureka

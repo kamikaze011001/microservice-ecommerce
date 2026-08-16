@@ -68,16 +68,25 @@ sys.exit(1)
 '
 }
 
-# registration_is_stale <http_port>
-#   exit 0 = STALE, the caller should restart this service
-#   exit 1 = not stale, OR unknown
-# Missing information NEVER yields 0. An empty Eureka response and a genuinely
-# fresh stack must not be confusable.
-registration_is_stale() {
+# eureka_staleness <http_port>
+#   exit 0 = STALE; stdout is "<reg_ip> <host_ip>" so the caller can log the
+#            exact values the decision used
+#   exit 1 = not stale, OR unknown — prints NOTHING
+#
+# Missing information NEVER yields 0. An unreachable Eureka, an unregistered
+# service and an undeterminable host IP all mean "not stale", so the failure
+# mode is "do nothing", never "restart everything".
+#
+# ONE function, not two: start.sh used to re-implement this formula inline to
+# get the values for its log without a second round-trip, which left the test
+# suite exercising a function production never called. Returning the values
+# WITH the verdict removes the reason to duplicate it.
+eureka_staleness() {
     local port=$1 host_ip reg_ip
     host_ip=$(current_host_ip) || return 1
     [ -n "$host_ip" ] || return 1
     reg_ip=$(eureka_registered_ip "$port") || return 1
     [ -n "$reg_ip" ] || return 1
-    [ "$reg_ip" != "$host_ip" ]
+    [ "$reg_ip" != "$host_ip" ] || return 1
+    printf '%s %s\n' "$reg_ip" "$host_ip"
 }

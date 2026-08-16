@@ -123,24 +123,24 @@ start_one() {
         # registration. Everything looks up and requests fail, with nothing
         # pointing at the cause.
         #
-        # Staleness uses the SAME fail-safe formula as registration_is_stale()
-        # in eureka.sh (missing port, missing/undeterminable host IP, or no/failed
-        # Eureka lookup all mean "not stale" — never "restart everything"), but
-        # host_ip/reg_ip are captured HERE, once, so the values that drove the
-        # decision are exactly the values in the log line below — no second
-        # Eureka round-trip just to describe what already happened.
-        local _pid _line _port _host_ip="" _reg_ip=""
+        # Staleness lives in ONE place: eureka_staleness() in eureka.sh returns
+        # the verdict AND the values on stdout, so this needs a single Eureka
+        # round-trip and the test suite exercises exactly the code that runs
+        # here. (It used to be re-implemented inline for the log values, which
+        # left the suite testing a function nothing in production called.)
+        # Missing port, undeterminable host IP, or a failed lookup all mean
+        # "not stale" — never "restart everything".
+        local _pid _line _port _stale="" _reg="" _host=""
         _pid=$(cat "$PID_DIR/$name.pid")
         _line=$(svc_get "$name" 2>/dev/null) || _line=""
         _port=$([ -n "$_line" ] && svc_field "$_line" 2 || echo "")
         if [ -n "$_port" ]; then
-            _host_ip=$(current_host_ip) || _host_ip=""
-            if [ -n "$_host_ip" ]; then
-                _reg_ip=$(eureka_registered_ip "$_port") || _reg_ip=""
-            fi
+            _stale=$(eureka_staleness "$_port") || _stale=""
         fi
-        if [ -n "$_port" ] && [ -n "$_host_ip" ] && [ -n "$_reg_ip" ] && [ "$_reg_ip" != "$_host_ip" ]; then
-            log_warn "$name: Eureka registration is stale (registered $_reg_ip, host is $_host_ip) — restarting"
+        if [ -n "$_stale" ]; then
+            _reg=${_stale%% *}
+            _host=${_stale#* }
+            log_warn "$name: Eureka registration is stale (registered $_reg, host is $_host) — restarting"
             # spring-boot-maven-plugin forks the actual JVM as a child of the
             # `mvn spring-boot:run` launcher whose PID is in the pidfile —
             # signaling just that PID leaves the child (the actual port
