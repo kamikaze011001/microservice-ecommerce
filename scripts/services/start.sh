@@ -130,7 +130,7 @@ start_one() {
         # left the suite testing a function nothing in production called.)
         # Missing port, undeterminable host IP, or a failed lookup all mean
         # "not stale" — never "restart everything".
-        local _pid _line _port _stale="" _reg="" _host=""
+        local _pid _line _port _stale="" _reg="" _locals=""
         _pid=$(cat "$PID_DIR/$name.pid")
         _line=$(svc_get "$name" 2>/dev/null) || _line=""
         _port=$([ -n "$_line" ] && svc_field "$_line" 2 || echo "")
@@ -139,8 +139,8 @@ start_one() {
         fi
         if [ -n "$_stale" ]; then
             _reg=${_stale%% *}
-            _host=${_stale#* }
-            log_warn "$name: Eureka registration is stale (registered $_reg, host is $_host) — restarting"
+            _locals=${_stale#* }
+            log_warn "$name: Eureka registration is stale (registered $_reg, this host has: $_locals) — restarting"
             # spring-boot-maven-plugin forks the actual JVM as a child of the
             # `mvn spring-boot:run` launcher whose PID is in the pidfile —
             # signaling just that PID leaves the child (the actual port

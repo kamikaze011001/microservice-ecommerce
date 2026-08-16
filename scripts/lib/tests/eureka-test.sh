@@ -28,6 +28,15 @@ HOST_IP_OVERRIDE=192.168.0.103 eureka_staleness 6868 \
   && bad "matching IP must not be stale" \
   || ok "matching IP is not stale"
 
+# 2b. registered IP is a local address that is NOT the default-route one ->
+# not stale. This is the case that loops forever under equality: Spring picks
+# its address by InetUtils enumeration order, we picked ours from the default
+# route, and a disagreement is a WRONG answer rather than an empty one — so no
+# fail-safe catches it and every service restarts on every `make up`, forever.
+HOST_IP_OVERRIDE=$'10.9.9.9\n192.168.0.103' eureka_staleness 6868 >/dev/null \
+  && bad "a local (non-default-route) address must not be stale" \
+  || ok "registered IP present in the local set is not stale"
+
 # 3. not registered (orchestrator 9999 never registers) -> not stale
 HOST_IP_OVERRIDE=10.0.0.7 eureka_staleness 9999 \
   && bad "unregistered service must not be stale" \
