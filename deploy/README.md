@@ -112,12 +112,6 @@ placeholder for a hypothetical future move.
 - **`scripts/aws/up-all.sh` has no confirmation prompt** before a real,
   billed EKS `terraform apply`. Anyone running it fat-fingers straight into
   real spend.
-- **`make down` never stops MinIO.** `scripts/infra/down.sh` lists
-  `vault/kafka/mongodb/redis/mysql.yml` but omits `minio.yml`. Root
-  `CLAUDE.md` describes `make down` as stopping "everything"; that has been
-  inaccurate since MinIO joined the stack. Practical effect: the repo
-  currently cannot produce a genuine cold start via `make down && make up`
-  — MinIO just keeps running underneath it.
 - **`make bootstrap` never force-restarts already-running services.** After
   a host IP change (new wifi network, VPN toggle, etc.), a compose stack
   left up serves stale Eureka registrations, and re-running `make
@@ -125,6 +119,12 @@ placeholder for a hypothetical future move.
 
 None of these are fixed here — this task is documentation only. They're
 recorded so the next person doesn't have to rediscover them.
+
+**Resolved (2026-08-16): `make down` used to never stop MinIO.**
+`scripts/infra/down.sh` used to list `vault/kafka/mongodb/redis/mysql.yml`
+but omit `minio.yml`, so `make down && make up` could not produce a genuine
+cold start of the whole stack. Fixed by adding `minio.yml` to `down.sh`'s
+stop list, mirroring `up.sh` in reverse order.
 
 ## Unified verbs (`make <verb> ENV=<env>`)
 
