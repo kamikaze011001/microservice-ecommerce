@@ -16,6 +16,10 @@ source "$REPO_ROOT/scripts/lib/env.sh"
 source "$REPO_ROOT/scripts/lib/wait.sh"
 # shellcheck source=../lib/registry.sh
 source "$REPO_ROOT/scripts/lib/registry.sh"
+# shellcheck source=../lib/eureka.sh
+source "$REPO_ROOT/scripts/lib/eureka.sh"
+# shellcheck source=../lib/proc.sh
+source "$REPO_ROOT/scripts/lib/proc.sh"
 
 LOG_DIR="$REPO_ROOT/logs/services"
 PID_DIR="$REPO_ROOT/logs/pids"
@@ -113,8 +117,60 @@ start_one() {
     [ -d "$dir" ] || { log_err "Directory not found: $dir"; return 1; }
 
     if [ -f "$PID_DIR/$name.pid" ] && kill -0 "$(cat "$PID_DIR/$name.pid")" 2>/dev/null; then
-        log_warn "$name already running (PID $(cat "$PID_DIR/$name.pid"))"
-        return 0
+        # "Already running" is not the same as "correct". Under compose these are
+        # HOST JVMs that registered the host IP with Eureka; after a network
+        # change they are alive, so we skip them, and they keep serving a stale
+        # registration. Everything looks up and requests fail, with nothing
+        # pointing at the cause.
+        #
+        # Staleness uses the SAME fail-safe formula as registration_is_stale()
+        # in eureka.sh (missing port, missing/undeterminable host IP, or no/failed
+        # Eureka lookup all mean "not stale" — never "restart everything"), but
+        # host_ip/reg_ip are captured HERE, once, so the values that drove the
+        # decision are exactly the values in the log line below — no second
+        # Eureka round-trip just to describe what already happened.
+        local _pid _line _port _host_ip="" _reg_ip=""
+        _pid=$(cat "$PID_DIR/$name.pid")
+        _line=$(svc_get "$name" 2>/dev/null) || _line=""
+        _port=$([ -n "$_line" ] && svc_field "$_line" 2 || echo "")
+        if [ -n "$_port" ]; then
+            _host_ip=$(current_host_ip) || _host_ip=""
+            if [ -n "$_host_ip" ]; then
+                _reg_ip=$(eureka_registered_ip "$_port") || _reg_ip=""
+            fi
+        fi
+        if [ -n "$_port" ] && [ -n "$_host_ip" ] && [ -n "$_reg_ip" ] && [ "$_reg_ip" != "$_host_ip" ]; then
+            log_warn "$name: Eureka registration is stale (registered $_reg_ip, host is $_host_ip) — restarting"
+            # spring-boot-maven-plugin forks the actual JVM as a child of the
+            # `mvn spring-boot:run` launcher whose PID is in the pidfile —
+            # signaling just that PID leaves the child (the actual port
+            # holder) running, and the replacement forked below would then
+            # lose the bind race with EADDRINUSE.
+            #
+            # `kill -- -"$_pid"` below is a best-effort process-group kill; on
+            # this host (macOS, `make up`) it does NOT fire — every launcher
+            # from one `make up` shares the parent shell's pgid instead of
+            # becoming its own group leader, so the target process group
+            # never exists and the kill always ESRCHs, falling straight
+            # through to the launcher-only `kill "$_pid"`. That single-PID
+            # kill is insufficient on its own (it never touches the forked
+            # JVM). The line below it, `kill_orphan_on_port` (scripts/lib/
+            # proc.sh) — the same lsof-based bounded-wait + SIGKILL-escalation
+            # backstop stop.sh uses for this pidfile/fork shape — is what
+            # actually frees the port. Do NOT remove it: without it the
+            # launcher dies, the JVM keeps the port, the replacement loses the
+            # bind race, and `wait_for_port` succeeds anyway against the old
+            # process still listening — `make up` would report the service
+            # healthy while it silently keeps serving the stale registration
+            # this whole mechanism exists to heal.
+            kill -- -"$_pid" 2>/dev/null || kill "$_pid" 2>/dev/null || true
+            rm -f "$PID_DIR/$name.pid"
+            kill_orphan_on_port "$name" "$_port"
+            # fall through to the normal start path below
+        else
+            log_warn "$name already running (PID $_pid)"
+            return 0
+        fi
     fi
 
     # Branch on what the directory actually contains — the registry holds JVM

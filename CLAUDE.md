@@ -34,12 +34,14 @@ make logs svc=order-service
 `make up` always re-runs vault unseal — no more "vault sealed" crashes
 after Docker restarts.
 
-**`make down` does not stop everything.** `scripts/infra/down.sh` stops
-`vault/kafka/mongodb/redis/mysql.yml` but omits `minio.yml`, so MinIO is
-left running across a `make down`. Volumes are preserved either way, so no
-data is at risk, but a `make down && make up` today is not a genuine cold
-start of the whole stack — this is a known, unfixed gap (see
-`deploy/README.md`'s Verification status for how it was found).
+**`make down` stops everything, including MinIO.** Until 2026-08-16,
+`scripts/infra/down.sh` stopped `vault/kafka/mongodb/redis/mysql.yml` but
+omitted `minio.yml`, so MinIO was left running across a `make down` and
+`make down && make up` was not a genuine cold start of the whole stack.
+That gap is now closed — `down.sh` stops all six compose files (see
+`deploy/README.md`'s Verification status for how it was found and fixed).
+These are independent compose files with no cross-file `depends_on`, so
+stop order doesn't matter.
 
 ### Adding a New Service
 Add one line to `scripts/services.list`:

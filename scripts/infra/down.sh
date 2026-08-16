@@ -29,7 +29,13 @@ if [ "${1:-}" = "--volumes" ]; then
     log_warn "Wiping volumes — all data will be lost"
 fi
 
-for f in vault.yml kafka.yml mongodb.yml redis.yml mysql.yml; do
+# minio.yml was omitted until 2026-08-16, which meant `make down` left MinIO
+# running and the repo could not produce a genuine cold start — every `make up`
+# was warmer than a real one. That is why the MinIO readiness poll in
+# deploy/scripts/seed.sh shipped unexercised. These are independent compose
+# files with no cross-file `depends_on`, so stop order (below) is inert and
+# doesn't need to mirror up.sh's start order.
+for f in vault.yml kafka.yml mongodb.yml redis.yml mysql.yml minio.yml; do
     if [ "$WIPE" = true ]; then
         log_info "Removing $f (containers + volumes)..."
         docker compose -f "docker/$f" down -v || true

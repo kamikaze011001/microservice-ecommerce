@@ -26,6 +26,8 @@ export REPO_ROOT
 source "$REPO_ROOT/scripts/lib/colors.sh"
 # shellcheck source=../lib/registry.sh
 source "$REPO_ROOT/scripts/lib/registry.sh"
+# shellcheck source=../lib/proc.sh
+source "$REPO_ROOT/scripts/lib/proc.sh"
 
 PID_DIR="$REPO_ROOT/logs/pids"
 
@@ -35,24 +37,6 @@ port_for() {
     local line
     line=$(svc_get "$1") || return 0
     svc_field "$line" 2
-}
-
-kill_orphan_on_port() {
-    local name=$1 port=$2
-    [ -n "$port" ] && [ "$port" != "-" ] || return 0
-    local orphans
-    orphans=$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
-    [ -n "$orphans" ] || return 0
-    log_warn "$name: orphan(s) on :$port — killing $orphans"
-    # shellcheck disable=SC2086
-    kill $orphans 2>/dev/null || true
-    sleep 1
-    orphans=$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
-    if [ -n "$orphans" ]; then
-        log_warn "$name: orphan(s) survived SIGTERM, sending SIGKILL"
-        # shellcheck disable=SC2086
-        kill -9 $orphans 2>/dev/null || true
-    fi
 }
 
 stop_one() {

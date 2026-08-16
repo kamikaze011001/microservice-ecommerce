@@ -109,22 +109,54 @@ placeholder for a hypothetical future move.
 
 ## Known gaps carried forward (raised, not fixed, in this phase)
 
-- **`scripts/aws/up-all.sh` has no confirmation prompt** before a real,
-  billed EKS `terraform apply`. Anyone running it fat-fingers straight into
-  real spend.
-- **`make down` never stops MinIO.** `scripts/infra/down.sh` lists
-  `vault/kafka/mongodb/redis/mysql.yml` but omits `minio.yml`. Root
-  `CLAUDE.md` describes `make down` as stopping "everything"; that has been
-  inaccurate since MinIO joined the stack. Practical effect: the repo
-  currently cannot produce a genuine cold start via `make down && make up`
-  — MinIO just keeps running underneath it.
-- **`make bootstrap` never force-restarts already-running services.** After
-  a host IP change (new wifi network, VPN toggle, etc.), a compose stack
-  left up serves stale Eureka registrations, and re-running `make
-  bootstrap` doesn't detect or fix it — `make svc-restart` does.
+*(none currently — see "Resolved since this section was written" below;
+this heading stays in case a future task adds one)*
 
-None of these are fixed here — this task is documentation only. They're
-recorded so the next person doesn't have to rediscover them.
+### Resolved since this section was written
+
+**Resolved (2026-08-16): `make down` used to never stop MinIO.**
+`scripts/infra/down.sh` used to list `vault/kafka/mongodb/redis/mysql.yml`
+but omit `minio.yml`, so `make down && make up` could not produce a genuine
+cold start of the whole stack. Fixed by adding `minio.yml` to `down.sh`'s
+stop list. These are independent compose files with no cross-file
+`depends_on`, so stop order is inert — it doesn't need to mirror `up.sh`.
+
+**Resolved (2026-08-16): `scripts/aws/up-all.sh` had no confirmation
+prompt** before a real, billed EKS `terraform apply` — anyone running it
+fat-fingered straight into real spend. Fixed by adding a `Continue? [y/N]`
+guard (mirroring `make nuke`, `Makefile:111`) immediately after the
+script's `set -euo pipefail`/`ROOT=` lines, before anything else executes.
+Non-TTY stdin **refuses** rather than proceeding — the absence of a human
+is not consent — and `--yes` opts in for deliberate non-interactive runs
+(see `scripts/aws/up-all.sh`'s usage comment and this repo's
+`RUNBOOK.md`). This closes the fat-finger gap; it does not make the script
+safe to run casually — it still creates real, billed infrastructure once
+confirmed.
+
+**Partially resolved (2026-08-16): `make bootstrap`/`make up` now detect and
+heal the specific stale-registration scenario this bullet used to describe
+as unhandled — but still deliberately never force-restart everything.**
+`scripts/services/start.sh`'s `start_one()` (via `svc-start`, which both
+`make bootstrap` and `make up` run) now checks, for every already-running
+service, whether its Eureka registration's `ipAddr` still matches the
+current host IP (`scripts/lib/eureka.sh`'s `registration_is_stale()`). On a
+mismatch — the "new wifi network / VPN toggle leaves a stale registration"
+case — it kills and restarts *just that service*; everything else stays on
+the fast "already running, skip" path. Any ambiguous signal (Eureka
+unreachable, host IP undeterminable, no matching instance) is treated as
+"not stale," never as "restart everything" — the fail-safe direction is
+always toward skipping, not toward surprise restarts.
+
+The bullet's original headline is still literally true: `make bootstrap` /
+`make up` still never *unconditionally* force-restart already-running
+services, and that remains deliberate — `make svc-restart` is still the
+tool for "restart regardless." Two things this check does **not** cover:
+it only compares against Eureka's record, so services that never register
+with Eureka (`eureka-server`, `orchestrator-service`,
+`mock-paypal-service`, the `frontend` SPA) are never touched by it and
+always take the "already running" fast path, host IP change or not; and it
+only fires on the narrow stale-*registration* symptom, not on other reasons
+a running process might be unhealthy.
 
 ## Unified verbs (`make <verb> ENV=<env>`)
 

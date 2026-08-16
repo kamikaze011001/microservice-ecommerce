@@ -27,12 +27,13 @@ Ranked by how much they'll bite:
    transport. Everything AWS rests on offline equivalence, and Phase 8 showed precisely what
    that cannot catch. Folding AWS infra into the chart is blocked on a release-name decision
    — see [[0005-aws-infra-stays-outside-the-umbrella-chart]].
-2. **`make down` never stops MinIO** (`scripts/infra/down.sh` omits `minio.yml`), so the repo
-   **cannot currently produce a genuine cold start**. Root `CLAUDE.md` still describes
-   `make down` as "stops everything". Cold-start bugs stay invisible until this is fixed.
-3. **`scripts/aws/up-all.sh` has no confirmation prompt** before a real billed EKS apply.
-4. Three HTML teaching pages under `docs/` still document the deleted kustomize `k8s/` tree.
-5. `make bootstrap` never force-restarts running services (stale Eureka after an IP change).
+2. The `kind`→minikube doc drift in the HTML teaching pages under `docs/`.
+
+Closed on `fix/phase8-followups` (2026-08-16): `make down` now stops MinIO too (F2,
+`scripts/infra/down.sh` adds `minio.yml`); `scripts/aws/up-all.sh` now confirms before a
+billed EKS apply (F3); the two HTML teaching pages describing the deleted kustomize `k8s/`
+tree were rewritten (F4); `make up`/`make bootstrap` now heal stale Eureka registrations
+after a host IP change (F5, `scripts/lib/eureka.sh` + `scripts/services/start.sh`).
 
 ## Settled decisions
 

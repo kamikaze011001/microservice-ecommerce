@@ -83,7 +83,7 @@ make restart   # equivalent to: make down && make up
 make status    # health table for every service + infra container
 ```
 
-`make down` keeps Docker volumes intact — your DBs, Mongo collections, MinIO buckets, and Vault data persist across restarts. Note: `make down` doesn't actually stop the MinIO container (a known gap — `scripts/infra/down.sh` omits `minio.yml`), so it stays running underneath a "stopped" stack; no data is at risk either way, but this means `make down && make up` isn't a true cold start today.
+`make down` keeps Docker volumes intact — your DBs, Mongo collections, MinIO buckets, and Vault data persist across restarts. `make down` stops all six infra compose files, including MinIO (`scripts/infra/down.sh` used to omit `minio.yml`, so MinIO stayed running underneath a "stopped" stack — that gap is closed), so `make down && make up` is now a genuine cold start of the whole stack.
 
 After laptop reboot or Docker restart, `make up` is all you need. Vault re-seals on container restart; the `up` target unseals it before services try to read secrets.
 
