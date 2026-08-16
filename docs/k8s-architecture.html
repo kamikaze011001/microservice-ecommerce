@@ -269,7 +269,7 @@ const NODES = [
   {id:"minio", lane:"infra", prim:"stateful", nm:"minio", meta:":9000/:9001 · S3",
     ing:"media.microecom.local",
     teach:"StatefulSet — S3-compatible object store. The app uploads via presigned URLs; the JVM never touches the bytes.",
-    use:"Product images / avatars. Public-read prefixes served at <code>media.microecom.local</code>. A setup sidecar creates the bucket + anon policy."},
+    use:"Product images / avatars. Public-read prefixes served at <code>media.microecom.local</code>. A <code>setup</code> sidecar creates the bucket + anon-download policy on every infra rollout — this is where the old '05 minio-bootstrap' Job's work actually ended up (NOT the seed.sh host script; that only uploads the image bytes, a duty no old Job had)."},
   {id:"vault", lane:"infra", prim:"helm", nm:"vault", meta:":8200 · token=root",
     teach:"HashiCorp Vault (Helm) — secrets store. Apps read it at boot via <b>Spring Cloud Vault</b> (no sidecar injection).",
     use:"Every service fetches its config from <code>secret/&lt;service&gt;</code> on startup. The agent <b>injector is disabled</b> (it breaks <code>helm upgrade</code> idempotency)."},
@@ -288,19 +288,25 @@ const NODES = [
     teach:"Supplies live CPU/memory to the API; <b>HPAs cannot scale without it</b>.",
     use:"Upstream chart (not Bitnami). Needs <code>--kubelet-insecure-tls</code> on kind."},
 
-  // host-side seed scripts — 3 of the original 5 Jobs (01 mysql-seed, 02
-  // mongo-seed, 05 minio-bootstrap) were retired, not replaced 1:1. Seeding
-  // moved OUT of the cluster onto two host scripts that kubectl exec/
-  // port-forward into the running pods — the same scripts drive compose and
-  // aws too, so one seeder now covers all three environments instead of an
-  // env-specific in-cluster Job each. These two nodes sit in the host lane,
-  // not the boot lane, because that's literally where they run.
+  // host-side seed scripts — of the original 5 Jobs, 01 mysql-seed and 02
+  // mongo-seed were retired and genuinely replaced by these two host
+  // scripts. 05 minio-bootstrap was ALSO retired, but its work (bucket +
+  // anon-download policy) did NOT move here — it moved into the minio
+  // chart's own `setup` sidecar (see the minio node below), which runs at
+  // infra bring-up, not at seed time. Uploading the actual product images
+  // into that bucket is a NEW duty seed.sh took on — none of the original 5
+  // Jobs ever did that. Seeding moved OUT of the cluster onto host scripts
+  // that kubectl exec/port-forward into the running pods — the same
+  // scripts drive compose and aws too, so one seeder now covers all three
+  // environments instead of an env-specific in-cluster Job each. These two
+  // nodes sit in the host lane, not the boot lane, because that's
+  // literally where they run.
   {id:"jobVault", lane:"host", prim:"ext", nm:"secrets-seed.sh", meta:"host script → Vault",
     teach:"Not a Job — a script on your own machine. It resolves the checked-in <code>deploy/secrets/*.yaml</code> and pushes the result into Vault over a port-forward.",
     use:"<code>make secrets-seed ENV=k8s</code>. Replaces the old '03 vault-seed' Job."},
   {id:"jobMysql", lane:"host", prim:"ext", nm:"seed.sh", meta:"host script → pods",
     teach:"Also not a Job. <code>kubectl exec -i</code> pipes the file straight into the pod (mongoimport over stdin, an image into MinIO's <code>mc cp</code>) — no configMap, no in-cluster copy step.",
-    use:"<code>make seed ENV=k8s STAGE=pre-apps</code> loads Mongo (<code>api_role</code>/<code>product</code>) + product images into MinIO — replaces the old '02 mongo-seed' and '05 minio-bootstrap' Jobs. <code>make seed ENV=k8s STAGE=post-apps</code> loads MySQL data + derived inventory rows AFTER the apps are up, once Hibernate has created the schema — replaces the old '01 mysql-seed' Job."},
+    use:"<code>make seed ENV=k8s STAGE=pre-apps</code> loads Mongo (<code>api_role</code>/<code>product</code>) — replacing the old '02 mongo-seed' Job — AND uploads the product images into MinIO, a NEW duty no old Job ever did (the retired '05 minio-bootstrap' only made the bucket + set its anon-read policy; see the minio node for where that half went). <code>make seed ENV=k8s STAGE=post-apps</code> loads MySQL data + derived inventory rows AFTER the apps are up, once Hibernate has created the schema — replaces the old '01 mysql-seed' Job."},
 
   // bootstrap jobs — 2 of the original 5 survive as real in-cluster Jobs,
   // relocated (not deleted) to deploy/k8s-jobs/.
