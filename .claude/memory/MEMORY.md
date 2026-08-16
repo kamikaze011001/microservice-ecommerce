@@ -7,6 +7,7 @@
 - [0002 — root CLAUDE.md delegates to nested module files](decisions/0002-root-claude-md-delegates-to-nested-module-files.md) — root keeps non-derivable + cross-cutting only; module specifics live in `<module>/CLAUDE.md`
 - [0003 — deploy refactor: Helm umbrella + three envs](decisions/0003-deploy-refactor-helm-umbrella-three-envs.md) — consolidate under `deploy/`; Helm for minikube/EKS, compose retained, canonical secrets/seed/images shared
 - [0004 — canonical secrets: resolve/transport split](decisions/0004-canonical-secrets-resolve-transport-split.md) — one file per service + per-env contexts; pure resolver separate from the seeder, so every env verifies offline without credentials
+- [0005 — AWS infra stays outside the umbrella chart](decisions/0005-aws-infra-stays-outside-the-umbrella-chart.md) — `deploy/aws-infra/` keeps raw manifests; using the chart's infra subchart would put it under the release `aws-deploy.sh` disables infra on, and the next apps deploy would delete it
 
 ## Conventions (conventions + gotchas, durable)
 - [two-memory-systems-coexist](conventions/two-memory-systems-coexist.md) — global personal auto-memory vs in-repo team-shared `.claude/memory/`; which to use when
@@ -27,6 +28,12 @@
 - [k8s-targets-inherit-ambient-kubectl-context](conventions/k8s-targets-inherit-ambient-kubectl-context.md) — no k8s target pins `--context`; only `secrets-seed` refuses an unnamed one, everything else acts on whatever kubectl points at
 - [helm-and-kubectl-deploy-paths-are-exclusive](conventions/helm-and-kubectl-deploy-paths-are-exclusive.md) — `k8s-apps-helm` can't follow `k8s-bootstrap`: namespace stamps + a vendored grafana vs the standalone release; "runs alongside" means the code paths, not one cluster
 - [cold-cluster-image-pulls-outgrow-rollout-timeouts](conventions/cold-cluster-image-pulls-outgrow-rollout-timeouts.md) — kafka-connect went Ready at 10m30s against a 10m wait and killed the whole 9-target chain; diagnose with pod timestamps, not "it's healthy now"
+- [deployment-progress-deadline-preempts-helm-timeout](conventions/deployment-progress-deadline-preempts-helm-timeout.md) — a Deployment's own 600s `progressDeadlineSeconds` fails the release before helm's `--wait --timeout 30m`; raising the helm timeout can NEVER fix a slow cold pull
+- [helm-subchart-toggle-deletes-on-a-shared-release](conventions/helm-subchart-toggle-deletes-on-a-shared-release.md) — two targets on one release name: `--set infra.enabled=false` DELETED mysql/mongo/kafka/vault; neither target had changed, ownership did
+- [hpa-managed-deployments-must-not-declare-replicas](conventions/hpa-managed-deployments-must-not-declare-replicas.md) — once an HPA scales, kube-controller-manager owns `.spec.replicas` and helm's apply loses the fight, failing the WHOLE release
+- [first-install-cannot-verify-a-deploy-path](conventions/first-install-cannot-verify-a-deploy-path.md) — run it twice, and cold: three release-breaking bugs each needed a SECOND event (cold pull / prior release / post-HPA upgrade) and survived five phases of green suites
+- [make-n-shows-commands-not-the-files-they-read](conventions/make-n-shows-commands-not-the-files-they-read.md) — after deleting a tree, sweep with a repo-wide PATH-QUALIFIED `git grep`; `make -n` stops at `@script.sh` and three dangling reads hid one level deeper
+- [an-unguarded-read-passes-when-its-input-vanishes](conventions/an-unguarded-read-passes-when-its-input-vanishes.md) — a suite reported 33 passed with its input file deleted; the neighbour reading the same file failed loudly because it checked non-empty. Deletion is a diagnostic
 
 ## Current
 - [HANDOFF](HANDOFF.md) — latest WIP state (overwritten each session)
