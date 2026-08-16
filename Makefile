@@ -108,7 +108,7 @@ restart: down up
 
 .PHONY: nuke
 nuke:
-	@read -p "This wipes ALL volumes (MySQL, Mongo, Kafka, Vault). Continue? [y/N] " ans; \
+	@read -p "This wipes ALL volumes (MySQL, Mongo, Kafka, Vault, MinIO). Continue? [y/N] " ans; \
 	  [ "$$ans" = "y" ] || { echo "Cancelled."; exit 1; }
 	@$(MAKE) svc-stop
 	@bash scripts/infra/down.sh --volumes
@@ -948,10 +948,13 @@ VERB_image-build_compose_WHY := compose builds no container images (services run
 # GNU make imports the process ENVIRONMENT as variables, not only
 # command-line assignments — `export ENV=aws` in a shell (or a stray
 # .envrc/direnv/CI env) makes plain `make bootstrap` silently behave like
-# `make bootstrap ENV=aws`, which resolves to `aws-all`: a real, unprompted,
-# billed EKS apply with no confirmation prompt anywhere downstream. Before
-# this branch `bootstrap`/`status` were ENV-blind, so this is a regression
-# specifically introduced by giving them dispatch verbs. VERB_ENV restores
+# `make bootstrap ENV=aws`, which resolves to `aws-all`: a real, billed EKS
+# apply. `scripts/aws/up-all.sh` now confirms before it applies, but an
+# accidental `export ENV=aws` should never even reach that prompt — silently
+# routing a plain `make bootstrap` into AWS territory is the bug, regardless
+# of what gate sits downstream. Before this branch `bootstrap`/`status` were
+# ENV-blind, so this is a regression specifically introduced by giving them
+# dispatch verbs. VERB_ENV restores
 # that ENV-blindness for the dispatch macro ONLY: it resolves to a value
 # only when ENV was set on the `make` command line itself (`origin` returns
 # "command line"), never from an exported/inherited environment variable.

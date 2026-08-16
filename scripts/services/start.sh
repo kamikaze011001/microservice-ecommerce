@@ -141,15 +141,28 @@ start_one() {
         fi
         if [ -n "$_port" ] && [ -n "$_host_ip" ] && [ -n "$_reg_ip" ] && [ "$_reg_ip" != "$_host_ip" ]; then
             log_warn "$name: Eureka registration is stale (registered $_reg_ip, host is $_host_ip) — restarting"
-            # Process-group kill, not a single-PID kill: spring-boot-maven-plugin
-            # forks the actual JVM as a child of the `mvn spring-boot:run`
-            # launcher whose PID is in the pidfile — signaling just that PID
-            # leaves the child (the actual port holder) running, and the
-            # replacement forked below would then lose the bind race with
-            # EADDRINUSE. kill_orphan_on_port (scripts/lib/proc.sh) is the
-            # bounded-wait + SIGKILL-escalation backstop for whatever is still
-            # bound to the port regardless — the same two-step stop.sh already
-            # uses for this exact pidfile/fork shape.
+            # spring-boot-maven-plugin forks the actual JVM as a child of the
+            # `mvn spring-boot:run` launcher whose PID is in the pidfile —
+            # signaling just that PID leaves the child (the actual port
+            # holder) running, and the replacement forked below would then
+            # lose the bind race with EADDRINUSE.
+            #
+            # `kill -- -"$_pid"` below is a best-effort process-group kill; on
+            # this host (macOS, `make up`) it does NOT fire — every launcher
+            # from one `make up` shares the parent shell's pgid instead of
+            # becoming its own group leader, so the target process group
+            # never exists and the kill always ESRCHs, falling straight
+            # through to the launcher-only `kill "$_pid"`. That single-PID
+            # kill is insufficient on its own (it never touches the forked
+            # JVM). The line below it, `kill_orphan_on_port` (scripts/lib/
+            # proc.sh) — the same lsof-based bounded-wait + SIGKILL-escalation
+            # backstop stop.sh uses for this pidfile/fork shape — is what
+            # actually frees the port. Do NOT remove it: without it the
+            # launcher dies, the JVM keeps the port, the replacement loses the
+            # bind race, and `wait_for_port` succeeds anyway against the old
+            # process still listening — `make up` would report the service
+            # healthy while it silently keeps serving the stale registration
+            # this whole mechanism exists to heal.
             kill -- -"$_pid" 2>/dev/null || kill "$_pid" 2>/dev/null || true
             rm -f "$PID_DIR/$name.pid"
             kill_orphan_on_port "$name" "$_port"

@@ -58,9 +58,12 @@ for a in apps:
     if isinstance(insts, dict):
         insts = [insts]
     for i in insts:
-        if str(i.get("port", {}).get("$")) == want and i.get("ipAddr"):
-            print(i["ipAddr"])
-            sys.exit(0)
+        try:
+            if str(i.get("port", {}).get("$")) == want and i.get("ipAddr"):
+                print(i["ipAddr"])
+                sys.exit(0)
+        except Exception:
+            continue
 sys.exit(1)
 '
 }

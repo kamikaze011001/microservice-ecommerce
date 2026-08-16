@@ -38,9 +38,10 @@ after Docker restarts.
 `scripts/infra/down.sh` stopped `vault/kafka/mongodb/redis/mysql.yml` but
 omitted `minio.yml`, so MinIO was left running across a `make down` and
 `make down && make up` was not a genuine cold start of the whole stack.
-That gap is now closed — `down.sh` stops all six compose files, mirroring
-`up.sh` in reverse (see `deploy/README.md`'s Verification status for how
-it was found and fixed).
+That gap is now closed — `down.sh` stops all six compose files (see
+`deploy/README.md`'s Verification status for how it was found and fixed).
+These are independent compose files with no cross-file `depends_on`, so
+stop order doesn't matter.
 
 ### Adding a New Service
 Add one line to `scripts/services.list`:

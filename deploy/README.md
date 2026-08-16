@@ -118,7 +118,8 @@ this heading stays in case a future task adds one)*
 `scripts/infra/down.sh` used to list `vault/kafka/mongodb/redis/mysql.yml`
 but omit `minio.yml`, so `make down && make up` could not produce a genuine
 cold start of the whole stack. Fixed by adding `minio.yml` to `down.sh`'s
-stop list, mirroring `up.sh` in reverse order.
+stop list. These are independent compose files with no cross-file
+`depends_on`, so stop order is inert — it doesn't need to mirror `up.sh`.
 
 **Resolved (2026-08-16): `scripts/aws/up-all.sh` had no confirmation
 prompt** before a real, billed EKS `terraform apply` — anyone running it
