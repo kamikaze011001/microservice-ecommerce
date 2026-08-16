@@ -18,6 +18,8 @@ source "$REPO_ROOT/scripts/lib/wait.sh"
 source "$REPO_ROOT/scripts/lib/registry.sh"
 # shellcheck source=../lib/eureka.sh
 source "$REPO_ROOT/scripts/lib/eureka.sh"
+# shellcheck source=../lib/proc.sh
+source "$REPO_ROOT/scripts/lib/proc.sh"
 
 LOG_DIR="$REPO_ROOT/logs/services"
 PID_DIR="$REPO_ROOT/logs/pids"
@@ -121,20 +123,39 @@ start_one() {
         # registration. Everything looks up and requests fail, with nothing
         # pointing at the cause.
         #
-        # registration_is_stale returns 0 ONLY when Eureka holds a registration
-        # for this port whose IP differs. Unreachable Eureka, unregistered
-        # service, or an undeterminable host IP all return 1 — so the failure
-        # mode here is "does nothing", never "restarts everything".
-        local _line _port
+        # Staleness uses the SAME fail-safe formula as registration_is_stale()
+        # in eureka.sh (missing port, missing/undeterminable host IP, or no/failed
+        # Eureka lookup all mean "not stale" — never "restart everything"), but
+        # host_ip/reg_ip are captured HERE, once, so the values that drove the
+        # decision are exactly the values in the log line below — no second
+        # Eureka round-trip just to describe what already happened.
+        local _pid _line _port _host_ip="" _reg_ip=""
+        _pid=$(cat "$PID_DIR/$name.pid")
         _line=$(svc_get "$name" 2>/dev/null) || _line=""
         _port=$([ -n "$_line" ] && svc_field "$_line" 2 || echo "")
-        if [ -n "$_port" ] && registration_is_stale "$_port"; then
-            log_warn "$name: Eureka registration is stale (registered $(eureka_registered_ip "$_port"), host is $(current_host_ip)) — restarting"
-            kill "$(cat "$PID_DIR/$name.pid")" 2>/dev/null || true
+        if [ -n "$_port" ]; then
+            _host_ip=$(current_host_ip) || _host_ip=""
+            if [ -n "$_host_ip" ]; then
+                _reg_ip=$(eureka_registered_ip "$_port") || _reg_ip=""
+            fi
+        fi
+        if [ -n "$_port" ] && [ -n "$_host_ip" ] && [ -n "$_reg_ip" ] && [ "$_reg_ip" != "$_host_ip" ]; then
+            log_warn "$name: Eureka registration is stale (registered $_reg_ip, host is $_host_ip) — restarting"
+            # Process-group kill, not a single-PID kill: spring-boot-maven-plugin
+            # forks the actual JVM as a child of the `mvn spring-boot:run`
+            # launcher whose PID is in the pidfile — signaling just that PID
+            # leaves the child (the actual port holder) running, and the
+            # replacement forked below would then lose the bind race with
+            # EADDRINUSE. kill_orphan_on_port (scripts/lib/proc.sh) is the
+            # bounded-wait + SIGKILL-escalation backstop for whatever is still
+            # bound to the port regardless — the same two-step stop.sh already
+            # uses for this exact pidfile/fork shape.
+            kill -- -"$_pid" 2>/dev/null || kill "$_pid" 2>/dev/null || true
             rm -f "$PID_DIR/$name.pid"
+            kill_orphan_on_port "$name" "$_port"
             # fall through to the normal start path below
         else
-            log_warn "$name already running (PID $(cat "$PID_DIR/$name.pid"))"
+            log_warn "$name already running (PID $_pid)"
             return 0
         fi
     fi
