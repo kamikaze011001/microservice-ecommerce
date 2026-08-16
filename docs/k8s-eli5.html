@@ -189,11 +189,11 @@ const CONCEPTS=[
    eli5:"Cameras quietly watch every room, and a big wall of screens shows green lights when all is well — so you spot trouble before customers do.",
    grown:"VictoriaMetrics is a tiny database that remembers numbers like CPU and memory over time; it collects metrics straight from each app. Grafana draws the dashboards.",
    shop:"Lives in the <code>monitoring</code> neighborhood; each service exposes metrics on its management door for VictoriaMetrics to collect."},
-  {emoji:"🧸",color:"var(--c7)",name:"The toy box: kind, registry, kustomize",tech:"kind · registry · kustomize",
+  {emoji:"🧸",color:"var(--c7)",name:"The toy box: kind, registry, Helm chart",tech:"kind · registry · Helm",
    lead:"How we build the whole city inside a laptop.",
-   eli5:"<b>kind</b> builds a whole toy city inside your laptop to practice in (ours is named “microecom”). The <b>registry</b> is the warehouse of building blueprints. <b>kustomize</b> is one base recipe with tiny tweaks per city (home vs cloud).",
-   grown:"kind = Kubernetes-in-Docker for local clusters; a registry stores container images; kustomize layers environment-specific patches over a shared base.",
-   shop:"<code>make k8s-bootstrap</code> builds the kind cluster, pushes images to a local registry, and applies the kustomize <code>local</code> overlay."},
+   eli5:"<b>kind</b> builds a whole toy city inside your laptop to practice in (ours is named “microecom”). The <b>registry</b> is the warehouse of building blueprints. A <b>Helm chart</b> is one recipe book for the whole city, with a settings page per place it's built (home vs cloud) — same recipe, different settings.",
+   grown:"kind = Kubernetes-in-Docker for local clusters; a registry stores container images; Helm packages the whole platform as one chart, with a values file per environment layered on top of the chart's own defaults.",
+   shop:"<code>make bootstrap ENV=k8s</code> builds the cluster, pushes images to a local registry, and installs the <code>deploy/charts/microecom</code> Helm chart using the <code>local-k8s</code> values file."},
 ];
 
 /* render cards */

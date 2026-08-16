@@ -164,7 +164,7 @@
 </aside>
 
 <footer>
-  Generated as a learning aid for the microecom microservice platform · all facts pulled from <code>k8s/</code> manifests &amp; <code>k8s/CLAUDE.md</code> scars · open this file directly in any browser (no server, no internet needed).
+  Generated as a learning aid for the microecom microservice platform · all facts pulled from the <code>deploy/charts/microecom</code> Helm chart &amp; <code>deploy/CLAUDE.md</code> scars · open this file directly in any browser (no server, no internet needed).
 </footer>
 
 <script>
@@ -217,9 +217,9 @@ const NODES = [
     ing:"api.microecom.local",
     teach:"<b>Deployment</b> + <b>HPA</b> (HorizontalPodAutoscaler scales replicas on CPU). The single backend ingress points here; it path-routes to every service.",
     use:"Routes <code>/&lt;service&gt;/**</code> via <b>Spring Cloud Kubernetes discovery</b> (<code>k8s</code> profile, <code>lb://SERVICE</code> resolves against k8s API). Direct-DNS Vault overrides (<code>http://&lt;svc&gt;.apps.svc:port</code>) remain as belt-and-suspenders. <b>Eureka is OFF in k8s.</b> Gateway has a dedicated ServiceAccount + RBAC (get/list/watch on services, endpoints, pods)."},
-  {id:"config", lane:"appsE", prim:"config", nm:"app-config / app-secrets", meta:"ConfigMap + Secret",
-    teach:"<b>ConfigMap</b> = non-secret key/values; <b>Secret</b> = base64 sensitive values. Both mount into pods as env or files.",
-    use:"<code>app-secrets</code> (built from gitignored <code>k8s/.env</code>) carries your real mail + PayPal creds — never committed, never in Vault seed scripts."},
+  {id:"config", lane:"appsE", prim:"config", nm:"app-secrets (Vault | ExternalSecret)", meta:"backend: vault (default)",
+    teach:"<b>ConfigMap</b> = non-secret key/values; <b>Secret</b> = base64 sensitive values. The chart supports two secret backends via <code>global.secret.backend</code>: <code>vault</code> (default here — every service reads Vault directly at boot, no Secret object involved) or <code>externalSecrets</code> (AWS only — an ExternalSecret syncs AWS Secrets Manager into a per-service <code>&lt;svc&gt;-config</code> Secret).",
+    use:"<code>make secrets-seed ENV=k8s</code> resolves the checked-in <code>deploy/secrets/*.yaml</code> — <code>${VAR}</code> placeholders in there pull your real mail + PayPal creds from gitignored <code>deploy/.env</code> — and pushes the result into Vault; never committed, never on argv."},
 
   // backend services
   {id:"auth", lane:"appsS", prim:"deploy", nm:"authorization-server", meta:":6666 · mgmt :19091",
@@ -380,14 +380,14 @@ const LESSONS = [
    ctx:"Want metrics + autoscaling without kube-prometheus-stack's quay.io fragility.",
    how:"VictoriaMetrics single-node scrapes pods via Kubernetes endpoint SD on the named <code>management</code> port — no ServiceMonitor CRD needed. kube-state-metrics feeds cluster-state signals. metrics-server feeds the HPA CPU metrics.",
    teaches:"Three different systems: VictoriaMetrics (observability TSDB, pull from /actuator via endpoint SD), kube-state-metrics (object-state signals), metrics-server (resource metrics API HPAs read). HPAs are dead without metrics-server; ServiceMonitor objects are no longer in this cluster — applying one will fail (no CRD)."},
-  {type:"tech",cat:"apps",nodes:["gateway","frontend"],title:"Kustomize base + overlays",
+  {type:"tech",cat:"apps",nodes:["gateway","frontend"],title:"One Helm chart, one values file per environment",
    ctx:"Same manifests, many environments.",
-   how:"<code>apps/base</code> holds the truth; <code>overlays/{local,local-with-frontend,aws}</code> patch per env.",
-   teaches:"Keep environment-specific drift in overlays so the base never forks."},
-  {type:"tech",cat:"vault",nodes:["config","jobVault"],title:"Real creds via gitignored k8s/.env → Secret",
+   how:"<code>deploy/charts/microecom</code> (an umbrella chart over <code>infra</code> and <code>apps</code> subcharts) holds the truth in each subchart's <code>values.yaml</code>; <code>envs/{local-k8s,aws}.yaml</code> layers per-env overrides on top via <code>helm upgrade -f</code>, and one-off flags go through <code>--set</code>.",
+   teaches:"Keep environment-specific drift in the env values file so the chart's defaults never fork per environment."},
+  {type:"tech",cat:"vault",nodes:["config","jobVault"],title:"Real creds via gitignored deploy/.env → Vault",
    ctx:"Your mail/PayPal creds must not be committed.",
-   how:"<code>install.sh</code> builds the <code>vault-seed-env</code>/<code>app-secrets</code> Secret from <code>k8s/.env</code> (gitignored); seed scripts reference env, never literals.",
-   teaches:"Sensitive values enter the cluster as a Secret built at apply-time — never in a committed values.yaml or seed.sh."},
+   how:"<code>make secrets-seed ENV=k8s</code> resolves the checked-in <code>deploy/secrets/*.yaml</code> — <code>${VAR}</code> references there pull real values from gitignored <code>deploy/.env</code> — then pushes the resolved payload into Vault over a port-forward; seed scripts reference the resolved values, never literals.",
+   teaches:"Sensitive values enter Vault at seed-time via a script — never hardcoded in a committed chart value or seed script."},
   {type:"tech",cat:"apps",nodes:["order"],title:"JVM heap respects the container limit",
    ctx:"JVMs ignore cgroup limits by default and get OOMKilled.",
    how:"<code>-XX:MaxRAMPercentage=75 -XX:+UseG1GC</code> with explicit requests/limits.",
@@ -396,10 +396,10 @@ const LESSONS = [
    ctx:"Seed Jobs raced ahead of half-ready stateful pods.",
    how:"The bootstrap/setup sidecars only report Ready once users/buckets exist; <code>install.sh</code> waits for rollout before seeding.",
    teaches:"Encode 'truly ready' in the readiness probe so dependents (seed Jobs) can rely on Ready meaning ready."},
-  {type:"tech",cat:"seed",nodes:["jobMysql","jobMongo"],title:"Imperative configMap for out-of-tree seed data",
-   ctx:"Seed data lives in <code>docker/</code>, outside the kustomization dir.",
-   how:"<code>kubectl create configmap --from-file=… --dry-run|apply</code>, then <code>apply -f job.yaml</code>.",
-   teaches:"kubectl's embedded kustomize hardcodes LoadRestrictionsRootOnly — <code>apply -k</code> refuses files outside its dir. Imperative create has no such restriction."},
+  {type:"tech",cat:"seed",nodes:["jobMysql","jobMongo"],title:"Seed scripts pipe data straight into the pod — no configMap, no Job",
+   ctx:"Seed data lives in <code>deploy/seed/</code>, on the machine running the script, not inside the cluster.",
+   how:"<code>deploy/scripts/seed.sh</code> streams the file straight over <code>kubectl exec -i … -- sh -c '…'</code> stdin — e.g. piping a JSON doc set into <code>mongoimport</code>, or a JPEG into MinIO's <code>mc cp</code> — with no configMap and no Job in between.",
+   teaches:"The old constraint — a manifest-based seed step could only read files inside its own manifest directory — doesn't just have a workaround now; the whole class of problem disappeared once seeding moved off in-cluster Jobs onto a host script that owns the file and can pipe it directly over exec."},
   {type:"tech",cat:"process",nodes:["vault"],title:"Idempotent install.sh",
    ctx:"Bring-up gets re-run constantly.",
    how:"<code>helm upgrade --install</code>, <code>put_if_missing</code>, <code>create secret --dry-run|apply</code>, keyfile only-if-missing.",
@@ -436,11 +436,11 @@ const LESSONS = [
    cause:"A lone <code>`</code> at the end of seed.sh; scripts run under <code>set -eu</code> so a parse error is fatal.",
    fix:"<code>sh -n</code> every seed script after editing.",
    teaches:"Under set -eu a syntax error takes down the entire Job. Lint shell before shipping it into a Job."},
-  {type:"scar",cat:"seed",nodes:["jobMysql","jobMongo"],title:"apply -k can't read out-of-tree data",
+  {type:"scar",cat:"seed",nodes:["jobMysql","jobMongo"],title:"Historical scar: seed Jobs couldn't read out-of-tree data",
    sym:"'security; file … is not in or below' on seed apply.",
-   cause:"kubectl's embedded kustomize hardcodes LoadRestrictionsRootOnly; the data lives in <code>docker/</code>.",
-   fix:"Build those configMaps imperatively, apply the Job with plain <code>apply -f</code>.",
-   teaches:"<code>kubectl apply -k</code> ≠ standalone <code>kustomize</code>; it can't relax load restrictions. Know which kustomize you're running."},
+   cause:"The old Job-based seed manifests could only reference files inside their own manifest directory; the seed data lived elsewhere in the repo.",
+   fix:"Superseded rather than patched: seeding moved off in-cluster Jobs entirely onto <code>deploy/scripts/seed.sh</code>, which streams the file straight into the target pod over <code>kubectl exec</code> stdin — there's no manifest-directory restriction left to hit.",
+   teaches:"A restriction baked into one tool doesn't always need a workaround forever — sometimes the fix is retiring the tool from the path entirely. Know whether a technique is current or merely historical."},
   {type:"scar",cat:"vault",nodes:["vault"],title:"vault-agent-injector breaks helm upgrade",
    sym:"2nd <code>make k8s-infra</code>: UPGRADE FAILED, caBundle conflict; release stuck 'failed'.",
    cause:"The injector self-manages its webhook's caBundle at runtime, so server-side apply conflicts on re-run.",
