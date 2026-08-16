@@ -4,7 +4,7 @@
 
 **Goal:** make the Eureka freshness check ask a question it can answer correctly, and make the test suite exercise the code that ships.
 
-**Architecture:** two independent changes to `scripts/lib/eureka.sh` and its one caller. Task 1 replaces equality-against-one-interface with membership-in-the-host's-addresses. Task 2 collapses the duplicated formula into a single function that returns the verdict *and* the values, so `start.sh` needs one Eureka round-trip and the mutation test lands on the shipped path.
+**Architecture:** two independent changes to `scripts/lib/eureka.sh` and its one caller. Task 1 collapses the duplicated formula into a single function that returns the verdict *and* the values, so `start.sh` needs one Eureka round-trip and the mutation test lands on the shipped path. Task 2 then changes that one comparison from equality-against-one-interface to membership-in-the-host's-addresses. **Unification comes first on purpose:** with the formula living in two places there is no single site at which to change the semantics.
 
 **Tech Stack:** bash (the repo's `scripts/lib/*.sh` convention), `ifconfig`/`route`/`ipconfig` (macOS), `python3` for JSON parsing, `curl`.
 
@@ -35,21 +35,224 @@
 
 ---
 
-## Task 1: Membership, not equality
+## Task 1: One function for the verdict and the values
 
 **Files:**
-- Modify: `scripts/lib/eureka.sh:16-32` (replace `current_host_ip`) and `:76-83` (`registration_is_stale`'s comparison)
+- Modify: `scripts/lib/eureka.sh` (add `eureka_staleness`, remove `registration_is_stale`)
+- Modify: `scripts/services/start.sh:126-143`
 - Modify: `scripts/lib/tests/eureka-test.sh`
+- Modify: `deploy/README.md` (the sentence naming `registration_is_stale`)
 
 **Interfaces:**
-- Produces: `local_host_ipv4s()` → prints every non-loopback local IPv4, **one per line**; exits 1 and prints nothing when none can be determined. Honours `HOST_IP_OVERRIDE` (meaning "pretend the host owns exactly these addresses" — space- or newline-separated, so a single value keeps working) and `FORCE_NO_HOST_IP` (meaning "cannot determine").
-- `registration_is_stale <http_port>` keeps its signature and exit convention: **exit 0 = stale**, exit 1 = not stale or unknown.
+- Consumes existing, unchanged in this task: `current_host_ip()` (prints the default-route IP; exit 1 and prints nothing if undeterminable) and `eureka_registered_ip <port>`.
+- Produces:
+  ```
+  eureka_staleness <http_port>
+    stdout : "<reg_ip> <host_ip>"    (only on exit 0)
+    exit 0 : STALE — caller should restart
+    exit 1 : not stale, OR unknown (prints nothing)
+  ```
+  Task 2 changes what the second field contains; the contract shape does not change.
 
-**Why:** the check compares Eureka's `ipAddr` against the **default-route** IP, while Spring registers whatever `InetUtils` picks (first non-loopback site-local by enumeration order). This host has five non-loopback site-local addresses — `192.168.0.103` (en1) plus four docker/minikube bridge addresses. They agree today. If they ever disagree the check returns a **non-empty wrong** answer, every service is declared stale on every `make up`, and restarting cannot fix it because the replacement re-registers the same address.
+**Why this is first:** `registration_is_stale` is called **only by the test**. `start_one()`
+re-implements the same formula inline — deliberately, because it needs both IPs for its log
+line and calling the function then re-fetching them would double the Eureka round-trip. The
+cost is that **a green suite says nothing about the shipped path**: the mutation test that
+"proved the suite can fail" perturbed a function production never runs.
+
+It is also why the semantic change in Task 2 cannot come first — with two copies of the
+formula there is no single place to change.
 
 - [ ] **Step 1: Write the failing test**
 
-In `scripts/lib/tests/eureka-test.sh`, insert after case 2 (the "matching IP" case, currently ending line 29):
+In `scripts/lib/tests/eureka-test.sh`, replace every `registration_is_stale` call with
+`eureka_staleness` (five of them, cases 1-5), and add this case after the fixture check:
+
+```bash
+# 7. STALE prints "<reg_ip> <host_ip>" so the caller can log the values that
+# drove the decision without a second Eureka round-trip. This is what lets one
+# function serve both start.sh and this suite — the duplication it replaces
+# meant a green run here proved nothing about the shipped path.
+_out=$(HOST_IP_OVERRIDE=10.0.0.7 eureka_staleness 6868) && _rc=0 || _rc=1
+if [ "$_rc" -eq 0 ] && [ "${_out%% *}" = "192.168.0.103" ] && [ "${_out#* }" = "10.0.0.7" ]; then
+    ok "stale verdict carries reg_ip and host_ip on stdout"
+else
+    bad "expected '192.168.0.103 10.0.0.7', got '$_out' (rc=$_rc)"
+fi
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `bash scripts/lib/tests/eureka-test.sh`
+Expected: FAIL — `eureka_staleness: command not found` on every rewritten case, exit non-zero.
+
+- [ ] **Step 3: Add `eureka_staleness`, remove `registration_is_stale`**
+
+In `scripts/lib/eureka.sh`, replace `registration_is_stale` (and its comment block) entirely
+with:
+
+```bash
+# eureka_staleness <http_port>
+#   exit 0 = STALE; stdout is "<reg_ip> <host_ip>" so the caller can log the
+#            exact values the decision used
+#   exit 1 = not stale, OR unknown — prints NOTHING
+#
+# Missing information NEVER yields 0. An unreachable Eureka, an unregistered
+# service and an undeterminable host IP all mean "not stale", so the failure
+# mode is "do nothing", never "restart everything".
+#
+# ONE function, not two: start.sh used to re-implement this formula inline to
+# get the values for its log without a second round-trip, which left the test
+# suite exercising a function production never called. Returning the values
+# WITH the verdict removes the reason to duplicate it.
+eureka_staleness() {
+    local port=$1 host_ip reg_ip
+    host_ip=$(current_host_ip) || return 1
+    [ -n "$host_ip" ] || return 1
+    reg_ip=$(eureka_registered_ip "$port") || return 1
+    [ -n "$reg_ip" ] || return 1
+    [ "$reg_ip" != "$host_ip" ] || return 1
+    printf '%s %s\n' "$reg_ip" "$host_ip"
+}
+```
+
+- [ ] **Step 4: Run the suite**
+
+Run: `bash scripts/lib/tests/eureka-test.sh`
+Expected: `7 passed, 0 failed`, exit 0.
+
+- [ ] **Step 5: Rewire `start.sh` to the single call**
+
+In `scripts/services/start.sh`, replace lines 126-143 — from the comment beginning
+`# Staleness uses the SAME fail-safe formula` through the `log_warn` line — with:
+
+```bash
+        # Staleness lives in ONE place: eureka_staleness() in eureka.sh returns
+        # the verdict AND the values on stdout, so this needs a single Eureka
+        # round-trip and the test suite exercises exactly the code that runs
+        # here. (It used to be re-implemented inline for the log values, which
+        # left the suite testing a function nothing in production called.)
+        # Missing port, undeterminable host IP, or a failed lookup all mean
+        # "not stale" — never "restart everything".
+        local _pid _line _port _stale="" _reg="" _host=""
+        _pid=$(cat "$PID_DIR/$name.pid")
+        _line=$(svc_get "$name" 2>/dev/null) || _line=""
+        _port=$([ -n "$_line" ] && svc_field "$_line" 2 || echo "")
+        if [ -n "$_port" ]; then
+            _stale=$(eureka_staleness "$_port") || _stale=""
+        fi
+        if [ -n "$_stale" ]; then
+            _reg=${_stale%% *}
+            _host=${_stale#* }
+            log_warn "$name: Eureka registration is stale (registered $_reg, host is $_host) — restarting"
+```
+
+Leave everything from the next comment (`# spring-boot-maven-plugin forks…`) onward
+untouched — the kill logic is not part of this change.
+
+- [ ] **Step 6: Update the doc sentence**
+
+`deploy/README.md` names `registration_is_stale()`. Change the name to `eureka_staleness()`.
+Verify the surrounding sentence is still true — it described the algorithm, which has not
+changed in this task.
+
+- [ ] **Step 7: Verify nothing still references the removed function**
+
+```bash
+git grep -n 'registration_is_stale' -- . ':!docs/superpowers/'
+```
+
+Expected: **no hits.** `docs/superpowers/` is excluded because the spec and plan legitimately
+name the old function. **Confirm the pattern works first** by grepping for `eureka_staleness`
+and seeing hits — a typo'd pattern returns the same empty result as success.
+
+- [ ] **Step 8: Verify live — the fast path must stay fast**
+
+```bash
+make up 2>&1 | tee /tmp/t1-nodrift.log
+grep -c 'already running' /tmp/t1-nodrift.log
+grep -c 'registration is stale' /tmp/t1-nodrift.log
+```
+
+Expected: `already running` **non-zero** (assert this first — a zero count means nothing was
+running and the run proved nothing), and `registration is stale` **0**.
+
+- [ ] **Step 9: Verify live — the stale path still fires**
+
+```bash
+HOST_IP_OVERRIDE=10.0.0.7 make up 2>&1 | tee /tmp/t1-drift.log
+grep 'registration is stale' /tmp/t1-drift.log
+```
+
+Expected: one line per registered service (7: authorization-server, bff-service, gateway,
+inventory-service, order-service, payment-service, product-service), each reading
+`registered 192.168.0.103, host is 10.0.0.7`. The four unregistered services
+(`eureka-server`, `orchestrator-service`, `mock-paypal-service`, `frontend`) must NOT appear.
+
+Then confirm recovery: 11 services alive, and
+
+```bash
+curl -s 'http://localhost:6868/product-service/v1/products?page=1&size=1'
+```
+
+returns `"total":30`. **The response shape is `data.data` with `data.total` — not
+`data.products`.**
+
+- [ ] **Step 10: Prove the mutation test now lands on the shipped path**
+
+Change `eureka_staleness`'s comparison line `[ "$reg_ip" != "$host_ip" ] || return 1` to
+`[ "$reg_ip" = "$host_ip" ] || return 1` (inverted), re-run the suite, confirm it fails,
+restore exactly, re-run to `7 passed, 0 failed`, and confirm `git diff scripts/lib/eureka.sh`
+shows only this task's intended changes.
+
+This is the property the task exists to restore: the function the suite perturbs is now the
+function `start.sh` calls.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add scripts/lib/eureka.sh scripts/lib/tests/eureka-test.sh scripts/services/start.sh deploy/README.md
+git commit -m "fix(services): one staleness function, returning verdict and values
+
+registration_is_stale() was called only by the test; start_one() re-implemented
+the formula inline to get both IPs for its log without a second Eureka
+round-trip. So a green suite said nothing about the shipped path — the mutation
+test that proved it could fail perturbed a function production never ran.
+
+eureka_staleness() returns the verdict AND the values on stdout, which removes
+the reason to duplicate it."
+```
+
+---
+
+## Task 2: Membership, not equality
+
+**Files:**
+- Modify: `scripts/lib/eureka.sh` (replace `current_host_ip` with `local_host_ipv4s`; change `eureka_staleness`'s comparison)
+- Modify: `scripts/services/start.sh` (one log-message word)
+- Modify: `scripts/lib/tests/eureka-test.sh`
+
+**Interfaces:**
+- Consumes from Task 1: `eureka_staleness <http_port>` — exit 0 = stale, stdout
+  `"<reg_ip> <host_ip>"`. This task changes the second field to the full local set; the
+  contract shape is unchanged.
+- Produces: `local_host_ipv4s()` → prints every non-loopback local IPv4, **one per line**;
+  exits 1 and prints nothing when none can be determined. Honours `HOST_IP_OVERRIDE` (meaning
+  "pretend the host owns exactly these addresses" — space- or newline-separated, so the
+  existing single-value cases keep working) and `FORCE_NO_HOST_IP` ("cannot determine").
+  **`current_host_ip` is removed** — after Task 1 nothing outside this file calls it.
+
+**Why:** the check compares Eureka's `ipAddr` against the **default-route** IP, while Spring
+registers whatever `InetUtils` picks (first non-loopback site-local by enumeration order).
+This host has five non-loopback site-local addresses — `192.168.0.103` (en1) plus four
+docker/minikube bridges. They agree today. If they ever disagree the check returns a
+**non-empty wrong** answer; every fail-safe here guards only against *empty*, so every service
+is declared stale on every `make up`, permanently, because the replacement re-registers the
+same address.
+
+- [ ] **Step 1: Write the failing test**
+
+In `scripts/lib/tests/eureka-test.sh`, insert after case 2 (the "matching IP" case):
 
 ```bash
 # 2b. registered IP is a local address that is NOT the default-route one ->
@@ -57,7 +260,7 @@ In `scripts/lib/tests/eureka-test.sh`, insert after case 2 (the "matching IP" ca
 # its address by InetUtils enumeration order, we picked ours from the default
 # route, and a disagreement is a WRONG answer rather than an empty one — so no
 # fail-safe catches it and every service restarts on every `make up`, forever.
-HOST_IP_OVERRIDE=$'10.9.9.9\n192.168.0.103' registration_is_stale 6868 \
+HOST_IP_OVERRIDE=$'10.9.9.9\n192.168.0.103' eureka_staleness 6868 >/dev/null \
   && bad "a local (non-default-route) address must not be stale" \
   || ok "registered IP present in the local set is not stale"
 ```
@@ -65,18 +268,17 @@ HOST_IP_OVERRIDE=$'10.9.9.9\n192.168.0.103' registration_is_stale 6868 \
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `bash scripts/lib/tests/eureka-test.sh`
-Expected: `6 passed, 1 failed`, exit 1, with the new case reporting
+Expected: `7 passed, 1 failed`, exit 1, with the new case reporting
 `FAIL a local (non-default-route) address must not be stale`.
 
-The failure is deterministic, not incidental. `current_host_ip` does
-`printf '%s' "$HOST_IP_OVERRIDE"`, which returns the whole two-line value as a
-single string, and the equality test then compares `192.168.0.103` against
-`10.9.9.9\n192.168.0.103` — they differ, so today's code says STALE. That is
-precisely the bug: an address the host owns, reported as drift.
+The failure is deterministic. `current_host_ip` does `printf '%s' "$HOST_IP_OVERRIDE"`, which
+returns the whole two-line value as a single string; the equality test compares
+`192.168.0.103` against `10.9.9.9\n192.168.0.103`, they differ, and today's code says STALE.
+That is exactly the bug: an address the host owns, reported as drift.
 
 - [ ] **Step 3: Replace `current_host_ip` with `local_host_ipv4s`**
 
-In `scripts/lib/eureka.sh`, replace the whole `current_host_ip` function (lines 16-32) with:
+In `scripts/lib/eureka.sh`, replace the whole `current_host_ip` function with:
 
 ```bash
 # local_host_ipv4s — every non-loopback IPv4 this host owns, one per line.
@@ -111,12 +313,12 @@ local_host_ipv4s() {
 }
 ```
 
-- [ ] **Step 4: Switch the comparison to membership**
+- [ ] **Step 4: Switch `eureka_staleness` to membership**
 
-In the same file, replace `registration_is_stale`'s body (lines 76-83) with:
+Replace its body with:
 
 ```bash
-registration_is_stale() {
+eureka_staleness() {
     local port=$1 reg_ip locals
     locals=$(local_host_ipv4s) || return 1
     [ -n "$locals" ] || return 1
@@ -125,41 +327,83 @@ registration_is_stale() {
     # Stale = Eureka's address is NOT one this host owns. `grep -qxF` is an
     # exact whole-line fixed-string match: -F so dots are literal, -x so
     # 192.168.0.10 never matches 192.168.0.103.
-    ! printf '%s\n' "$locals" | grep -qxF "$reg_ip"
+    printf '%s\n' "$locals" | grep -qxF "$reg_ip" && return 1
+    printf '%s %s\n' "$reg_ip" "$(printf '%s' "$locals" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
 }
 ```
 
-Update the comment block above it (lines 71-75) so it says membership, not difference.
+Update its comment block so the stdout contract reads `"<reg_ip> <local_ip…>"` and the
+rationale says membership, not difference.
 
-- [ ] **Step 5: Run the suite**
+- [ ] **Step 5: Update the log wording in `start.sh`**
+
+The second field is now a set, so `host is $_host` reads wrong. In
+`scripts/services/start.sh`, change the `log_warn` line to:
+
+```bash
+            log_warn "$name: Eureka registration is stale (registered $_reg, this host has: $_host) — restarting"
+```
+
+Rename the variable `_host` to `_locals` in the three places it appears (the `local`
+declaration, the assignment, and this line) so the name matches what it holds.
+
+- [ ] **Step 6: Run the suite**
 
 Run: `bash scripts/lib/tests/eureka-test.sh`
-Expected: `7 passed, 0 failed`, exit 0.
+Expected: `8 passed, 0 failed`, exit 0.
 
-- [ ] **Step 6: Prove the new row can fail**
+Case 7 still expects `"192.168.0.103 10.0.0.7"` — with `HOST_IP_OVERRIDE=10.0.0.7` the local
+set is exactly one address, so the second field is unchanged. If that case fails, the set
+joining is wrong, not the test.
 
-Temporarily change `! printf '%s\n' "$locals" | grep -qxF "$reg_ip"` to `return 0`, re-run, confirm failures appear and the suite exits non-zero, then restore the line exactly and re-run to `7 passed, 0 failed`. Verify the restore with `git diff scripts/lib/eureka.sh` — the only remaining changes should be this task's.
+- [ ] **Step 7: Prove the membership row can fail**
 
-- [ ] **Step 7: Verify against the live host**
+Temporarily change `printf '%s\n' "$locals" | grep -qxF "$reg_ip" && return 1` to
+`false && return 1`, re-run, confirm failures appear and the suite exits non-zero, then
+restore the line exactly and re-run to `8 passed, 0 failed`. Verify with
+`git diff scripts/lib/eureka.sh` that only this task's intended changes remain.
+
+- [ ] **Step 8: Verify against the live host**
 
 ```bash
 source scripts/lib/eureka.sh
 local_host_ipv4s
 ```
 
-Expected: several addresses including `192.168.0.103`, none starting `127.`. **Assert the output is non-empty** — an empty set makes every later check vacuously "not stale".
+Expected: several addresses including `192.168.0.103`, none starting `127.`. **Assert the
+output is non-empty** — an empty set makes every later check vacuously "not stale".
 
 Then confirm the real registration reads as fresh:
 
 ```bash
 source scripts/lib/eureka.sh
-if registration_is_stale 6868; then echo "STALE (unexpected)"; else echo "not stale (expected)"; fi
+if eureka_staleness 6868 >/dev/null; then echo "STALE (unexpected)"; else echo "not stale (expected)"; fi
 ```
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Verify live end to end**
 
 ```bash
-git add scripts/lib/eureka.sh scripts/lib/tests/eureka-test.sh
+make up 2>&1 | tee /tmp/t2-nodrift.log
+grep -c 'already running' /tmp/t2-nodrift.log
+grep -c 'registration is stale' /tmp/t2-nodrift.log
+```
+
+Expected: `already running` **non-zero**, `registration is stale` **0**.
+
+Then the drift path:
+
+```bash
+HOST_IP_OVERRIDE=10.0.0.7 make up 2>&1 | tee /tmp/t2-drift.log
+grep 'registration is stale' /tmp/t2-drift.log
+```
+
+Expected: 7 lines, each reading `registered 192.168.0.103, this host has: 10.0.0.7`. Confirm
+recovery: 11 services alive and the catalog returns `"total":30`.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add scripts/lib/eureka.sh scripts/lib/tests/eureka-test.sh scripts/services/start.sh
 git commit -m "fix(services): staleness is membership, not equality to one interface
 
 The check compared Eureka's ipAddr against the DEFAULT-ROUTE address while
@@ -170,174 +414,8 @@ A disagreement is a non-empty WRONG answer, and every fail-safe here guards
 only against empty — so it would declare every service stale on every make up,
 permanently, since the replacement re-registers the same address.
 
-Stale now means: the registered address is not one this host owns."
-```
-
----
-
-## Task 2: One function for the verdict and the values
-
-**Files:**
-- Modify: `scripts/lib/eureka.sh` (add `eureka_staleness`, remove `registration_is_stale`)
-- Modify: `scripts/services/start.sh:126-143`
-- Modify: `scripts/lib/tests/eureka-test.sh`
-- Modify: `deploy/README.md` (the sentence naming `registration_is_stale`)
-
-**Interfaces:**
-- Consumes from Task 1: `local_host_ipv4s()`, `eureka_registered_ip <port>`.
-- Produces:
-  ```
-  eureka_staleness <http_port>
-    stdout : "<reg_ip> <local_ip_1> [<local_ip_2> …]"   (only on exit 0)
-    exit 0 : STALE — caller should restart
-    exit 1 : not stale, OR unknown (prints nothing)
-  ```
-
-**Why:** `registration_is_stale` is called **only by the test**. `start_one()` re-implements the same formula inline, deliberately — it needs both IPs for its log line, and calling the function then fetching them separately would double the Eureka round-trip. The cost is that **a green suite says nothing about the shipped path**: the mutation test that "proved the suite can fail" perturbed a function production never runs.
-
-- [ ] **Step 1: Write the failing test**
-
-Replace every `registration_is_stale` call in `scripts/lib/tests/eureka-test.sh` with `eureka_staleness`, and add this case after the fixture check:
-
-```bash
-# 7. STALE prints "<reg_ip> <local…>" so the caller can log the values that
-# drove the decision without a second Eureka round-trip. This is what makes
-# one function serve both start.sh and this suite — the duplication it
-# replaces meant a green run here proved nothing about the shipped path.
-_out=$(HOST_IP_OVERRIDE=10.0.0.7 eureka_staleness 6868) && _rc=0 || _rc=1
-if [ "$_rc" -eq 0 ] && [ "${_out%% *}" = "192.168.0.103" ] && [ "${_out#* }" = "10.0.0.7" ]; then
-    ok "stale verdict carries reg_ip and the local set on stdout"
-else
-    bad "expected '192.168.0.103 10.0.0.7', got '$_out' (rc=$_rc)"
-fi
-```
-
-- [ ] **Step 2: Run it to verify it fails**
-
-Run: `bash scripts/lib/tests/eureka-test.sh`
-Expected: FAIL — `eureka_staleness: command not found` on every rewritten case.
-
-- [ ] **Step 3: Add `eureka_staleness`, remove `registration_is_stale`**
-
-In `scripts/lib/eureka.sh`, replace `registration_is_stale` entirely with:
-
-```bash
-# eureka_staleness <http_port>
-#   exit 0 = STALE; stdout is "<reg_ip> <local_ip…>" so the caller can log the
-#            exact values the decision used
-#   exit 1 = not stale, OR unknown — prints NOTHING
-#
-# Missing information NEVER yields 0. An unreachable Eureka, an unregistered
-# service and an undeterminable address set all mean "not stale", so the
-# failure mode is "do nothing", never "restart everything".
-#
-# ONE function, not two: start.sh used to re-implement this formula inline to
-# get the values for its log without a second round-trip, which left the test
-# suite exercising a function production never called. Returning the values
-# WITH the verdict removes the reason to duplicate it.
-eureka_staleness() {
-    local port=$1 reg_ip locals
-    locals=$(local_host_ipv4s) || return 1
-    [ -n "$locals" ] || return 1
-    reg_ip=$(eureka_registered_ip "$port") || return 1
-    [ -n "$reg_ip" ] || return 1
-    # -F: dots are literal. -x: 192.168.0.10 must not match 192.168.0.103.
-    printf '%s\n' "$locals" | grep -qxF "$reg_ip" && return 1
-    printf '%s %s\n' "$reg_ip" "$(printf '%s' "$locals" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
-}
-```
-
-- [ ] **Step 4: Run the suite**
-
-Run: `bash scripts/lib/tests/eureka-test.sh`
-Expected: `8 passed, 0 failed`, exit 0.
-
-- [ ] **Step 5: Rewire `start.sh` to the single call**
-
-In `scripts/services/start.sh`, replace lines 126-143 — from the comment beginning `# Staleness uses the SAME fail-safe formula` through the `log_warn` line — with:
-
-```bash
-        # Staleness lives in ONE place: eureka_staleness() in eureka.sh returns
-        # the verdict AND the values on stdout, so this needs a single Eureka
-        # round-trip and the test suite exercises exactly the code that runs
-        # here. (It used to be re-implemented inline for the log values, which
-        # left the suite testing a function nothing in production called.)
-        # Missing port, undeterminable addresses, or a failed lookup all mean
-        # "not stale" — never "restart everything".
-        local _pid _line _port _stale="" _reg="" _locals=""
-        _pid=$(cat "$PID_DIR/$name.pid")
-        _line=$(svc_get "$name" 2>/dev/null) || _line=""
-        _port=$([ -n "$_line" ] && svc_field "$_line" 2 || echo "")
-        if [ -n "$_port" ]; then
-            _stale=$(eureka_staleness "$_port") || _stale=""
-        fi
-        if [ -n "$_stale" ]; then
-            _reg=${_stale%% *}
-            _locals=${_stale#* }
-            log_warn "$name: Eureka registration is stale (registered $_reg, this host has: $_locals) — restarting"
-```
-
-Leave everything from the next comment (`# spring-boot-maven-plugin forks…`) onward untouched — the kill logic is not part of this change.
-
-- [ ] **Step 6: Update the doc sentence**
-
-`deploy/README.md` names `registration_is_stale()`. Find it and change the name to `eureka_staleness()`. Verify the surrounding sentence is still true after the rename — it described the algorithm, which has not changed.
-
-- [ ] **Step 7: Verify nothing still references the removed function**
-
-```bash
-git grep -n 'registration_is_stale' -- . ':!docs/superpowers/'
-```
-
-Expected: **no hits.** `docs/superpowers/` is excluded because the spec and this plan describe the change and legitimately name the old function. **Confirm the pattern works first** by grepping for `eureka_staleness` and seeing hits — a typo'd pattern returns the same empty result as success.
-
-- [ ] **Step 8: Verify live — the fast path must stay fast**
-
-```bash
-make up 2>&1 | tee /tmp/t2-nodrift.log
-grep -c 'already running' /tmp/t2-nodrift.log
-grep -c 'registration is stale' /tmp/t2-nodrift.log
-```
-
-Expected: `already running` **non-zero** (assert this first — a zero count means nothing was running and the run proved nothing), and `registration is stale` **0**.
-
-- [ ] **Step 9: Verify live — the stale path still fires and logs the set**
-
-```bash
-HOST_IP_OVERRIDE=10.0.0.7 make up 2>&1 | tee /tmp/t2-drift.log
-grep 'registration is stale' /tmp/t2-drift.log
-```
-
-Expected: one line per registered service (7: authorization-server, bff-service, gateway, inventory-service, order-service, payment-service, product-service), each reading `registered 192.168.0.103, this host has: 10.0.0.7`. The four unregistered services (`eureka-server`, `orchestrator-service`, `mock-paypal-service`, `frontend`) must NOT appear.
-
-Then confirm recovery: 11 services alive, and
-
-```bash
-curl -s 'http://localhost:6868/product-service/v1/products?page=1&size=1'
-```
-
-returns `"total":30`. **The response shape is `data.data` with `data.total` — not `data.products`.**
-
-- [ ] **Step 10: Prove the mutation test now lands on the shipped path**
-
-Change `eureka_staleness`'s membership line to `printf '%s\n' "$locals" | grep -qxF "$reg_ip" && return 0` (inverted), re-run the suite, confirm it fails, restore exactly, re-run to `8 passed, 0 failed`, and confirm `git diff scripts/lib/eureka.sh` shows only this task's intended changes.
-
-This is the property Task 2 exists to restore: the function the suite perturbs is now the function `start.sh` calls.
-
-- [ ] **Step 11: Commit**
-
-```bash
-git add scripts/lib/eureka.sh scripts/lib/tests/eureka-test.sh scripts/services/start.sh deploy/README.md
-git commit -m "fix(services): one staleness function, returning verdict and values
-
-registration_is_stale() was called only by the test; start_one() re-implemented
-the formula inline to get both IPs for its log without a second Eureka
-round-trip. So a green suite said nothing about the shipped path — the mutation
-test that proved it could fail perturbed a function production never ran.
-
-eureka_staleness() returns the verdict AND the values on stdout, which removes
-the reason to duplicate it. The log now names every address this host owns,
-which is also a better explanation of why the check fired."
+Stale now means: the registered address is not one this host owns. The log
+names every address the host has, which also explains why the check fired."
 ```
 
 ---
