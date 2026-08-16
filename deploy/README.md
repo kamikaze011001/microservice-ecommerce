@@ -109,13 +109,8 @@ placeholder for a hypothetical future move.
 
 ## Known gaps carried forward (raised, not fixed, in this phase)
 
-- **`make bootstrap` never force-restarts already-running services.** After
-  a host IP change (new wifi network, VPN toggle, etc.), a compose stack
-  left up serves stale Eureka registrations, and re-running `make
-  bootstrap` doesn't detect or fix it — `make svc-restart` does.
-
-The gap above is not fixed here — this task is documentation only. It's
-recorded so the next person doesn't have to rediscover it.
+*(none currently — see "Resolved since this section was written" below;
+this heading stays in case a future task adds one)*
 
 ### Resolved since this section was written
 
@@ -136,6 +131,31 @@ is not consent — and `--yes` opts in for deliberate non-interactive runs
 `RUNBOOK.md`). This closes the fat-finger gap; it does not make the script
 safe to run casually — it still creates real, billed infrastructure once
 confirmed.
+
+**Partially resolved (2026-08-16): `make bootstrap`/`make up` now detect and
+heal the specific stale-registration scenario this bullet used to describe
+as unhandled — but still deliberately never force-restart everything.**
+`scripts/services/start.sh`'s `start_one()` (via `svc-start`, which both
+`make bootstrap` and `make up` run) now checks, for every already-running
+service, whether its Eureka registration's `ipAddr` still matches the
+current host IP (`scripts/lib/eureka.sh`'s `registration_is_stale()`). On a
+mismatch — the "new wifi network / VPN toggle leaves a stale registration"
+case — it kills and restarts *just that service*; everything else stays on
+the fast "already running, skip" path. Any ambiguous signal (Eureka
+unreachable, host IP undeterminable, no matching instance) is treated as
+"not stale," never as "restart everything" — the fail-safe direction is
+always toward skipping, not toward surprise restarts.
+
+The bullet's original headline is still literally true: `make bootstrap` /
+`make up` still never *unconditionally* force-restart already-running
+services, and that remains deliberate — `make svc-restart` is still the
+tool for "restart regardless." Two things this check does **not** cover:
+it only compares against Eureka's record, so services that never register
+with Eureka (`eureka-server`, `orchestrator-service`,
+`mock-paypal-service`, the `frontend` SPA) are never touched by it and
+always take the "already running" fast path, host IP change or not; and it
+only fires on the narrow stale-*registration* symptom, not on other reasons
+a running process might be unhealthy.
 
 ## Unified verbs (`make <verb> ENV=<env>`)
 
