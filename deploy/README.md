@@ -109,22 +109,33 @@ placeholder for a hypothetical future move.
 
 ## Known gaps carried forward (raised, not fixed, in this phase)
 
-- **`scripts/aws/up-all.sh` has no confirmation prompt** before a real,
-  billed EKS `terraform apply`. Anyone running it fat-fingers straight into
-  real spend.
 - **`make bootstrap` never force-restarts already-running services.** After
   a host IP change (new wifi network, VPN toggle, etc.), a compose stack
   left up serves stale Eureka registrations, and re-running `make
   bootstrap` doesn't detect or fix it — `make svc-restart` does.
 
-None of these are fixed here — this task is documentation only. They're
-recorded so the next person doesn't have to rediscover them.
+The gap above is not fixed here — this task is documentation only. It's
+recorded so the next person doesn't have to rediscover it.
+
+### Resolved since this section was written
 
 **Resolved (2026-08-16): `make down` used to never stop MinIO.**
 `scripts/infra/down.sh` used to list `vault/kafka/mongodb/redis/mysql.yml`
 but omit `minio.yml`, so `make down && make up` could not produce a genuine
 cold start of the whole stack. Fixed by adding `minio.yml` to `down.sh`'s
 stop list, mirroring `up.sh` in reverse order.
+
+**Resolved (2026-08-16): `scripts/aws/up-all.sh` had no confirmation
+prompt** before a real, billed EKS `terraform apply` — anyone running it
+fat-fingered straight into real spend. Fixed by adding a `Continue? [y/N]`
+guard (mirroring `make nuke`, `Makefile:111`) immediately after the
+script's `set -euo pipefail`/`ROOT=` lines, before anything else executes.
+Non-TTY stdin **refuses** rather than proceeding — the absence of a human
+is not consent — and `--yes` opts in for deliberate non-interactive runs
+(see `scripts/aws/up-all.sh`'s usage comment and this repo's
+`RUNBOOK.md`). This closes the fat-finger gap; it does not make the script
+safe to run casually — it still creates real, billed infrastructure once
+confirmed.
 
 ## Unified verbs (`make <verb> ENV=<env>`)
 

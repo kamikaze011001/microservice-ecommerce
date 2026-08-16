@@ -28,7 +28,8 @@
 # Every step bills AWS — this is the USER's to run. Idempotent-ish: each leaf
 # reconciles, so a re-run after a mid-way failure resumes safely.
 #
-# Usage:  AWS_PROFILE=microecom [PUSH=all] scripts/aws/up-all.sh
+# Usage:  AWS_PROFILE=microecom [PUSH=all] scripts/aws/up-all.sh [--yes]
+#         --yes skips the interactive confirmation (for non-interactive runs).
 set -euo pipefail
 export AWS_PROFILE="${AWS_PROFILE:-microecom}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
