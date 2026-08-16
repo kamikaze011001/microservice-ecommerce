@@ -211,6 +211,12 @@ seed-test-equivalence:
 seed-live-verify:
 	@bash deploy/seed/tests/live-verify.sh --env $(or $(ENV),compose)
 
+.PHONY: svc-test-staleness
+## svc-test-staleness: decision table for the Eureka freshness check.
+## Fixture-driven — no live Eureka, runs with the stack down.
+svc-test-staleness:
+	@bash scripts/lib/tests/eureka-test.sh
+
 # ============================================================================
 # Kafka
 # ============================================================================
