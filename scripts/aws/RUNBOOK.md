@@ -3,6 +3,13 @@
 The manual sequence behind `make aws-all`. Run it by hand to learn the ordering
 and the failure points; or just run `make aws-all` and let the orchestrator do it.
 
+**Confirmation prompt:** `scripts/aws/up-all.sh` creates real, billed AWS
+infrastructure (EKS, VPC + NAT, RDS, ALB), so it asks `Continue? [y/N]` before
+doing anything — only a literal `y` proceeds. Run it from an interactive
+terminal so the prompt can be answered. Non-interactive/CI runs (no TTY on
+stdin) are refused unless you pass `--yes` to opt in explicitly, e.g.
+`scripts/aws/up-all.sh --yes` or `PUSH=all scripts/aws/up-all.sh --yes`.
+
 ## What persists vs. what rebuilds across `aws-down`
 
 `aws-down` destroys **`aws/main` only** (VPC, EKS, ALB, RDS, ElastiCache). The separate

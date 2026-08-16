@@ -32,6 +32,30 @@
 set -euo pipefail
 export AWS_PROFILE="${AWS_PROFILE:-microecom}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# ── Cost guard ───────────────────────────────────────────────────────────────
+# This script creates real, billed AWS infrastructure (EKS, VPC, NAT, RDS, ALB).
+# It had NO confirmation until 2026-08-16 — `make aws-all` went straight to spend.
+#
+# A non-TTY REFUSES rather than proceeds: the absence of a human is not consent.
+# Use --yes for deliberate non-interactive runs.
+ASSUME_YES=0
+for _arg in "$@"; do
+    [ "$_arg" = "--yes" ] && ASSUME_YES=1
+done
+
+if [ "$ASSUME_YES" -ne 1 ]; then
+    if [ ! -t 0 ]; then
+        echo "REFUSED: up-all.sh creates billed AWS infrastructure and stdin is not a TTY." >&2
+        echo "         Re-run interactively, or pass --yes if you mean it." >&2
+        exit 1
+    fi
+    echo "This creates BILLED AWS infrastructure: EKS cluster, VPC + NAT gateway,"
+    echo "RDS, and an ALB. It runs until you tear it down with 'make aws-down'."
+    read -p "Continue? [y/N] " ans
+    [ "$ans" = "y" ] || { echo "Cancelled."; exit 1; }
+fi
+
 TF="$ROOT/aws/main"
 PUSH="${PUSH:-reuse}"   # reuse | all
 
