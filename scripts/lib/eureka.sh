@@ -13,22 +13,35 @@
 
 EUREKA_URL="${EUREKA_URL:-http://localhost:8761}"
 
-# current_host_ip — the IP a host-run JVM would register.
-# Prints it; exits 1 and prints NOTHING if it cannot be determined.
-current_host_ip() {
-    [ -n "${FORCE_NO_HOST_IP:-}" ] && return 1          # test seam
+# local_host_ipv4s — every non-loopback IPv4 this host owns, one per line.
+# Prints them; exits 1 and prints NOTHING if none can be determined.
+#
+# WHY A SET, NOT ONE ADDRESS: Spring registers whatever InetUtils picks — the
+# first non-loopback site-local address by interface enumeration order. Any
+# single address we compute is a GUESS at that choice. This host has five
+# non-loopback site-locals (en1 plus four docker/minikube bridges), and the
+# old default-route guess agreed with Spring only by luck. A disagreement
+# produced a non-empty WRONG answer, which no fail-safe here catches — every
+# service stale on every `make up`, permanently, because the replacement
+# re-registers the same address.
+#
+# Asking "is Eureka's address one this host owns?" needs no guess at all.
+local_host_ipv4s() {
+    [ -n "${FORCE_NO_HOST_IP:-}" ] && return 1          # test seam: cannot determine
     if [ -n "${HOST_IP_OVERRIDE:-}" ]; then
-        printf '%s' "$HOST_IP_OVERRIDE"; return 0
+        # test seam: pretend the host owns exactly these addresses. Deliberately
+        # UNQUOTED so a space- or newline-separated list splits into one per
+        # line; existing single-value callers are unaffected. IPs contain no
+        # glob characters, so word-splitting is safe here.
+        # shellcheck disable=SC2086
+        printf '%s\n' $HOST_IP_OVERRIDE
+        return 0
     fi
-    # Derive the interface from the DEFAULT ROUTE, never a hardcoded one:
-    # on this project's own machine the IP is on en1 and `ipconfig getifaddr
-    # en0` returns empty, which would make every service look drifted.
-    local iface ip
-    iface=$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')
-    [ -n "$iface" ] || return 1
-    ip=$(ipconfig getifaddr "$iface" 2>/dev/null)
-    [ -n "$ip" ] || return 1
-    printf '%s' "$ip"
+    local ips
+    ips=$(ifconfig -a 2>/dev/null | awk '/^[[:space:]]*inet /{print $2}' \
+          | grep -v '^127\.' | sort -u)
+    [ -n "$ips" ] || return 1
+    printf '%s\n' "$ips"
 }
 
 # eureka_registered_ip <http_port> — the ipAddr Eureka holds for the instance
@@ -68,16 +81,35 @@ sys.exit(1)
 '
 }
 
-# registration_is_stale <http_port>
-#   exit 0 = STALE, the caller should restart this service
-#   exit 1 = not stale, OR unknown
-# Missing information NEVER yields 0. An empty Eureka response and a genuinely
-# fresh stack must not be confusable.
-registration_is_stale() {
-    local port=$1 host_ip reg_ip
-    host_ip=$(current_host_ip) || return 1
-    [ -n "$host_ip" ] || return 1
+# eureka_staleness <http_port>
+#   exit 0 = STALE; stdout is "<reg_ip> <local_ip…>" so the caller can log the
+#            exact values the decision used
+#   exit 1 = not stale, OR unknown — prints NOTHING
+#
+# Missing information NEVER yields 0. An unreachable Eureka, an unregistered
+# service and an undeterminable local address set all mean "not stale", so
+# the failure mode is "do nothing", never "restart everything". The local
+# address lookup runs FIRST and short-circuits before the Eureka round-trip:
+# an undeterminable address set prevents the check from asking Eureka at all,
+# rather than merely making the answer irrelevant once it does.
+#
+# STALE means membership, not equality: is the registered address one this
+# host owns? Not "does it match the one address we guessed Spring would
+# pick" — see local_host_ipv4s for why that guess can be wrong.
+#
+# ONE function, not two: start.sh used to re-implement this formula inline to
+# get the values for its log without a second round-trip, which left the test
+# suite exercising a function production never called. Returning the values
+# WITH the verdict removes the reason to duplicate it.
+eureka_staleness() {
+    local port=$1 reg_ip locals
+    locals=$(local_host_ipv4s) || return 1
+    [ -n "$locals" ] || return 1
     reg_ip=$(eureka_registered_ip "$port") || return 1
     [ -n "$reg_ip" ] || return 1
-    [ "$reg_ip" != "$host_ip" ]
+    # Stale = Eureka's address is NOT one this host owns. `grep -qxF` is an
+    # exact whole-line fixed-string match: -F so dots are literal, -x so
+    # 192.168.0.10 never matches 192.168.0.103.
+    printf '%s\n' "$locals" | grep -qxF "$reg_ip" && return 1
+    printf '%s %s\n' "$reg_ip" "$(printf '%s' "$locals" | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
 }

@@ -138,14 +138,24 @@ heal the specific stale-registration scenario this bullet used to describe
 as unhandled — but still deliberately never force-restart everything.**
 `scripts/services/start.sh`'s `start_one()` (via `svc-start`, which both
 `make bootstrap` and `make up` run) now checks, for every already-running
-service, whether its Eureka registration's `ipAddr` still matches the
-current host IP (`scripts/lib/eureka.sh`'s `registration_is_stale()`). On a
-mismatch — the "new wifi network / VPN toggle leaves a stale registration"
-case — it kills and restarts *just that service*; everything else stays on
-the fast "already running, skip" path. Any ambiguous signal (Eureka
-unreachable, host IP undeterminable, no matching instance) is treated as
-"not stale," never as "restart everything" — the fail-safe direction is
-always toward skipping, not toward surprise restarts.
+service, whether its Eureka registration's `ipAddr` is a member of the set
+of every non-loopback IPv4 address this host owns (`local_host_ipv4s()` in
+`scripts/lib/eureka.sh`'s `eureka_staleness()`) — not equality against one
+computed address, because the old default-route guess and the address
+Spring's `InetUtils` actually registers are two different selection methods
+that only happened to agree on this host. When the registered address is
+*not* a member of that set — the "new wifi network / VPN toggle leaves a
+stale registration" case — it kills and restarts *just that service*;
+everything else stays on the fast "already running, skip" path. Any
+ambiguous signal (Eureka unreachable, the local address set
+undeterminable, no matching instance) is treated as "not stale," never as
+"restart everything" — the fail-safe direction is always toward skipping,
+not toward surprise restarts. One consequence of membership being the test:
+it's deliberately less eager than equality — a stale registration whose old
+address happens to still be assigned on some *other* interface of this host
+now reads as fresh. The scenario the check exists for still trips it: a
+network change that reassigns the interface entirely, so the old address is
+owned by no interface at all.
 
 The bullet's original headline is still literally true: `make bootstrap` /
 `make up` still never *unconditionally* force-restart already-running
