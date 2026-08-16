@@ -16,6 +16,8 @@ source "$REPO_ROOT/scripts/lib/env.sh"
 source "$REPO_ROOT/scripts/lib/wait.sh"
 # shellcheck source=../lib/registry.sh
 source "$REPO_ROOT/scripts/lib/registry.sh"
+# shellcheck source=../lib/eureka.sh
+source "$REPO_ROOT/scripts/lib/eureka.sh"
 
 LOG_DIR="$REPO_ROOT/logs/services"
 PID_DIR="$REPO_ROOT/logs/pids"
@@ -113,8 +115,28 @@ start_one() {
     [ -d "$dir" ] || { log_err "Directory not found: $dir"; return 1; }
 
     if [ -f "$PID_DIR/$name.pid" ] && kill -0 "$(cat "$PID_DIR/$name.pid")" 2>/dev/null; then
-        log_warn "$name already running (PID $(cat "$PID_DIR/$name.pid"))"
-        return 0
+        # "Already running" is not the same as "correct". Under compose these are
+        # HOST JVMs that registered the host IP with Eureka; after a network
+        # change they are alive, so we skip them, and they keep serving a stale
+        # registration. Everything looks up and requests fail, with nothing
+        # pointing at the cause.
+        #
+        # registration_is_stale returns 0 ONLY when Eureka holds a registration
+        # for this port whose IP differs. Unreachable Eureka, unregistered
+        # service, or an undeterminable host IP all return 1 — so the failure
+        # mode here is "does nothing", never "restarts everything".
+        local _line _port
+        _line=$(svc_get "$name" 2>/dev/null) || _line=""
+        _port=$([ -n "$_line" ] && svc_field "$_line" 2 || echo "")
+        if [ -n "$_port" ] && registration_is_stale "$_port"; then
+            log_warn "$name: Eureka registration is stale (registered $(eureka_registered_ip "$_port"), host is $(current_host_ip)) — restarting"
+            kill "$(cat "$PID_DIR/$name.pid")" 2>/dev/null || true
+            rm -f "$PID_DIR/$name.pid"
+            # fall through to the normal start path below
+        else
+            log_warn "$name already running (PID $(cat "$PID_DIR/$name.pid"))"
+            return 0
+        fi
     fi
 
     # Branch on what the directory actually contains — the registry holds JVM
