@@ -187,7 +187,7 @@ const LANES = [
   {id:"appsS", title:"Backend microservices",       ns:"apps"},
   {id:"infra", title:"Stateful infrastructure",     ns:"infra"},
   {id:"mon",   title:"Observability",               ns:"monitoring"},
-  {id:"boot",  title:"Run-once seed Jobs",          ns:"bootstrap"},
+  {id:"boot",  title:"Run-once Jobs (2 of the original 5 remain)", ns:"bootstrap"},
 ];
 
 const NODES = [
@@ -288,22 +288,28 @@ const NODES = [
     teach:"Supplies live CPU/memory to the API; <b>HPAs cannot scale without it</b>.",
     use:"Upstream chart (not Bitnami). Needs <code>--kubelet-insecure-tls</code> on kind."},
 
-  // bootstrap jobs
-  {id:"jobMysql", lane:"boot", prim:"job", nm:"01 mysql-seed", meta:"data → MySQL",
-    teach:"A <b>Job</b> runs a pod to completion (run-once), not forever.",
-    use:"Loads <code>docker/ecommerce.sql</code> (data-only). ⚠ Open issue: runs before Hibernate creates tables."},
-  {id:"jobMongo", lane:"boot", prim:"job", nm:"02 mongo-seed", meta:"api_role+product",
-    teach:"Job.",
-    use:"Imports <code>docker/*.json</code> into Mongo (<code>api_role</code> drives gateway authz; <code>product</code> catalog)."},
-  {id:"jobVault", lane:"boot", prim:"job", nm:"03 vault-seed", meta:"writes secrets",
-    teach:"Job.",
-    use:"Writes <code>secret/&lt;service&gt;</code> paths. Must mirror <code>docker/vault-configs/*.json</code> key-for-key; pulls real creds from the <code>vault-seed-env</code> Secret."},
+  // host-side seed scripts — 3 of the original 5 Jobs (01 mysql-seed, 02
+  // mongo-seed, 05 minio-bootstrap) were retired, not replaced 1:1. Seeding
+  // moved OUT of the cluster onto two host scripts that kubectl exec/
+  // port-forward into the running pods — the same scripts drive compose and
+  // aws too, so one seeder now covers all three environments instead of an
+  // env-specific in-cluster Job each. These two nodes sit in the host lane,
+  // not the boot lane, because that's literally where they run.
+  {id:"jobVault", lane:"host", prim:"ext", nm:"secrets-seed.sh", meta:"host script → Vault",
+    teach:"Not a Job — a script on your own machine. It resolves the checked-in <code>deploy/secrets/*.yaml</code> and pushes the result into Vault over a port-forward.",
+    use:"<code>make secrets-seed ENV=k8s</code>. Replaces the old '03 vault-seed' Job."},
+  {id:"jobMysql", lane:"host", prim:"ext", nm:"seed.sh", meta:"host script → pods",
+    teach:"Also not a Job. <code>kubectl exec -i</code> pipes the file straight into the pod (mongoimport over stdin, an image into MinIO's <code>mc cp</code>) — no configMap, no in-cluster copy step.",
+    use:"<code>make seed ENV=k8s STAGE=pre-apps</code> loads Mongo (<code>api_role</code>/<code>product</code>) + product images into MinIO — replaces the old '02 mongo-seed' and '05 minio-bootstrap' Jobs. <code>make seed ENV=k8s STAGE=post-apps</code> loads MySQL data + derived inventory rows AFTER the apps are up, once Hibernate has created the schema — replaces the old '01 mysql-seed' Job."},
+
+  // bootstrap jobs — 2 of the original 5 survive as real in-cluster Jobs,
+  // relocated (not deleted) to deploy/k8s-jobs/.
   {id:"jobConnect", lane:"boot", prim:"job", nm:"04 connect-register", meta:"CDC connector",
-    teach:"Job.",
+    teach:"A <b>Job</b> runs a pod to completion (run-once), not forever. Relocated to <code>deploy/k8s-jobs/04-kafka-connect-register</code>, applied by <code>make k8s-seed</code>.",
     use:"POSTs the Mongo source connector config to kafka-connect's REST API."},
-  {id:"jobMinio", lane:"boot", prim:"job", nm:"05 minio-bootstrap", meta:"bucket + policy",
-    teach:"Job.",
-    use:"Ensures the media bucket + anonymous-read policy exist."},
+  {id:"jobPerftest", lane:"boot", prim:"job", nm:"06 perftest-seed", meta:"k6 login users",
+    teach:"Job. Relocated to <code>deploy/k8s-jobs/06-perftest-seed</code>, applied by <code>make k8s-seed-perftest</code>.",
+    use:"Bulk-inserts throwaway user accounts so a k6 stress run has enough logins to hammer without colliding with the seeded demo users. Opt-in, not part of the default bootstrap."},
 ];
 
 // flows: ordered node ids + per-hop captions
@@ -333,7 +339,7 @@ const FLOWS = {
     steps:["VictoriaMetrics scrapes via Kubernetes endpoint SD on the 'management' port NAME (no ServiceMonitor, no Prometheus Operator)","scrapes /actuator/prometheus on the management port (shown: gateway; same for all JVM services)"]},
   "Vault config @ boot": {
     path:["jobVault","vault","auth"],
-    steps:["Job 03 seeds secret/<service> paths","into Vault",
+    steps:["<code>make secrets-seed ENV=k8s</code> (secrets-seed.sh) resolves deploy/secrets/*.yaml and pushes it","into Vault, over a port-forward",
       "every service (e.g. auth) reads its config from Vault on startup via Spring Cloud Vault"]},
 };
 
@@ -392,17 +398,17 @@ const LESSONS = [
    ctx:"JVMs ignore cgroup limits by default and get OOMKilled.",
    how:"<code>-XX:MaxRAMPercentage=75 -XX:+UseG1GC</code> with explicit requests/limits.",
    teaches:"Set the heap as a % of the container limit, not a fixed -Xmx, so it scales with the pod's memory."},
-  {type:"tech",cat:"data",nodes:["mongodb","minio","jobMongo"],title:"Readiness sentinels gate the seed Jobs",
-   ctx:"Seed Jobs raced ahead of half-ready stateful pods.",
-   how:"The bootstrap/setup sidecars only report Ready once users/buckets exist; <code>install.sh</code> waits for rollout before seeding.",
-   teaches:"Encode 'truly ready' in the readiness probe so dependents (seed Jobs) can rely on Ready meaning ready."},
-  {type:"tech",cat:"seed",nodes:["jobMysql","jobMongo"],title:"Seed scripts pipe data straight into the pod — no configMap, no Job",
+  {type:"tech",cat:"data",nodes:["mongodb","minio","jobMysql"],title:"Readiness sentinels gate the seed scripts",
+   ctx:"The old seed Jobs used to race ahead of half-ready stateful pods; a host script can hit the same race.",
+   how:"The bootstrap/setup sidecars only report Ready once users/buckets exist; <code>k8s-infra-helm</code>'s <code>helm upgrade --wait</code> blocks until every pod passes that readiness check, so <code>secrets-seed</code>/<code>seed</code> never run against a half-ready pod.",
+   teaches:"Encode 'truly ready' in the readiness probe so anything that runs after — Job or host script — can rely on Ready meaning ready."},
+  {type:"tech",cat:"seed",nodes:["jobMysql"],title:"Seed scripts pipe data straight into the pod — no configMap, no Job",
    ctx:"Seed data lives in <code>deploy/seed/</code>, on the machine running the script, not inside the cluster.",
    how:"<code>deploy/scripts/seed.sh</code> streams the file straight over <code>kubectl exec -i … -- sh -c '…'</code> stdin — e.g. piping a JSON doc set into <code>mongoimport</code>, or a JPEG into MinIO's <code>mc cp</code> — with no configMap and no Job in between.",
    teaches:"The old constraint — a manifest-based seed step could only read files inside its own manifest directory — doesn't just have a workaround now; the whole class of problem disappeared once seeding moved off in-cluster Jobs onto a host script that owns the file and can pipe it directly over exec."},
-  {type:"tech",cat:"process",nodes:["vault"],title:"Idempotent install.sh",
+  {type:"tech",cat:"process",nodes:["vault"],title:"Idempotent bring-up, not idempotent scripts",
    ctx:"Bring-up gets re-run constantly.",
-   how:"<code>helm upgrade --install</code>, <code>put_if_missing</code>, <code>create secret --dry-run|apply</code>, keyfile only-if-missing.",
+   how:"<code>helm upgrade --install</code> for every chart; <code>make secrets-seed</code> always overwrites its target from the canonical <code>deploy/secrets/*.yaml</code> (by design — a value hand-edited in the backend does not survive the next run); <code>make seed</code> is safe to re-run per collection.",
    teaches:"Every bring-up step must be safe to run twice — re-runs are the norm, not the exception."},
 
   // ── scars (mistakes) ──
@@ -426,17 +432,17 @@ const LESSONS = [
    cause:"<code>put_if_missing</code> is per-PATH; a 2nd block for the same path is a silent no-op, so the gateway's route URIs never got written → it fell back to bare <code>lb://</code>. At the time Spring Cloud Kubernetes discovery wasn't yet wired, so <code>lb://</code> had no registry to resolve against → no instances.",
    fix:"Exactly ONE put_if_missing per Vault path; merge all of a service's keys into it.",
    teaches:"In k8s the gateway routes by k8s DNS, so route URIs in Vault are mandatory. 'No instance for X' = an <code>lb://</code> fallback firing."},
-  {type:"scar",cat:"vault",nodes:["vault","jobVault"],title:"Vault seed dropped keys vs docker/vault-configs",
+  {type:"scar",cat:"vault",nodes:["vault","jobVault"],title:"Historical scar: hand-written vault seed silently dropped keys",
    sym:"Assorted crashloops & opaque 500s far downstream (placeholder unresolved, kafka consumer build failed, gateway read wrong Mongo DB).",
-   cause:"The hand-written seed.sh silently omitted keys the apps need.",
-   fix:"Diff every key in seed.sh against <code>docker/vault-configs/*.json</code> (+ the common block).",
-   teaches:"A missing config key won't fail the seed — it fails an app at runtime as an opaque error. Config drift is invisible until it bites."},
-  {type:"scar",cat:"seed",nodes:["jobMongo"],title:"Stray trailing backtick aborted the seed",
-   sym:"Whole mongo-seed Job failed: 'unexpected end of file' — no products/api_role.",
+   cause:"The old hand-written vault-seed Job silently omitted keys the apps needed, with nothing to catch the drift but a second file (<code>docker/vault-configs/*.json</code>) that could itself go stale.",
+   fix:"Superseded rather than patched: <code>deploy/secrets/*.yaml</code> is now the single canonical source for every env, and <code>make secrets-seed</code> always overwrites the backend from it — there's no second file left to diff against or drift from.",
+   teaches:"A diff-two-files fix still leaves two files. Removing the second copy removes the whole class of drift, not just this instance of it."},
+  {type:"scar",cat:"seed",nodes:["jobMysql"],title:"Stray trailing backtick aborted the seed",
+   sym:"The whole seed run failed: 'unexpected end of file' — no products/api_role.",
    cause:"A lone <code>`</code> at the end of seed.sh; scripts run under <code>set -eu</code> so a parse error is fatal.",
    fix:"<code>sh -n</code> every seed script after editing.",
-   teaches:"Under set -eu a syntax error takes down the entire Job. Lint shell before shipping it into a Job."},
-  {type:"scar",cat:"seed",nodes:["jobMysql","jobMongo"],title:"Historical scar: seed Jobs couldn't read out-of-tree data",
+   teaches:"Under set -eu a syntax error aborts the whole run, Job or host script alike. Lint shell before shipping it."},
+  {type:"scar",cat:"seed",nodes:["jobMysql"],title:"Historical scar: seed Jobs couldn't read out-of-tree data",
    sym:"'security; file … is not in or below' on seed apply.",
    cause:"The old Job-based seed manifests could only reference files inside their own manifest directory; the seed data lived elsewhere in the repo.",
    fix:"Superseded rather than patched: seeding moved off in-cluster Jobs entirely onto <code>deploy/scripts/seed.sh</code>, which streams the file straight into the target pod over <code>kubectl exec</code> stdin — there's no manifest-directory restriction left to hit.",
@@ -456,11 +462,11 @@ const LESSONS = [
    cause:"NodePort range is 30000–32767.",
    fix:"Keep the controller Service ClusterIP; use hostPort for 80/443.",
    teaches:"Privileged low ports aren't reachable via NodePort; that's what hostPort / LoadBalancer are for."},
-  {type:"scar",cat:"seed",nodes:["jobMysql","mysql"],title:"OPEN: mysql seed runs before the schema exists",
+  {type:"scar",cat:"seed",nodes:["jobMysql","mysql"],title:"CLOSED: mysql seed used to run before the schema existed",
    sym:"<code>ERROR 1146 Table 'ecommerce_dev.account' doesn't exist</code>.",
-   cause:"<code>ecommerce.sql</code> is data-only; tables are created by Hibernate ddl-auto when apps boot — but seed runs before apps.",
-   fix:"Not yet resolved — a real ordering dependency (seed must run after first app boot, or ship DDL).",
-   teaches:"Job ordering matters: data seeds depend on schema that an app, not the SQL, creates. A dependency the bootstrap order doesn't yet express."},
+   cause:"MySQL seed data is data-only; tables are created by Hibernate ddl-auto when apps boot. The old bootstrap ran its mysql-seed Job before the apps existed, so the tables weren't there yet.",
+   fix:"Resolved by reordering the recipe, not by patching the seed step: <code>k8s-bootstrap-helm</code> now runs <code>seed ENV=k8s STAGE=post-apps</code> strictly AFTER <code>k8s-apps-helm</code>, once Hibernate has created the schema.",
+   teaches:"Step ordering matters: a data seed depends on schema that an app, not the SQL, creates. Making that dependency explicit in the bring-up recipe — not the seed script itself — is what actually closed this."},
   {type:"scar",cat:"apps",nodes:["product","minio"],title:"Product detail 500 + unreachable images",
    sym:"<code>GET /v1/products/{id}</code> → 500; images 404.",
    cause:"A SQL SUM over zero rows returns null, unboxed into a primitive long → NPE. Separately, image URLs used cluster-internal / docker host names a browser can't reach, and the objects didn't exist.",
