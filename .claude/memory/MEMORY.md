@@ -8,6 +8,7 @@
 - [0003 — deploy refactor: Helm umbrella + three envs](decisions/0003-deploy-refactor-helm-umbrella-three-envs.md) — consolidate under `deploy/`; Helm for minikube/EKS, compose retained, canonical secrets/seed/images shared
 - [0004 — canonical secrets: resolve/transport split](decisions/0004-canonical-secrets-resolve-transport-split.md) — one file per service + per-env contexts; pure resolver separate from the seeder, so every env verifies offline without credentials
 - [0005 — AWS infra stays outside the umbrella chart](decisions/0005-aws-infra-stays-outside-the-umbrella-chart.md) — `deploy/aws-infra/` keeps raw manifests; using the chart's infra subchart would put it under the release `aws-deploy.sh` disables infra on, and the next apps deploy would delete it
+- [0006 — staleness is membership, not equality](decisions/0006-staleness-is-membership-not-equality.md) — the check asks whether the registered address is one this host OWNS; equality against a default-route guess coupled it to Spring's InetUtils choice, which agreed only by luck
 
 ## Conventions (conventions + gotchas, durable)
 - [two-memory-systems-coexist](conventions/two-memory-systems-coexist.md) — global personal auto-memory vs in-repo team-shared `.claude/memory/`; which to use when
@@ -34,6 +35,12 @@
 - [first-install-cannot-verify-a-deploy-path](conventions/first-install-cannot-verify-a-deploy-path.md) — run it twice, and cold: three release-breaking bugs each needed a SECOND event (cold pull / prior release / post-HPA upgrade) and survived five phases of green suites
 - [make-n-shows-commands-not-the-files-they-read](conventions/make-n-shows-commands-not-the-files-they-read.md) — after deleting a tree, sweep with a repo-wide PATH-QUALIFIED `git grep`; `make -n` stops at `@script.sh` and three dangling reads hid one level deeper
 - [an-unguarded-read-passes-when-its-input-vanishes](conventions/an-unguarded-read-passes-when-its-input-vanishes.md) — a suite reported 33 passed with its input file deleted; the neighbour reading the same file failed loudly because it checked non-empty. Deletion is a diagnostic
+- [a-test-may-exercise-code-production-never-calls](conventions/a-test-may-exercise-code-production-never-calls.md) — the mutation test "proving the suite can fail" perturbed a function ONLY the suite called; a green result is evidence only if you know what red looks like
+- [a-grep-gate-tests-for-strings-not-for-currency](conventions/a-grep-gate-tests-for-strings-not-for-currency.md) — `grep → 0` passed while a diagram still taught five deleted Jobs; architecture lives in node ids and labels, not vocabulary
+- [compose-materialises-a-missing-mount-as-a-directory](conventions/compose-materialises-a-missing-mount-as-a-directory.md) — deleted seed files kept "reappearing" as empty dirs; sweep BOTH the qualified path and the `./relative` form used from inside a directory
+- [the-pidfile-holds-the-launcher-not-the-port-holder](conventions/the-pidfile-holds-the-launcher-not-the-port-holder.md) — `logs/pids/*.pid` is the `mvn` wrapper, not the JVM on the port; kill by port, and don't delete `kill_orphan_on_port` as redundant
+- [refactor-first-is-an-ordering-constraint](conventions/refactor-first-is-an-ordering-constraint.md) — the unification CREATES the single site the semantic change lands in; the reverse order was impossible, not just untidy
+- [a-gaps-registry-decays-through-success](conventions/a-gaps-registry-decays-through-success.md) — a "known gaps" list goes stale exactly when the work goes well, and no task brief ever names that file
 
 ## Current
 - [HANDOFF](HANDOFF.md) — latest WIP state (overwritten each session)
