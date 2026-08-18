@@ -1,54 +1,55 @@
 # HANDOFF
 
-**Updated:** 2026-08-16 · **Branch:** `main` (clean) · **Last:** PR #59 merged (`ebfd134`)
+**Updated:** 2026-08-17 · **Branch:** `main` (clean) · **Last:** PR #61 merged (`a9014a4`)
 
 ## Current goal
 
-**The deploy refactor is COMPLETE.** All eight phases merged. There is no in-flight
-workstream — the next task starts fresh from `main`.
+No in-flight workstream. The deploy refactor and both rounds of its follow-ups are merged;
+the next task starts fresh from `main`.
 
-## Done (Phase 8, the final one)
+## Done recently
 
-- 142 files deleted, 36 relocated with history preserved. `k8s/`, `docker/vault-configs/`,
-  `scripts/seed/`, `scripts/aws/seed-*.sh`, `docker/ecommerce.sql` + 3 seed JSON are gone.
-- One path per concern: `deploy/secrets/`, `deploy/seed/`, the Helm umbrella chart, and
+- **PR #59** — the deploy refactor's final phase: 142 files deleted, one path per concern,
   `make <verb> ENV=<env>` as the single command dialect.
-- The k8s Helm cut-over is **proven live** by a from-scratch `make bootstrap ENV=k8s`
-  (exit 0, 10/10 pods, 30 products). Six real bugs were found and fixed getting there.
-- Verified on `main` after the squash-merge: all seven suites green, both live paths serving.
+- **PR #60** — four gaps Phase 8 had recorded and deferred: `make down` stops MinIO (so a real
+  cold start is possible), `make up` heals stale Eureka registrations, `up-all.sh` confirms
+  before a billed apply, two teaching pages rewritten.
+- **PR #61** — hardened the freshness check PR #60 introduced: one function instead of a
+  test-only copy plus an inline duplicate, and membership instead of equality
+  ([[0006-staleness-is-membership-not-equality]]).
 
 ## In progress — nothing
 
 ## Next, if picking something up
 
-Ranked by how much they'll bite:
-
-1. **`ENV=aws` has never been deployed** — five consecutive phases shipped an unexercised
-   transport. Everything AWS rests on offline equivalence, and Phase 8 showed precisely what
-   that cannot catch. Folding AWS infra into the chart is blocked on a release-name decision
-   — see [[0005-aws-infra-stays-outside-the-umbrella-chart]].
-2. The `kind`→minikube doc drift in the HTML teaching pages under `docs/`.
-
-Closed on `fix/phase8-followups` (2026-08-16): `make down` now stops MinIO too (F2,
-`scripts/infra/down.sh` adds `minio.yml`); `scripts/aws/up-all.sh` now confirms before a
-billed EKS apply (F3); the two HTML teaching pages describing the deleted kustomize `k8s/`
-tree were rewritten (F4); `make up`/`make bootstrap` now heal stale Eureka registrations
-after a host IP change (F5, `scripts/lib/eureka.sh` + `scripts/services/start.sh`).
+1. **`ENV=aws` has never been deployed** — six consecutive phases shipped an unexercised
+   transport. Everything AWS rests on offline equivalence, and Phase 8 showed exactly what
+   that cannot catch (three release-breaking bugs invisible to `helm template`). Folding AWS
+   infra into the chart is blocked on a release-name decision — see
+   [[0005-aws-infra-stays-outside-the-umbrella-chart]]. Needs real spend and can only be
+   verified by running it.
+2. **`kind`→minikube drift** in `docs/k8s-architecture.html` and `docs/k8s-eli5.html` (~22
+   mentions). Pure docs. Task 5 of PR #60 rewrote the very card saying "kind builds a whole
+   toy city" and left the term.
+3. Two non-blocking nits recorded in PR #61: `eureka-test.sh` case 7's comment uses
+   pre-rename wording; a whitespace-only `HOST_IP_OVERRIDE` returns 0 while printing nothing,
+   contradicting its own contract but unreachable in production.
 
 ## Settled decisions
 
 - [[0003-deploy-refactor-helm-umbrella-three-envs]] — the refactor's shape.
 - [[0004-canonical-secrets-resolve-transport-split]] — pure resolver + separate seeder.
 - [[0005-aws-infra-stays-outside-the-umbrella-chart]] — and why repointing it is a trap.
+- [[0006-staleness-is-membership-not-equality]] — and why tightening it back is a trap.
 - Four oracles are **frozen**: their sources are deleted, so a failure means the chart or
   renderer changed, never that the fixture is stale. Never regenerate them.
 
 ## Context to load
 
-- `deploy/README.md` — usage, Verification status, losses, known gaps
+- `deploy/README.md` — usage, Verification status, known gaps (now empty; see
+  [[a-gaps-registry-decays-through-success]] for why that section needs an owner)
 - `deploy/CLAUDE.md` — the 19 migrated SCARs (paths may be gone; the traps are current)
-- `docs/superpowers/specs/2026-08-14-cleanup-cutover-design.md` and its plan
-- `.claude/memory/sessions/2026-08-16.md` — what Phase 8 actually cost and why
+- `.claude/memory/sessions/2026-08-17.md` — what the two follow-up PRs cost and why
 
 ## Blocked
 
