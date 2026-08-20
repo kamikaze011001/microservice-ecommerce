@@ -438,8 +438,13 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/kube-context.sh"
 # Refuse to proceed unless we can prove which cluster the deletes below will hit.
 # A no-op delete against the wrong cluster looks identical to a successful one,
 # and the ALB it fails to remove keeps billing after terraform destroy returns.
-require_kube_context "$EKS_CONTEXT"
-case $? in
+# `|| rc=$?` is load-bearing: down.sh runs under `set -euo pipefail`, and a BARE
+# call returning non-zero would abort the script before `case` ever runs — the
+# destroy would still be prevented, but the operator would see a silent exit
+# instead of the diagnostics below. Failure must stay handled, not fatal, here.
+rc=0
+require_kube_context "$EKS_CONTEXT" || rc=$?
+case $rc in
   0) echo "▶ teardown target confirmed: context '$EKS_CONTEXT'" ;;
   1) echo "ERROR: kube context '$EKS_CONTEXT' is not in your kubeconfig." >&2
      echo "  The EKS cluster may already be gone. If so, terraform destroy is" >&2
