@@ -10,12 +10,42 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../aws/main" && pwd)"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export AWS_PROFILE="${AWS_PROFILE:-microecom}"
 
+EKS_CONTEXT="${EKS_CONTEXT:-microecom-eks}"
+
+# shellcheck source=lib/kube-context.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/kube-context.sh"
+
+# Refuse to proceed unless we can prove which cluster the deletes below will hit.
+# A no-op delete against the wrong cluster looks identical to a successful one,
+# and the ALB it fails to remove keeps billing after terraform destroy returns.
+require_kube_context "$EKS_CONTEXT"
+case $? in
+  0) echo "▶ teardown target confirmed: context '$EKS_CONTEXT'" ;;
+  1) echo "ERROR: kube context '$EKS_CONTEXT' is not in your kubeconfig." >&2
+     echo "  The EKS cluster may already be gone. If so, terraform destroy is" >&2
+     echo "  still safe to run directly, but check 'make aws-leak-check' after:" >&2
+     echo "  an ALB created by the in-cluster controller is NOT in terraform state." >&2
+     echo "  To restore the context:  aws eks update-kubeconfig --name microecom \\" >&2
+     echo "                             --region ap-southeast-1 --alias microecom-eks" >&2
+     exit 1 ;;
+  2) echo "ERROR: context '$EKS_CONTEXT' exists but the cluster is not answering." >&2
+     echo "  Refusing to destroy: the Ingress deletes below would be silent no-ops" >&2
+     echo "  and the ALB would be stranded. Check the cluster, then re-run." >&2
+     exit 1 ;;
+esac
+
 # 1. Delete every Ingress that owns an ALB so the Load Balancer Controller tears
 #    it down. BOTH the Phase 2 smoke app AND the Phase 3 apps-overlay gateway ALB
 #    must go — each leaves orphaned ENIs that block VPC destroy. Ignore if absent
 #    (a Phase-2-only teardown won't have gateway-alb).
-kubectl delete -f "$ROOT/aws/manifests/hello-nginx.yaml" --ignore-not-found=true || true
-kubectl delete ingress gateway-alb -n apps --ignore-not-found=true || true
+# --ignore-not-found handles "the resource is absent", which is fine. It does NOT
+# handle "the cluster is unreachable" — that must abort, so no `|| true` here.
+# The context is passed explicitly and never inherited: require_kube_context above
+# has already proven this exact context resolves and answers.
+kubectl --context "$EKS_CONTEXT" delete -f "$ROOT/aws/manifests/hello-nginx.yaml" \
+  --ignore-not-found=true
+kubectl --context "$EKS_CONTEXT" delete ingress gateway-alb -n apps \
+  --ignore-not-found=true
 
 # 2. Wait for the controller to deprovision the ALB(s) (orphaned ENIs block VPC destroy).
 echo "Waiting 60s for the ALB controller to deprovision the load balancer(s)..."
