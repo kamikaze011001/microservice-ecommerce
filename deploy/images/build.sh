@@ -25,10 +25,20 @@ SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]
 
 cd "$(git rev-parse --show-toplevel)"
 
-if ! curl -fsS -o /dev/null "http://${REGISTRY}/v2/" 2>/dev/null; then
-  echo "ERROR: registry at ${REGISTRY} is not reachable." >&2
-  echo "Run 'make k8s-cluster-up' or 'make k8s-registry-forward' first." >&2
-  exit 1
+# shellcheck source=lib/registry-target.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/registry-target.sh"
+
+# Probe only a local plain-HTTP registry. A remote registry (ECR) does not serve
+# port 80 — probing it hangs ~75s on a closed port and then tells the operator to
+# start minikube. Remote callers authenticate via `docker login` themselves; see
+# scripts/aws/push-images.sh. --max-time bounds the local probe too, so a wedged
+# port-forward fails fast instead of stalling the build.
+if registry_is_local_http "$REGISTRY"; then
+  if ! curl -fsS --max-time 5 -o /dev/null "http://${REGISTRY}/v2/" 2>/dev/null; then
+    echo "ERROR: local registry at ${REGISTRY} is not reachable." >&2
+    echo "Run 'make k8s-cluster-up' or 'make k8s-registry-forward' first." >&2
+    exit 1
+  fi
 fi
 
 # When REUSE_EXISTING is set, skip building an image whose tag is already in the
