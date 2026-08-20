@@ -123,7 +123,7 @@
 </head>
 <body>
 <header class="top">
-  <h1>microecom — Local Kubernetes <span class="sub">· kind cluster <code>microecom</code> · architecture + the lessons that built it</span></h1>
+  <h1>microecom — Local Kubernetes <span class="sub">· minikube profile <code>microecom</code> · architecture + the lessons that built it</span></h1>
   <div class="bar">
     <span class="pill">Trace a request:</span>
     <select id="flowSel">
@@ -182,7 +182,7 @@ const PRIM = {
 // lanes render top→bottom
 const LANES = [
   {id:"host",  title:"Your machine",                ns:null},
-  {id:"edge",  title:"kind node · cluster edge",    ns:null},
+  {id:"edge",  title:"minikube node · cluster edge", ns:null},
   {id:"appsE", title:"Edge services",               ns:"apps"},
   {id:"appsS", title:"Backend microservices",       ns:"apps"},
   {id:"infra", title:"Stateful infrastructure",     ns:"infra"},
@@ -195,17 +195,17 @@ const NODES = [
   {id:"browser", lane:"host", prim:"ext", nm:"Browser", meta:"+ /etc/hosts → 127.0.0.1",
     teach:"Not a k8s object — your machine. <code>/etc/hosts</code> maps the three <code>*.microecom.local</code> names to 127.0.0.1 so the browser reaches the cluster's ingress on :80.",
     use:"Resolves <code>microecom.local</code> (SPA), <code>api.microecom.local</code> (XHR), <code>media.microecom.local</code> (images) all to localhost."},
-  {id:"registry", lane:"host", prim:"ext", nm:"Local registry", meta:":5001",
-    teach:"A Docker registry container next to the cluster. kind nodes pull images from it via a containerd <code>hosts.toml</code> (config_path), the officially documented kind pattern.",
-    use:"<code>make k8s-build</code> pushes <code>localhost:5001/&lt;svc&gt;:dev</code>; every app pod pulls from here with <code>imagePullPolicy: IfNotPresent</code>."},
+  {id:"registry", lane:"host", prim:"ext", nm:"Registry addon", meta:"push :5001 · pull :5000",
+    teach:"Not a container beside the cluster — it runs <i>inside</i> it. <code>minikube addons enable registry</code> deploys a registry into <code>kube-system</code>, and a <code>registry-proxy</code> DaemonSet publishes it on <code>localhost:5000</code> of every node. <code>cluster.sh</code> also patches it onto a PVC, so images survive a <code>minikube stop</code>.",
+    use:"<b>Push and pull use different addresses.</b> Your host pushes through a <code>kubectl port-forward</code> on <code>localhost:5001</code>; pods pull the same repositories through the node proxy on <code>localhost:5000</code> (trusted via <code>--insecure-registry</code>). Same images, two doors — <code>make k8s-build</code> uses :5001, the chart's <code>image.registry</code> is :5000."},
 
   // edge
-  {id:"kindnode", lane:"edge", prim:"ext", nm:"kind node :80/:443", meta:"hostPort → host",
-    teach:"kind runs k8s nodes as Docker containers. <code>extraPortMappings</code> in <code>cluster.yaml</code> maps the control-plane container's :80/:443 to your host so browser traffic can enter. Cluster is 1 control-plane + 3 workers.",
-    use:"The control-plane node is labelled <code>ingress-ready=true</code>; ingress-nginx binds :80/:443 on it via hostPort."},
-  {id:"ingress", lane:"edge", prim:"helm", nm:"ingress-nginx", meta:"ClusterIP + hostPort 80/443",
+  {id:"mknode", lane:"edge", prim:"ext", nm:"minikube node", meta:"tunnel → host :80/:443",
+    teach:"minikube runs k8s nodes as Docker containers too (<code>--driver=docker</code>), which is why <code>cluster.sh</code> can cap each one with plain <code>docker update --cpus/--memory</code>. Cluster is 1 control-plane + 3 workers (<code>--nodes=4</code>), 4 CPU / 6g each, k8s 1.30.0.",
+    use:"Nothing is published to your host by the node itself. <code>minikube tunnel</code> runs as a separate root process and binds :80/:443 on the host, forwarding to the ingress LoadBalancer."},
+  {id:"ingress", lane:"edge", prim:"helm", nm:"ingress-nginx", meta:"LoadBalancer via tunnel",
     teach:"An <b>Ingress controller</b> (nginx) is an L7 reverse proxy. <b>Ingress</b> objects are routing rules (host/path → Service). The controller watches them and reconfigures nginx.",
-    use:"3 Ingress rules route by hostname: <code>api.*</code>→gateway:6868, <code>microecom.local</code>→frontend:80, <code>media.*</code>→minio:9000. Reaches the host via hostPort, not NodePort.",
+    use:"3 Ingress rules route by hostname: <code>api.*</code>→gateway:6868, <code>microecom.local</code>→frontend:80, <code>media.*</code>→minio:9000. Its Service is <code>type: LoadBalancer</code> (see <code>deploy/platform-values/ingress-nginx.yaml</code>) and only becomes reachable once <code>minikube tunnel</code> is up.",
     flowTag:["api","media","fe"]},
 
   // apps edge
@@ -286,7 +286,7 @@ const NODES = [
     use:"Scraped by VictoriaMetrics; provides the cluster-state signals Grafana dashboards need (restarts, ready pods, HPA replicas)."},
   {id:"metrics", lane:"mon", prim:"helm", nm:"metrics-server", meta:"infra ns · for HPA",
     teach:"Supplies live CPU/memory to the API; <b>HPAs cannot scale without it</b>.",
-    use:"Upstream chart (not Bitnami). Needs <code>--kubelet-insecure-tls</code> on kind."},
+    use:"Upstream chart (not Bitnami). <code>platform.sh</code> installs it with <code>--kubelet-insecure-tls</code> and <code>--kubelet-preferred-address-types=InternalIP</code> — minikube's kubelets serve a self-signed cert."},
 
   // host-side seed scripts — of the original 5 Jobs, 01 mysql-seed and 02
   // mongo-seed were retired and genuinely replaced by these two host
@@ -321,8 +321,8 @@ const NODES = [
 // flows: ordered node ids + per-hop captions
 const FLOWS = {
   "Storefront browse (products)": {
-    path:["browser","kindnode","ingress","gateway","product","mysqlrep"],
-    steps:["Browser hits api.microecom.local","into the kind node on :80 (hostPort)",
+    path:["browser","mknode","ingress","gateway","product","mysqlrep"],
+    steps:["Browser hits api.microecom.local","through minikube tunnel into the node on :80",
       "ingress-nginx routes host api.* → gateway","gateway path-routes /product-service → product pod (Spring Cloud Kubernetes lb://, Eureka OFF)",
       "product-service serves the catalog","reads go to the mysql-replica endpoint"]},
   "Login & OTP activate": {
@@ -337,8 +337,8 @@ const FLOWS = {
       "orchestrator consumes it & runs the Saga","drives payment-service",
       "reserves stock in inventory-service (gRPC)"]},
   "Product image fetch": {
-    path:["browser","kindnode","ingress","minio"],
-    steps:["Browser requests media.microecom.local/…jpg","into the kind node :80",
+    path:["browser","mknode","ingress","minio"],
+    steps:["Browser requests media.microecom.local/…jpg","through minikube tunnel into the node :80",
       "ingress routes host media.* → minio:9000","MinIO serves the object (anonymous-read prefix)"]},
   "VictoriaMetrics scrape": {
     path:["vmsingle","gateway"],
@@ -352,10 +352,10 @@ const FLOWS = {
 // lessons — type:'tech'|'scar', cat for chip filter, nodes for click-filter
 const LESSONS = [
   // ── techniques ──
-  {type:"tech",cat:"cluster",nodes:["registry","kindnode"],title:"Local registry via containerd config_path",
-   ctx:"kind nodes need to pull your freshly built images.",
-   how:"Write a per-node <code>/etc/containerd/certs.d/localhost:5001/hosts.toml</code> (the config_path mechanism) instead of an inline mirrors block.",
-   teaches:"This is the officially documented kind local-registry pattern, and it's the only one that works on containerd 2.x."},
+  {type:"tech",cat:"cluster",nodes:["registry","mknode"],title:"One registry, two addresses",
+   ctx:"Pods need to pull the images you just built, and minikube's registry addon is reachable from two different places under two different names.",
+   how:"Enable the addon, then <code>kubectl port-forward -n kube-system service/registry 5001:80</code> for the host. Pods pull <code>localhost:5000</code> via the <code>registry-proxy</code> DaemonSet, trusted through <code>minikube start --insecure-registry=localhost:5000</code>. Also patch the registry Deployment onto a PVC — the addon is ephemeral by default, so a <code>minikube stop</code> would otherwise drop every image.",
+   teaches:"<code>localhost</code> means something different on your laptop than inside a pod. Build tooling and chart values must not share one registry constant — <code>REGISTRY=localhost:5001</code> in <code>deploy/images/build.sh</code>, <code>image.registry: localhost:5000</code> in the chart, and they are both right."},
   {type:"tech",cat:"data",nodes:["mysql","mongodb","redis","minio","kafka"],title:"Docker Official images as plain manifests, stable DNS",
    ctx:"Bitnami images were deleted; charts broke.",
    how:"Replaced 5 stateful charts with hand-written manifests using Docker Official images, keeping every Service name identical.",
@@ -376,10 +376,10 @@ const LESSONS = [
    ctx:"Apps need secrets; the Vault chart's agent-injector breaks upgrades.",
    how:"Services read Vault directly (URI + token). Set <code>injector.enabled:false</code>.",
    teaches:"Don't run machinery you don't use. The injector self-manages a webhook caBundle that fails the 2nd <code>helm upgrade</code> — disabling it removes the whole failure mode."},
-  {type:"tech",cat:"ingress",nodes:["ingress","kindnode"],title:"Expose :80/:443 via hostPort, not NodePort",
-   ctx:"Browser needs real :80/:443.",
-   how:"ingress-nginx Service stays ClusterIP; the controller binds 80/443 through hostPort on the ingress-ready node.",
-   teaches:"NodePort only allows 30000–32767, so a NodePort :80 is rejected outright. hostPort + kind extraPortMappings is the local-dev path to privileged ports."},
+  {type:"tech",cat:"ingress",nodes:["ingress","mknode"],title:"Expose :80/:443 with a LoadBalancer + minikube tunnel",
+   ctx:"Browser needs real :80/:443, and no cloud load balancer exists locally.",
+   how:"ingress-nginx's Service is <code>type: LoadBalancer</code>. <code>minikube tunnel</code> runs as root on the host, binds :80/:443, and routes them to that Service.",
+   teaches:"NodePort only allows 30000–32767, so a NodePort :80 is rejected outright. The tunnel is the local stand-in for a cloud LB — which means it is a <b>host process, not a cluster object</b>: it can die while every pod stays Ready, and the cluster will look perfectly healthy while nothing answers on :80."},
   {type:"tech",cat:"ingress",nodes:["ingress","gateway"],title:"Reference the Service's NAMED port from Ingress",
    ctx:"Backend port drift caused 503s.",
    how:"Ingress backend uses <code>port.name: http</code>, not a hardcoded number.",
@@ -418,11 +418,16 @@ const LESSONS = [
    teaches:"Every bring-up step must be safe to run twice — re-runs are the norm, not the exception."},
 
   // ── scars (mistakes) ──
-  {type:"scar",cat:"cluster",nodes:["kindnode","registry"],title:"containerd 2.x rejects the legacy mirrors block",
-   sym:"kubeadm init timed out; kubelet never healthy (misleading cgroups hint).",
-   cause:"A <code>containerdConfigPatches</code> registry.mirrors block is mutually exclusive with config_path on containerd 2.x → the whole CRI plugin refused to load → no ImageService.",
-   fix:"Wire the registry via <code>hosts.toml</code> (config_path) in registry.sh; remove the mirrors patch.",
-   teaches:"A 'kubelet unhealthy' timeout can actually be a CRI-plugin config error. Read the containerd journal inside the node — don't guess at RAM/DNS."},
+  {type:"scar",cat:"ingress",nodes:["ingress","mknode"],title:"EXTERNAL-IP reports success against a dead tunnel",
+   sym:"<code>kubectl get svc</code> shows the ingress Service with <code>EXTERNAL-IP 127.0.0.1</code>, but the browser gets connection refused.",
+   cause:"minikube leaves that field populated after the tunnel process exits. It records that a tunnel once claimed the Service — not that one is running now.",
+   fix:"<code>cluster.sh</code>'s <code>start_tunnel</code> polls for a real listener on :80 (<code>tunnel_is_listening</code>), never the Service field.",
+   teaches:"Readiness checks must observe the thing you actually depend on. A status field that survives its subject is a green light wired to nothing — the same shape as a health probe that passes because its input vanished."},
+  {type:"scar",cat:"cluster",nodes:["mknode"],title:"A backgrounded tunnel can never answer sudo",
+   sym:"<code>make k8s-up</code> finished clean, the tunnel was launched, and it was gone seconds later with nothing in the log.",
+   cause:"Binding :80/:443 needs root. Launched with <code>nohup … &amp;</code> there is no TTY for a password prompt — and on macOS <code>sudo</code> defaults to <code>tty_tickets</code>, so a credential cached in <i>another</i> window does not count.",
+   fix:"Require <code>sudo -n true</code> up front and refuse with instructions (<code>sudo -v &amp;&amp; make k8s-tunnel</code>, in <b>this</b> terminal) rather than launching something doomed to die. Bring-up treats a missing tunnel as non-fatal.",
+   teaches:"Check for the privilege before you background the process. Failing loudly at the start beats a silent death nobody is watching for — and an agent shell or CI job has no TTY at all, so it can never satisfy this and must be told so."},
   {type:"scar",cat:"data",nodes:["mysql","mongodb","redis","minio","kafka"],title:"Bitnami images were deleted",
    sym:"ImagePullBackOff / 'not found' on every stateful chart.",
    cause:"docker.io/bitnami/* versioned images were removed 2025-09-29.",
@@ -466,8 +471,8 @@ const LESSONS = [
   {type:"scar",cat:"ingress",nodes:["ingress"],title:"NodePort can't be :80/:443",
    sym:"server-side apply rejected: 'provided port is not in the valid range'.",
    cause:"NodePort range is 30000–32767.",
-   fix:"Keep the controller Service ClusterIP; use hostPort for 80/443.",
-   teaches:"Privileged low ports aren't reachable via NodePort; that's what hostPort / LoadBalancer are for."},
+   fix:"Give the controller Service <code>type: LoadBalancer</code> and let <code>minikube tunnel</code> bind :80/:443 on the host.",
+   teaches:"Privileged low ports aren't reachable via NodePort — that is what LoadBalancer (or hostPort) is for. Locally the LB has no cloud behind it, so <code>minikube tunnel</code> plays that role from your machine."},
   {type:"scar",cat:"seed",nodes:["jobMysql","mysql"],title:"CLOSED: mysql seed used to run before the schema existed",
    sym:"<code>ERROR 1146 Table 'ecommerce_dev.account' doesn't exist</code>.",
    cause:"MySQL seed data is data-only; tables are created by Hibernate ddl-auto when apps boot. The old bootstrap ran its mysql-seed Job before the apps existed, so the tables weren't there yet.",
@@ -665,7 +670,7 @@ window.addEventListener("resize",()=>{if(currentFlow)drawFlow(currentFlow,false)
 /* ───────── lessons section ───────── */
 let tabState="all"; // all | tech | scar
 let chipState="all"; // all | <cat> | node:<id>
-const CATS=[["all","All"],["cluster","Cluster / kind"],["ingress","Ingress"],["vault","Vault / config"],
+const CATS=[["all","All"],["cluster","Cluster / minikube"],["ingress","Ingress"],["vault","Vault / config"],
   ["data","Data stores"],["kafka","Kafka / Avro"],["apps","App pods"],["seed","Seed Jobs"],
   ["monitoring","Monitoring"],["process","Process / discipline"]];
 
