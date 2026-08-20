@@ -1,11 +1,11 @@
 # HANDOFF
 
-**Updated:** 2026-08-17 · **Branch:** `main` (clean) · **Last:** PR #61 merged (`a9014a4`)
+**Updated:** 2026-08-20 · **Branch:** `docs/minikube-drift` · **Last:** PR #62 merged (`b720c02`)
 
 ## Current goal
 
-No in-flight workstream. The deploy refactor and both rounds of its follow-ups are merged;
-the next task starts fresh from `main`.
+Correct the two HTML teaching pages, which still teach the **kind**-era local cluster.
+Branch `docs/minikube-drift`, off `main` at `b720c02`.
 
 ## Done recently
 
@@ -17,8 +17,17 @@ the next task starts fresh from `main`.
 - **PR #61** — hardened the freshness check PR #60 introduced: one function instead of a
   test-only copy plus an inline duplicate, and membership instead of equality
   ([[0006-staleness-is-membership-not-equality]]).
+- **PR #62** — recorded what #60 and #61 taught: one decision, six conventions, this file.
 
-## In progress — nothing
+## In progress
+
+`docs/minikube-drift` — `docs/k8s-architecture.html` and `docs/k8s-eli5.html` corrected from
+kind to minikube. **Not a rename:** three mechanisms were substantively wrong (registry via
+containerd `config_path` → the in-cluster registry addon with separate push/pull addresses;
+ingress via `hostPort` → `type: LoadBalancer` + `minikube tunnel`), one SCAR described a code
+path that no longer exists, and two live scars from `cluster.sh` were never written down.
+`docs/service-architecture.html` needed nothing; `deploy/CLAUDE.md` needed nothing — it
+already carries a migration note framing its `kind` SCARs as history.
 
 ## Next, if picking something up
 
@@ -28,10 +37,7 @@ the next task starts fresh from `main`.
    infra into the chart is blocked on a release-name decision — see
    [[0005-aws-infra-stays-outside-the-umbrella-chart]]. Needs real spend and can only be
    verified by running it.
-2. **`kind`→minikube drift** in `docs/k8s-architecture.html` and `docs/k8s-eli5.html` (~22
-   mentions). Pure docs. Task 5 of PR #60 rewrote the very card saying "kind builds a whole
-   toy city" and left the term.
-3. Two non-blocking nits recorded in PR #61: `eureka-test.sh` case 7's comment uses
+2. Two non-blocking nits recorded in PR #61: `eureka-test.sh` case 7's comment uses
    pre-rename wording; a whitespace-only `HOST_IP_OVERRIDE` returns 0 while printing nothing,
    contradicting its own contract but unreachable in production.
 

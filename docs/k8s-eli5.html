@@ -189,11 +189,11 @@ const CONCEPTS=[
    eli5:"Cameras quietly watch every room, and a big wall of screens shows green lights when all is well — so you spot trouble before customers do.",
    grown:"VictoriaMetrics is a tiny database that remembers numbers like CPU and memory over time; it collects metrics straight from each app. Grafana draws the dashboards.",
    shop:"Lives in the <code>monitoring</code> neighborhood; each service exposes metrics on its management door for VictoriaMetrics to collect."},
-  {emoji:"🧸",color:"var(--c7)",name:"The toy box: kind, registry, Helm chart",tech:"kind · registry · Helm",
+  {emoji:"🧸",color:"var(--c7)",name:"The toy box: minikube, registry, Helm chart",tech:"minikube · registry addon · Helm · tunnel",
    lead:"How we build the whole city inside a laptop.",
-   eli5:"<b>kind</b> builds a whole toy city inside your laptop to practice in (ours is named “microecom”). The <b>registry</b> is the warehouse of building blueprints. A <b>Helm chart</b> is one recipe book for the whole city, with a settings page per place it's built (home vs cloud) — same recipe, different settings.",
-   grown:"kind = Kubernetes-in-Docker for local clusters; a registry stores container images; Helm packages the whole platform as one chart, with a values file per environment layered on top of the chart's own defaults.",
-   shop:"<code>make bootstrap ENV=k8s</code> builds the cluster, pushes images to a local registry, and installs the <code>deploy/charts/microecom</code> Helm chart using the <code>local-k8s</code> values file."},
+   eli5:"<b>minikube</b> builds a whole toy city inside your laptop to practice in (ours is named “microecom”, with four little houses). The <b>registry</b> is the warehouse of building blueprints — it lives <i>inside</i> the toy city, and you hand blueprints in through one window while the builders collect them from another. The <b>tunnel</b> is the front door: without someone holding it open, the city runs perfectly and nobody can visit. A <b>Helm chart</b> is one recipe book for the whole city, with a settings page per place it's built (home vs cloud) — same recipe, different settings.",
+   grown:"minikube runs a multi-node Kubernetes cluster as Docker containers (<code>--nodes=4</code>, k8s 1.30). Its registry addon stores images in-cluster: your host pushes through a port-forward on <code>localhost:5001</code>, pods pull through a per-node proxy on <code>localhost:5000</code>. <code>minikube tunnel</code> is a root process on your machine that binds :80/:443 and stands in for a cloud load balancer. Helm packages the whole platform as one chart, with a values file per environment layered on top of the chart's own defaults.",
+   shop:"<code>make bootstrap ENV=k8s</code> builds the cluster, pushes images to the registry addon, and installs the <code>deploy/charts/microecom</code> Helm chart using the <code>local-k8s</code> values file. If the ingress hosts don't answer, the tunnel isn't running — <code>sudo -v &amp;&amp; make k8s-tunnel</code>."},
 ];
 
 /* render cards */
