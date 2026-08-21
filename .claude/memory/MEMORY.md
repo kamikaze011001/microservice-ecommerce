@@ -9,6 +9,8 @@
 - [0004 — canonical secrets: resolve/transport split](decisions/0004-canonical-secrets-resolve-transport-split.md) — one file per service + per-env contexts; pure resolver separate from the seeder, so every env verifies offline without credentials
 - [0005 — AWS infra stays outside the umbrella chart](decisions/0005-aws-infra-stays-outside-the-umbrella-chart.md) — `deploy/aws-infra/` keeps raw manifests; using the chart's infra subchart would put it under the release `aws-deploy.sh` disables infra on, and the next apps deploy would delete it
 - [0006 — staleness is membership, not equality](decisions/0006-staleness-is-membership-not-equality.md) — the check asks whether the registered address is one this host OWNS; equality against a default-route guess coupled it to Spring's InetUtils choice, which agreed only by luck
+- [0007 — first AWS run keeps k8s 1.31](decisions/0007-first-aws-run-keeps-k8s-1-31.md) — pay the extended-support surcharge; the 2024-era controllers make a version bump change the thing under test
+- [0008 — unexercised paths run in checkpoints](decisions/0008-unexercised-paths-run-in-checkpoints-not-one-shot.md) — four checkpoints grouped by failure vocabulary, not one `make aws-all`
 
 ## Conventions (conventions + gotchas, durable)
 - [two-memory-systems-coexist](conventions/two-memory-systems-coexist.md) — global personal auto-memory vs in-repo team-shared `.claude/memory/`; which to use when
@@ -45,3 +47,8 @@
 ## Current
 - [HANDOFF](HANDOFF.md) — latest WIP state (overwritten each session)
 - [sessions/](sessions/) — progress log per day
+- [errexit-consumes-a-functions-exit-code](conventions/errexit-consumes-a-functions-exit-code.md) — under `set -e` a bare call to an exit-code-signalling function aborts before `case $?`, silently collapsing a three-code contract into one silent exit
+- [an-unexercised-path-fails-where-nothing-rendered-it](conventions/an-unexercised-path-fails-where-nothing-rendered-it.md) — the AWS gates render templates and never execute the scripts, so a line-28 blocker survived five green phases
+- [a-shared-builder-assumes-its-local-registry](conventions/a-shared-builder-assumes-its-local-registry.md) — build.sh probed every registry over plain HTTP; against ECR that hangs 75s then blames minikube
+- [the-teardown-path-lacks-the-guards-the-creation-path-has](conventions/the-teardown-path-lacks-the-guards-the-creation-path-has.md) — up-all.sh names its kube context everywhere; down.sh named none and swallowed transport failures, stranding a billing ALB
+- [branch-ahead-count-measures-divergence-not-value](conventions/branch-ahead-count-measures-divergence-not-value.md) — 77 commits ahead of main contained nothing main lacked; compare content, never counts
