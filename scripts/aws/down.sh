@@ -56,6 +56,7 @@ case $rc in
      echo "    terraform -chdir=$ROOT/aws/main destroy -auto-approve" >&2
      echo "    make aws-leak-check" >&2
      exit 1 ;;
+  *) echo "ERROR: unexpected guard status $rc from require_kube_context" >&2; exit 1 ;;
 esac
 
 # 1. Delete every Ingress that owns an ALB so the Load Balancer Controller tears
