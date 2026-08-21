@@ -148,17 +148,37 @@ Read directly and swept for all ten patterns:
 Plus `aws/main/variables.tf`, `aws/main/eks.tf`, `deploy/secrets/contexts/aws.yaml`, and
 `deploy/secrets/tests/golden/aws.json` for the cluster-name and mail questions.
 
-**NOT audited — real gaps, stated plainly:**
+**`deploy/scripts/seed.sh` (744 lines) — gap closed after the first draft.** It runs at
+steps 4, 7, 8 and 9, directly under the two riskiest checkpoints, so it was swept for the
+same patterns rather than left unexamined. Findings: **none.** It is the best-guarded
+script in the path.
 
-- **`deploy/scripts/seed.sh` (744 lines)** was not read. It is the single largest script
-  in the path and runs at steps 4, 7, 8 and 9. Its `--env aws` legs are unexamined.
-- **`deploy/aws-infra/` manifests** (mongodb, kafka, schema-registry, kafka-connect,
-  external-secrets, plus the values and dashboards) were confirmed to *exist* but their
-  contents were not reviewed for image references, storage-class assumptions, or
-  ordering requirements.
-- `scripts/aws/RUNBOOK.md` (164 lines) was read earlier in the session for its step
-  sequence and teardown guidance, but not swept for the ten patterns.
+- It has its own context guard at lines 109–114 that **refuses to guess** — if
+  `--context` disagrees with `kubectl`'s current context, it aborts rather than picking
+  one. Line 723's reconcile names the context explicitly too.
+- Every hardcoded `127.0.0.1` is correct: the Mongo URIs at 309 and 315 are evaluated
+  *inside* `docker exec` (compose leg) or
+  `kubectl --context "$KUBE_CONTEXT" -n "$NS" exec -i mongodb-0` (k8s/aws leg), so they
+  address the container's own loopback. Line 244's `http://localhost:9000` is likewise
+  inside a `docker exec`. Line 374's MinIO host is a variable.
+- Its `|| true` uses are on `grep -c` (616–617), where exit 1 means "zero matches" — the
+  expected-absent case, not a suppressed transport failure. Two comments (207, 703)
+  exist specifically to explain why `|| true` is deliberately *absent* elsewhere.
+- Worth reading for its own sake: the Mongo legs pipe credentials through **stdin** into
+  a temp config file rather than passing `-u/-p`, because argv is readable via `ps aux`
+  host-side and `/proc/<pid>/cmdline` container-side.
 
-Confidence: **high** for the ten patterns across the ten files listed in the table;
-**none** for `seed.sh` and the `aws-infra` manifest contents. Checkpoint 3 and 4 depend
-on `seed.sh`, so that gap sits directly under the two riskiest checkpoints.
+**Still NOT audited — the remaining gap:**
+
+- **`deploy/aws-infra/` manifest contents** (mongodb, kafka, schema-registry,
+  kafka-connect, external-secrets, plus values and dashboards). Confirmed to *exist* and
+  to be referenced correctly, but not reviewed for image references, storage-class
+  assumptions, or unenforced ordering requirements. These apply at checkpoint 2.
+- `scripts/aws/RUNBOOK.md` was read for its step sequence and teardown guidance, but not
+  swept for the ten patterns. It is documentation; a defect there misleads rather than
+  breaks.
+
+Confidence: **high** for the ten patterns across the eleven scripts swept; **none** for
+the `aws-infra` manifest contents. Checkpoint 2 is where that gap would surface, and
+checkpoint 2's verification step (`get pods -n infra`, `get pvc -A`, `get sc`) is
+designed to catch exactly the class of problem those manifests could carry.
