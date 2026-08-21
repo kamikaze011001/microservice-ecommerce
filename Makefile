@@ -874,6 +874,20 @@ aws-oracle-capture:
 aws-diff-test:
 	@bash deploy/charts/microecom/tests/aws-diff-test.sh
 
+.PHONY: test-registry-target
+## test-registry-target: classify-local-vs-remote-registry decision table for
+## deploy/images/build.sh's HTTP probes (image_in_registry included).
+## Fixture-driven — no docker, no cluster, no credentials, no spend.
+test-registry-target:
+	@bash deploy/images/tests/registry-target-test.sh
+
+.PHONY: test-kube-context
+## test-kube-context: decision table for scripts/aws/lib/kube-context.sh's
+## teardown guard (context present/absent, cluster reachable/unreachable).
+## Fixture-driven — no live EKS cluster, runs with the stack down.
+test-kube-context:
+	@bash scripts/aws/tests/kube-context-test.sh
+
 .PHONY: k8s-use k8s-ctx
 
 k8s-ctx:
