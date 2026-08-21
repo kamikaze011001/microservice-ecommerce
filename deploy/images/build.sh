@@ -25,10 +25,20 @@ SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]
 
 cd "$(git rev-parse --show-toplevel)"
 
-if ! curl -fsS -o /dev/null "http://${REGISTRY}/v2/" 2>/dev/null; then
-  echo "ERROR: registry at ${REGISTRY} is not reachable." >&2
-  echo "Run 'make k8s-cluster-up' or 'make k8s-registry-forward' first." >&2
-  exit 1
+# shellcheck source=lib/registry-target.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/registry-target.sh"
+
+# Probe only a local plain-HTTP registry. A remote registry (ECR) does not serve
+# port 80 — probing it hangs ~75s on a closed port and then tells the operator to
+# start minikube. Remote callers authenticate via `docker login` themselves; see
+# scripts/aws/push-images.sh. --max-time bounds the local probe too, so a wedged
+# port-forward fails fast instead of stalling the build.
+if registry_is_local_http "$REGISTRY"; then
+  if ! curl -fsS --max-time 5 -o /dev/null "http://${REGISTRY}/v2/" 2>/dev/null; then
+    echo "ERROR: local registry at ${REGISTRY} is not reachable." >&2
+    echo "Run 'make k8s-cluster-up' or 'make k8s-registry-forward' first." >&2
+    exit 1
+  fi
 fi
 
 # When REUSE_EXISTING is set, skip building an image whose tag is already in the
@@ -37,7 +47,13 @@ fi
 # leaves REUSE_EXISTING unset = always rebuild. Fails "closed": if the registry
 # probe errors, the image is treated as absent and gets built.
 image_in_registry() {  # $1=repo $2=tag -> exit 0 if present
-  curl -fsS -o /dev/null \
+  # Same probe restriction as the registry reachability check above: a plain
+  # http:// GET against a remote registry (ECR) doesn't fail fast, it hangs
+  # ~75s on a closed port. Only probe when REGISTRY is local; otherwise fail
+  # "closed" immediately so the caller (reuse_or_build) treats the image as
+  # absent and builds it -- see that function's comment.
+  registry_is_local_http "$REGISTRY" || return 1
+  curl -fsS --max-time 5 -o /dev/null \
     -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' \
     "http://${REGISTRY}/v2/$1/manifests/$2" 2>/dev/null
 }

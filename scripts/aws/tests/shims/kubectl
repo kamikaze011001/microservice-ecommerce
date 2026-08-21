@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Fake kubectl for scripts/aws/tests/kube-context-test.sh. Put this directory
+# FIRST on PATH to intercept kubectl without touching any real cluster.
+#
+# Behaviour is driven by two env vars set by the suite:
+#   SHIM_CONTEXTS   newline-separated context names that exist in "kubeconfig"
+#   SHIM_READYZ_OK  "1" = API server answers; anything else = it does not
+set -uo pipefail
+
+# `kubectl config get-contexts -o name`
+if [ "${1:-}" = "config" ] && [ "${2:-}" = "get-contexts" ]; then
+    printf '%s\n' "${SHIM_CONTEXTS:-}"
+    exit 0
+fi
+
+# `kubectl --context X --request-timeout=10s get --raw /readyz`
+if [ "${1:-}" = "--context" ]; then
+    [ "${SHIM_READYZ_OK:-}" = "1" ] || exit 1
+    echo "ok"
+    exit 0
+fi
+
+echo "shim: unexpected invocation: $*" >&2
+exit 99
