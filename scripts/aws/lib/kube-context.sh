@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
-# Assert which cluster a destructive kubectl call will hit. Source, don't execute.
+# Assert that a named kubectl context exists and its API server answers.
+# Source, don't execute.
+#
+# What this actually proves: a context named e.g. "microecom-eks" is present in
+# kubeconfig and /readyz responds. It does NOT prove that context points at the
+# cluster the caller thinks it does — a stale "microecom-eks" entry left over
+# from a prior cluster (same alias, different underlying EKS cluster) would
+# pass this check. Residual exposure is low in practice: scripts/aws/up.sh:12-15
+# runs `aws eks update-kubeconfig --alias microecom-eks` on every bring-up,
+# which overwrites the entry to point at whatever cluster currently exists, so
+# a stale-but-passing entry can only arise between a manual kubeconfig edit and
+# the next `up.sh` run, not from normal use of this codebase's scripts.
 #
 # Why this exists: scripts/aws/down.sh deletes Ingresses so the in-cluster AWS
 # Load Balancer Controller deprovisions the ALB, THEN runs terraform destroy.
