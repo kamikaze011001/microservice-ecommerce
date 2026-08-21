@@ -651,11 +651,11 @@ Expected: outputs include the cluster endpoint and RDS addresses; **3 nodes `Rea
 **Runs:** steps 2–3.
 
 ```bash
-PUSH=all make aws-push
+make aws-push svc=all
 make aws-infra-up
 ```
 
-`PUSH=all` is **mandatory** — ECR's `:dev` tags predate Phases 7–8 and PRs #59–63, and `up-all.sh:61` defaults `PUSH` to `reuse`. Reusing them would deploy images that do not match `main`, making any later failure unattributable.
+`svc=all` is **mandatory** — ECR's `:dev` tags predate Phases 7–8 and PRs #59–63. `svc=all` is what `push-images.sh:36` reads (`TARGET="${1:-gateway}"`); the default target is `gateway` alone, which pushes gateway + maven-cores and leaves the other seven services, the frontend and mock-paypal on stale tags. `PUSH` is a different variable, read only by `up-all.sh:61`, and Part B deliberately never invokes `up-all.sh` — setting it here would do nothing. Reusing the stale tags would deploy images that do not match `main`, making any later failure unattributable.
 
 **Verify before proceeding:**
 
