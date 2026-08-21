@@ -120,8 +120,12 @@ skipped:
 - **Context guards exist on the paths the checkpoint plan actually uses:**
   `infra-up.sh:24-26` aborts unless the context is `microecom-eks`;
   `aws-deploy.sh:186-191` does the same.
-- **Every `helm upgrade --install` carries `--wait --timeout 5m`** — `infra-up.sh:79`,
-  `:130`, `:146`; `platform.sh:37`, `:51`.
+- **Every `helm upgrade --install` on the AWS path carries `--wait` with a bounded
+  `--timeout`** — `infra-up.sh:79`, `:130`, `:146` (all `5m`). `platform.sh:37` also
+  carries `--wait --timeout 5m`, but its `:51` install (`metrics-server`) uses
+  `--timeout 3m`, not `5m` — the two installs don't share a timeout. Moot for this
+  audit either way: `platform.sh:31-33` exits before either `helm upgrade` when
+  `ENV=aws`, so this script is not on the AWS path at all.
 - **All `helm repo add … || true` are benign** — "already added" is the expected
   condition being suppressed, not a transport failure.
 - **No remaining `http://` against a remote host.** The only occurrences are
@@ -142,7 +146,7 @@ Read directly and swept for all ten patterns:
 | `scripts/aws/infra-up.sh` | 174 |
 | `scripts/aws/push-images.sh` | 50 |
 | `scripts/aws/up.sh` | 18 |
-| `scripts/aws/down.sh` | 73 |
+| `scripts/aws/down.sh` | 93 |
 | `scripts/aws/leak-check.sh` | 33 |
 | `deploy/scripts/aws-deploy.sh` | 195 |
 | `deploy/scripts/secrets-seed.sh` | 194 |
