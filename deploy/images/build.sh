@@ -47,7 +47,13 @@ fi
 # leaves REUSE_EXISTING unset = always rebuild. Fails "closed": if the registry
 # probe errors, the image is treated as absent and gets built.
 image_in_registry() {  # $1=repo $2=tag -> exit 0 if present
-  curl -fsS -o /dev/null \
+  # Same probe restriction as the registry reachability check above: a plain
+  # http:// GET against a remote registry (ECR) doesn't fail fast, it hangs
+  # ~75s on a closed port. Only probe when REGISTRY is local; otherwise fail
+  # "closed" immediately so the caller (reuse_or_build) treats the image as
+  # absent and builds it -- see that function's comment.
+  registry_is_local_http "$REGISTRY" || return 1
+  curl -fsS --max-time 5 -o /dev/null \
     -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' \
     "http://${REGISTRY}/v2/$1/manifests/$2" 2>/dev/null
 }

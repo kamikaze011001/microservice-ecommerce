@@ -125,8 +125,12 @@ skipped:
 - **All `helm repo add … || true` are benign** — "already added" is the expected
   condition being suppressed, not a transport failure.
 - **No remaining `http://` against a remote host.** The only occurrences are
-  `build.sh:37`/`:52`, now gated behind `registry_is_local_http` (Task 1), and two
-  display strings in `up-all.sh:261-262`.
+  `build.sh:37` (Task 1) and `build.sh:56` inside `image_in_registry` (fixed in
+  the code-review pass after Task 1 — it was reachable only when
+  `REUSE_EXISTING` is set, which is the `REUSE_EXISTING=1 REGISTRY=<ecr-host>`
+  path, so it was a live-but-unexercised instance of the same defect). Both are
+  now gated behind `registry_is_local_http` and both carry `--max-time 5`.
+  Also two display strings in `up-all.sh:261-262`.
 
 ## Coverage
 
