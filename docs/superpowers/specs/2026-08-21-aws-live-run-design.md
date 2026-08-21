@@ -73,12 +73,28 @@ simultaneously, which is the single biggest obstacle for someone learning the
 stack. Each checkpoint is also a clean stopping point — continue from it, or tear
 down.
 
-### D3 — `PUSH=all` is mandatory
+### D3 — a full rebuild is mandatory, via `svc=all`
 
-`up-all.sh:61` defaults `PUSH` to `reuse`. ECR holds `:dev` tags, but they
-predate Phases 7–8 and PRs #59–63, so reuse would deploy images that do not
-match `main` and any failure would be unattributable. `push-images.sh all`
-leaves `SVC` unset, which builds `maven-cores` plus every service — there is no
+ECR holds `:dev` tags, but they predate Phases 7–8 and PRs #59–63, so reusing
+them would deploy images that do not match `main` and any failure would be
+unattributable.
+
+**The knob depends on the entry point, and this bit us.** `PUSH=all` is read
+*only* by `scripts/aws/up-all.sh:61`, which D2 deliberately routes around — the
+checkpoint plan calls the individual entry points instead. The knob that
+`make aws-push` reads is `svc`: `Makefile:817` passes `$(svc)` through to
+`push-images.sh`, whose line 36 is `TARGET="${1:-gateway}"`. So the correct
+command is **`make aws-push svc=all`** (matching `scripts/aws/RUNBOOK.md:53`);
+`PUSH=all make aws-push` sets a variable nothing on that path reads and pushes
+gateway plus `maven-cores` only.
+
+That failure is silent: the stale tags exist and pull fine, so seven services,
+the frontend and mock-paypal would run months-old images and misbehave at
+Checkpoint 3 — the checkpoint this design already calls the most likely to
+fail — while billing. It was caught by the final review, not by any suite.
+
+With `svc=all`, `push-images.sh:44` leaves `SVC` unset when invoking
+`build.sh`, which builds `maven-cores` plus every service — there is no
 `SKIP_CORES` trap on this path.
 
 Both reuse shortcuts in `deploy/images/build.sh` are gated on `REUSE_EXISTING`
