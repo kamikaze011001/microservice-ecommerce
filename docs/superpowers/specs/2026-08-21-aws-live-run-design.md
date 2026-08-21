@@ -82,7 +82,7 @@ leaves `SVC` unset, which builds `maven-cores` plus every service — there is n
 `SKIP_CORES` trap on this path.
 
 Both reuse shortcuts in `deploy/images/build.sh` are gated on `REUSE_EXISTING`
-(lines 45 and 72), which is unset here, so `all` genuinely rebuilds.
+(lines 61 and 88), which is unset here, so `all` genuinely rebuilds.
 
 ### D4 — Memory `0005` does not block this run
 
