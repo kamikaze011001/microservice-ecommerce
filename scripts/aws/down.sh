@@ -30,7 +30,14 @@ case $rc in
      echo "  The EKS cluster may already be gone. If so, terraform destroy is" >&2
      echo "  still safe to run directly, but check 'make aws-leak-check' after:" >&2
      echo "  an ALB created by the in-cluster controller is NOT in terraform state." >&2
-     echo "  To restore the context:  aws eks update-kubeconfig --name microecom \\" >&2
+     # --name is the CLUSTER name (var.cluster_name, aws/main/variables.tf:16),
+     # not the context alias. They differ in general and happen to coincide
+     # here. up.sh:13 resolves it with `terraform output -raw cluster_name`
+     # rather than hardcoding; infra-up.sh:28 and aws-deploy.sh:189 print the
+     # same literal as below. An operator reaching this branch is already in a
+     # failure state — a remedy that names a nonexistent cluster sends them to
+     # a second, unrelated one.
+     echo "  To restore the context:  aws eks update-kubeconfig --name microecom-eks \\" >&2
      echo "                             --region ap-southeast-1 --alias microecom-eks" >&2
      exit 1 ;;
   2) echo "ERROR: context '$EKS_CONTEXT' exists but the cluster is not answering." >&2
