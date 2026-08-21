@@ -740,6 +740,8 @@ make aws-leak-check
 
 Known weakness, not fixed in this plan: `down.sh`'s 60 s wait is a fixed sleep, not a poll. If the ALB takes longer, `terraform destroy` can hang on orphaned ENIs. Recognise the symptom — a destroy stuck on VPC or subnet deletion — and re-run after confirming the ALB is gone.
 
+If that hang left the EKS cluster already destroyed (node group → cluster → VPC/subnets is Terraform's destroy order) and only a stale `microecom-eks` kubeconfig entry remains, re-running `down.sh` now refuses at the guard (rc=2, cluster not answering) — correctly, since the Ingresses it would try to delete are already gone with the cluster. Don't fight the guard: run `terraform -chdir=aws/main destroy -auto-approve` directly to finish the VPC teardown, then `make aws-leak-check`.
+
 **Expected survivors:** the `aws/bootstrap` stack only — state bucket, DynamoDB lock table, 11 ECR repos, budget alarm.
 
 **The day after:** confirm in Cost Explorer that spend returned to approximately zero. This is the only check that catches a leak the scripted ones missed.

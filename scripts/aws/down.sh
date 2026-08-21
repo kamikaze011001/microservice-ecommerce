@@ -43,6 +43,18 @@ case $rc in
   2) echo "ERROR: context '$EKS_CONTEXT' exists but the cluster is not answering." >&2
      echo "  Refusing to destroy: the Ingress deletes below would be silent no-ops" >&2
      echo "  and the ALB would be stranded. Check the cluster, then re-run." >&2
+     # Terraform destroys node group -> EKS cluster -> VPC/subnets, in that
+     # order. If an earlier destroy hung on orphaned ENIs at subnet/VPC
+     # deletion, the cluster is ALREADY GONE by the time that happened — only
+     # a stale kubeconfig entry remains, which is exactly this rc=2 state.
+     # If that's what you're looking at, the Ingresses (and their ALB) went
+     # with the cluster already, so the kubectl deletes below are moot. Skip
+     # this script and finish the VPC teardown directly:
+     echo "  If the cluster is already destroyed and this is just a stale" >&2
+     echo "  kubeconfig entry, the Ingresses went with it — run the VPC" >&2
+     echo "  teardown directly instead of retrying this script:" >&2
+     echo "    terraform -chdir=$ROOT/aws/main destroy -auto-approve" >&2
+     echo "    make aws-leak-check" >&2
      exit 1 ;;
 esac
 
