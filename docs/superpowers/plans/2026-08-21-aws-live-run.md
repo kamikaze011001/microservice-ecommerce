@@ -620,15 +620,42 @@ Part B does not begin until every accepted must-fix item is closed.
 
 **No agent runs any command in this part.** Each checkpoint below lists what the operator runs, what it should print, and how to read a failure. The assistant's role is to interpret output, diagnose, and write fixes — never to execute.
 
-**Before every session:**
-
-```bash
-export AWS_PROFILE=microecom
-```
-
 **After every session, without exception**, including sessions that fail early — see Checkpoint 4's teardown.
 
 **Running cost while the stack is up: ~$1.00/hour.** Note the wall-clock time at each checkpoint.
+
+## Checkpoint 0 — session setup (free, no spend)
+
+`up-all.sh` opens with a Step 0 preflight (lines 97–112) that this checkpoint design
+skips, because it calls the individual entry points instead of the orchestrator.
+**Decomposing a wrapper silently drops whatever the wrapper did besides calling the
+steps** — this is the second time that has bitten: first `PUSH` vs `svc`, then these
+four variables, which surfaced as an opaque resolver error at Checkpoint 3 rather than
+a clear message at the door.
+
+Run this at the start of every session, in the shell you will use throughout:
+
+```bash
+export AWS_PROFILE=microecom
+set -a && . docker/.env && . deploy/.env && set +a
+for v in PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET APPLICATION_MAIL_USERNAME APPLICATION_MAIL_PASSWORD; do
+  eval "val=\${$v:-}"
+  [ -n "$val" ] && echo "  ✓ $v set (${#val} chars)" || echo "  ✗ $v EMPTY"
+done
+```
+
+All four must show `✓`. This mirrors `up-all.sh`'s `need` checks and prints only
+lengths, never values. `PAYPAL_*` live in `docker/.env`, `APPLICATION_MAIL_*` in
+`deploy/.env`; `secrets-seed.sh` sources neither and expects them already exported.
+
+The exports must survive into Checkpoint 3 — if you open a new terminal, re-run this
+block there.
+
+**DNS is no longer checked here.** `scripts/aws/up.sh` now performs it itself and
+refuses to start when the apex domain does not delegate publicly, because a check the
+operator performs is advisory and a check the script performs is a guard. Override with
+`SKIP_DNS_PRECHECK=1` only for a deliberate infra-only run that expects the ACM step to
+fail.
 
 ## Checkpoint 1 — infra
 
