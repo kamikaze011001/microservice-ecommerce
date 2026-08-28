@@ -20,7 +20,8 @@
 #   4 seed-mongo   api_role + product + qty-history → Mongo (needs Mongo up)
 #   5 seed-secrets RDS JDBC URLs + Redis host + app config → Secrets Manager (needs step-1
 #                  outputs; must precede apps so ExternalSecrets resolve real vals)
-#   6 apps         kubectl apply -k overlay; GATE on auth-server + inventory-svc
+#   6 apps         helm install via deploy/scripts/aws-deploy.sh; GATE on
+#                  auth-server + inventory-svc
 #   7 seed-rds     accounts/roles/users → RDS (schema from auth-server ddl-auto)
 #   8 seed-inv     inventory stock → RDS (tables from inventory-svc ddl-auto)
 #   9 seed-images  upload sample product JPGs to the S3 media bucket (Phase 4c)
@@ -183,7 +184,7 @@ bash "$ROOT/deploy/scripts/secrets-seed.sh" --env aws
 # aws/bootstrap output ecr_registry; TAG env var, default "dev" — the same
 # default the old kustomize overlay's `newTag: dev` pinned). Real deploy only
 # (no args) — COSTS MONEY, same as the block it replaces.
-banner "Step 6/9 · deploy apps overlay"
+banner "Step 6/9 · deploy apps (helm, via deploy/scripts/aws-deploy.sh)"
 bash "$ROOT/deploy/scripts/aws-deploy.sh"
 
 # Both gate a post-apps SQL seed: auth-server's ddl-auto creates the account
@@ -192,17 +193,17 @@ bash "$ROOT/deploy/scripts/aws-deploy.sh"
 # are the two hardest deps to debug — ExternalSecret/DB/IRSA crashloops).
 echo "▶ waiting for authorization-server + inventory-service (they create the RDS schema) ..."
 for d in authorization-server inventory-service; do
-  kubectl -n apps rollout status "deploy/$d" --timeout=600s \
+  kubectl --context microecom-eks -n apps rollout status "deploy/$d" --timeout=600s \
     || { echo "ERROR: $d failed to roll out. Recent state:" >&2
-         kubectl -n apps describe "deploy/$d" 2>&1 | tail -30 >&2
-         echo "  Dig in: kubectl -n apps logs deploy/$d --previous" >&2
+         kubectl --context microecom-eks -n apps describe "deploy/$d" 2>&1 | tail -30 >&2
+         echo "  Dig in: kubectl --context microecom-eks -n apps logs deploy/$d --previous" >&2
          exit 1; }
 done
 echo "▶ waiting for the rest of the apps (best-effort) ..."
 for d in gateway product-service order-service orchestrator-service \
          payment-service bff-service mock-paypal-service; do
-  kubectl -n apps rollout status "deploy/$d" --timeout=300s || \
-    echo "  ⚠ $d not Ready yet — check 'kubectl -n apps get pods' (not fatal for the seeds)"
+  kubectl --context microecom-eks -n apps rollout status "deploy/$d" --timeout=300s || \
+    echo "  ⚠ $d not Ready yet — check 'kubectl --context microecom-eks -n apps get pods' (not fatal for the seeds)"
 done
 
 # ── Step 7 — RDS account data (schema now exists) ─────────────────────────────
@@ -238,8 +239,8 @@ bash "$ROOT/deploy/scripts/seed.sh" --env aws --stage post-apps --context microe
 # loss/restart, this runner reseeds all counters from the DB floor"). Without this
 # restart, order placement is broken until the next inventory-service pod restart.
 echo "▶ restarting inventory-service so AvailableStockSeeder re-seeds Redis from the populated ledger ..."
-kubectl -n apps rollout restart deploy/inventory-service
-kubectl -n apps rollout status deploy/inventory-service --timeout=300s
+kubectl --context microecom-eks -n apps rollout restart deploy/inventory-service
+kubectl --context microecom-eks -n apps rollout status deploy/inventory-service --timeout=300s
 
 # ── Step 9 — S3 product images (Phase 4c) ─────────────────────────────────────
 # scripts/aws/seed-images.sh's old ground is covered by the SAME
@@ -253,9 +254,9 @@ banner "Step 9/9 · seed S3 product images"
 bash "$ROOT/deploy/scripts/seed.sh" --env aws --stage pre-apps --context microecom-eks
 
 banner "DONE · stack is up"
-ALB="$(kubectl -n apps get ingress gateway-alb \
+ALB="$(kubectl --context microecom-eks -n apps get ingress gateway-alb \
         -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
-echo "  Gateway ALB : ${ALB:-<pending — re-check: kubectl -n apps get ingress gateway-alb>}"
+echo "  Gateway ALB : ${ALB:-<pending — re-check: kubectl --context microecom-eks -n apps get ingress gateway-alb>}"
 echo "  Storefront  : https://shop.microecom.click   ← open in a browser (valid TLS)"
 echo "  First apply : DNS propagation + ACM issuance can take a few minutes before it resolves."
 echo "  Raw ALB     : http://${ALB:-<pending>}/   (debug only — the host rule means this now 404s)"
