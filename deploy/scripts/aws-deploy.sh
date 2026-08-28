@@ -160,9 +160,30 @@ fi
 # name a tag that has never once been pushed to ECR by anything in this repo (see header).
 IMAGE_TAG="${TAG:-dev}"
 
-# The load-bearing --set-string flags. Copied in shape from the reference
-# invocation in aws-diff-test.sh rather than composed by hand a fourth time.
-HELM_SET_STRING_FLAGS=(
+# The load-bearing flags. Copied in shape from the reference invocation in
+# aws-diff-test.sh rather than composed by hand a fourth time.
+#
+# `--set infra.enabled=false` MUST live in this shared array, not inline in the
+# render branch. It used to be inline, so the two paths diverged: `--mode
+# render` (what `make aws-diff-test` exercises) disabled the infra subchart,
+# while the real apply -- which execs `make k8s-apps-helm`, and that recipe
+# passes only $(HELM_EXTRA) -- did not. On AWS, infra is installed as SEPARATE
+# helm releases by scripts/aws/infra-up.sh (see .claude/memory/decisions/
+# 0005-aws-infra-stays-outside-the-umbrella-chart.md), so leaving the subchart
+# enabled made the umbrella try to create objects another release already owns:
+#
+#   Error: ServiceAccount "grafana" in namespace "monitoring" exists and cannot
+#   be imported into the current release: ... "meta.helm.sh/release-name" must
+#   equal "microecom": current value is "grafana"
+#
+# The offline oracle could never catch this: it rendered a DIFFERENT command
+# than the one that runs.
+#
+# `--set`, never `--set-string`: --set-string would make this the STRING
+# "false", and Helm evaluates the dependency `condition: infra.enabled` as
+# truthy for any non-empty string, so the subchart would render anyway.
+HELM_FLAGS=(
+  --set infra.enabled=false
   --set-string "apps.irsa.s3RoleArn=${S3_ROLE_ARN}"
   --set-string "global.appImage.registry=${ECR_REGISTRY}"
   --set-string "global.appImage.tag=${IMAGE_TAG}"
@@ -172,8 +193,8 @@ if [ "$MODE" = "render" ]; then
   echo "==> offline render (helm template) — registry=${ECR_REGISTRY} tag=${IMAGE_TAG}" >&2
   exec helm template microecom "$CHART_DIR" --namespace infra \
     -f "$CHART_DIR/envs/aws.yaml" \
-    --set apps.enabled=true --set infra.enabled=false \
-    "${HELM_SET_STRING_FLAGS[@]}" \
+    --set apps.enabled=true \
+    "${HELM_FLAGS[@]}" \
     "$@"
 fi
 
@@ -192,4 +213,4 @@ fi
 
 echo "==> deploying AWS apps (registry=${ECR_REGISTRY} tag=${IMAGE_TAG}) via 'make k8s-apps-helm ENV=aws' — this applies to a live cluster with --wait and COSTS MONEY" >&2
 exec make --no-print-directory -C "$ROOT" k8s-apps-helm ENV=aws \
-  HELM_EXTRA="${HELM_SET_STRING_FLAGS[*]}"
+  HELM_EXTRA="${HELM_FLAGS[*]}"
