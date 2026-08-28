@@ -881,6 +881,14 @@ aws-diff-test:
 test-registry-target:
 	@bash deploy/images/tests/registry-target-test.sh
 
+.PHONY: test-aws-deploy-flags
+## test-aws-deploy-flags: guards the render-vs-apply split in
+## deploy/scripts/aws-deploy.sh. Drives the SCRIPT's own --render (not a
+## hand-copied helm invocation) and asserts the infra subchart stays disabled
+## on BOTH paths. Offline — no AWS, no cluster, no spend.
+test-aws-deploy-flags:
+	@bash deploy/scripts/tests/aws-deploy-flags-test.sh
+
 .PHONY: test-kube-context
 ## test-kube-context: decision table for scripts/aws/lib/kube-context.sh's
 ## teardown guard (context present/absent, cluster reachable/unreachable).

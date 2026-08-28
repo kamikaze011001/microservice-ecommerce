@@ -44,6 +44,14 @@ production through a *different* code path as unverified until something asserts
 two invocations match.
 
 Corollary from the same fix: use `--set`, never `--set-string`, for a boolean.
-`--set-string infra.enabled=false` yields the STRING `"false"`, and Helm evaluates a
-dependency `condition:` as truthy for any non-empty string — so the subchart renders
-anyway and the flag looks present while doing nothing.
+`--set-string infra.enabled=false` yields the STRING `"false"`. Helm's
+`processDependencyEnabled` type-asserts a condition value to `bool`; on a non-bool it
+logs `Warning: Condition path ... returned non-bool value` and leaves `Enabled` at its
+pre-initialized `true`. So the subchart renders anyway and the flag looks present while
+doing nothing. (It does *not* evaluate the string as truthy — same outcome, different
+mechanism, and the distinction matters if you ever go looking in Helm's source.)
+
+**Guarded since 2026-08-28** by `deploy/scripts/tests/aws-deploy-flags-test.sh`
+(`make test-aws-deploy-flags`), which drives the script's own `--render` rather than a
+hand-copied `helm template`, and asserts the flag reaches both paths. Mutation-tested:
+removing the flag or switching it to `--set-string` both go red.

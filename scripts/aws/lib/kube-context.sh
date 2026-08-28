@@ -6,7 +6,7 @@
 # kubeconfig and /readyz responds. It does NOT prove that context points at the
 # cluster the caller thinks it does — a stale "microecom-eks" entry left over
 # from a prior cluster (same alias, different underlying EKS cluster) would
-# pass this check. Residual exposure is low in practice: scripts/aws/up.sh:12-15
+# pass this check. Residual exposure is low in practice: scripts/aws/up.sh
 # runs `aws eks update-kubeconfig --alias microecom-eks` on every bring-up,
 # which overwrites the entry to point at whatever cluster currently exists, so
 # a stale-but-passing entry can only arise between a manual kubeconfig edit and

@@ -636,13 +636,22 @@ a clear message at the door.
 Run this at the start of every session, in the shell you will use throughout:
 
 ```bash
+cd "$(git rev-parse --show-toplevel)"
 export AWS_PROFILE=microecom
-set -a && . docker/.env && . deploy/.env && set +a
+set -a; [ -f docker/.env ] && . docker/.env; [ -f deploy/.env ] && . deploy/.env; set +a
 for v in PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET APPLICATION_MAIL_USERNAME APPLICATION_MAIL_PASSWORD; do
   eval "val=\${$v:-}"
   [ -n "$val" ] && echo "  ✓ $v set (${#val} chars)" || echo "  ✗ $v EMPTY"
 done
+unset val
 ```
+
+**Semicolons, not `&&`, and this is load-bearing.** Both files are gitignored. Chained
+with `&&`, a missing file or a parse error short-circuits and **`set +a` never runs** —
+leaving `allexport` on in your interactive shell for the rest of the session, so every
+later variable is exported into `terraform`, `kubectl` and `helm` child environments.
+Including `val`, which holds `APPLICATION_MAIL_PASSWORD` after the loop; hence the
+`unset`. `up-all.sh:79-83` guards the same hazard in its own `load_env_file`.
 
 All four must show `✓`. This mirrors `up-all.sh`'s `need` checks and prints only
 lengths, never values. `PAYPAL_*` live in `docker/.env`, `APPLICATION_MAIL_*` in
