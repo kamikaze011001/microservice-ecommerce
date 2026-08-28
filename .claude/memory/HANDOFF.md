@@ -1,66 +1,89 @@
 # HANDOFF
 
-**Updated:** 2026-08-21 · **Branch:** `feat/aws-live-run` · **Base:** `main` @ `c548f9e`
+**Updated:** 2026-08-28 · **Branch:** `main` @ `320467d` · **Last:** PR #64 merged
 
 ## Current goal
 
-Deploy `ENV=aws` for the first time and establish whether the stack works. Five phases
-shipped AWS support verified only by `helm template` against fixtures — no EKS cluster
-has ever been created by this repo and `terraform apply` has never run against
-`aws/main`. Run as a coworking/learning exercise: the operator is new to AWS, Kubernetes
-and Terraform, so failures are made legible rather than rushed past.
+None in flight. `ENV=aws` has now been **run against real AWS** — the thing five
+phases shipped without ever demonstrating. The path works up to a live EKS cluster
+with all nine services deployed; the remaining question is the acceptance tiers.
 
 ## Done recently
 
-- **PR #63** — the two HTML teaching pages corrected from kind to minikube. Not a rename:
-  three mechanisms were wrong (registry, ingress exposure, and a SCAR describing a
-  deleted code path).
-- Established that **no unfinished AWS work exists**. Both `feat/aws-deploy` (76 commits
-  ahead) and `feat/aws-live-deploy` (1 ahead) contain nothing `main` lacks — see
-  [[branch-ahead-count-measures-divergence-not-value]]. Phase 5b shipped weeks ago;
-  `aws/main/dns.tf` and `external-dns.tf` are on main.
-- Spec `238c0bc` and plan `757d658` written and committed for the live run.
+- **PR #63** — the two HTML teaching pages corrected from kind to minikube.
+- **PR #64** (21 commits) — offline pre-flight for the first live `ENV=aws` run,
+  **plus the run itself and the four fixes it produced.**
 
-## In progress — `feat/aws-live-run`
+### What the run cost and proved
 
-Part A (offline pre-flight) of `docs/superpowers/plans/2026-08-21-aws-live-run.md`:
+Two sessions, roughly **$6–8** total at ~$1.00/hr. Checkpoint 1 (infra) passed
+cleanly: 3 nodes `Ready`, VPC/EKS/RDS/ElastiCache/IRSA/both Helm controllers all
+created. Teardown verified clean twice — `terraform state list` at 0, every
+`aws-leak-check` table empty.
 
-- **Task 1 COMPLETE** (`320fa58`, review clean) — `build.sh`'s registry probe scoped to
-  local registries. This was a hard blocker: ECR hangs 75 s on port 80 then blames
-  minikube ([[a-shared-builder-assumes-its-local-registry]]).
-- **Task 2 COMPLETE** (`320fa58..8ea93d0`, review clean) — `down.sh` now proves which
-  cluster it is destroying. Fix round 1 corrected a defect in the PLAN, not the
-  implementation ([[errexit-consumes-a-functions-exit-code]]). Two deferred minors are
-  in the SDD ledger.
-- **Task 3 IN FLIGHT** — read-only audit of steps 2–9 for the same defect class, plus
-  the mail/OTP verdict that acceptance tier 3 depends on.
-- Then a triage gate turning must-fix findings into tasks, a whole-branch review, and
-  finally **Part B: the billed run** (operator-executed only).
+### Blockers found by READING (offline, free)
+
+1. `build.sh` probed every registry over plain HTTP → 75 s hang against ECR, then an
+   error telling the operator to start minikube ([[a-shared-builder-assumes-its-local-registry]]).
+2. `down.sh` named no kube context and swallowed transport failures with `|| true` →
+   could strand a billing ALB with every command exiting 0
+   ([[the-teardown-path-lacks-the-guards-the-creation-path-has]]).
+3. The plan's `PUSH=all make aws-push` pushed one service out of ten.
+
+### Blockers found by RUNNING (only discoverable live)
+
+4. **`aws-deploy.sh` had `--set infra.enabled=false` in its render branch only**, so
+   `make aws-diff-test` validated a command the live apply never issued
+   ([[an-oracle-can-validate-a-command-nobody-runs]]). This is the most significant
+   defect of the whole workstream.
+5. `up.sh` ran `update-kubeconfig` only after a successful apply → a partial apply left
+   a running, billing cluster the operator could not reach.
+6. The four `PAYPAL_*` / `APPLICATION_MAIL_*` env vars were never exported, because the
+   checkpoint design routes around `up-all.sh`'s Step 0 preflight
+   ([[decomposing-a-wrapper-drops-what-it-did-besides-calling-steps]]).
+7. `microecom.click` carried a registrar **`clientHold`** and resolved nowhere, so ACM
+   validation burned its full 1h15m timeout after building ~143 resources. `up.sh` now
+   refuses to start unless the apex domain delegates publicly.
+
+## In progress — one loose end
+
+A review of PR #64's **last three commits** (`97d1afc`, `80de663`) was dispatched
+before the merge and had not returned when the branch merged. Those commits touch
+billed-path scripts (`up.sh`'s new control flow under `set -euo pipefail`, the DNS
+pre-check, `HELM_FLAGS`). **If it surfaces anything, the fix needs a fresh branch off
+`main`** — `feat/aws-live-run` is merged and done.
+
+Specifically worth confirming: `up.sh`'s `if CLUSTER_NAME="$(...)" && CLUSTER_REGION="$(...)"`
+compound, and that a failed apply still exits non-zero after the kubeconfig wiring.
+
+## Next, if picking something up
+
+1. **Finish the acceptance tiers.** The deploy works; whether the *stack* works
+   (tier 4 = an order completing through the saga) is still unconfirmed. Needs a
+   billed session and roughly $2–4.
+2. **The SMTP egress question.** Mail is wired for `ENV=aws`, but whether pods in
+   private subnets can reach the SMTP host through the NAT gateway is unanswerable
+   offline — it resolves at tier 3.
+3. `deploy/README.md`'s Verification status still says `ENV=aws` is **NOT proven**.
+   That is now partly false and should be updated with what the run established
+   ([[a-gaps-registry-decays-through-success]]).
 
 ## Settled decisions
 
-- [[0007-first-aws-run-keeps-k8s-1-31]] — pay the extended-support surcharge rather than
-  confound the test by changing the cluster version.
-- [[0008-unexercised-paths-run-in-checkpoints-not-one-shot]] — four checkpoints grouped
-  by failure vocabulary, not one `make aws-all`.
-- [[0005-aws-infra-stays-outside-the-umbrella-chart]] — **does not block this run**; it
-  blocks folding infra into the chart, which this design deliberately does not do.
-- Verified live 2026-08-20: the `microecom.click.` zone exists, `aws/bootstrap` is
-  applied (state bucket, lock table, 11 ECR repos), `aws/main` state is empty, and ECR
-  holds stale `:dev` tags so `PUSH=all` is mandatory.
-- Cost with the surcharge: ~$1.00/hr, ~$4 for a four-hour session, ~$732/month if left
-  running. Teardown is mandatory every session.
+- [[0007-first-aws-run-keeps-k8s-1-31]] — pay the surcharge rather than confound the test.
+- [[0008-unexercised-paths-run-in-checkpoints-not-one-shot]] — four checkpoints by failure domain.
+- [[0005-aws-infra-stays-outside-the-umbrella-chart]] — and the live run showed exactly
+  why: the umbrella tried to create objects `infra-up.sh`'s releases already owned.
 
 ## Context to load
 
-- `docs/superpowers/specs/2026-08-21-aws-live-run-design.md` — the design and rationale
-- `docs/superpowers/plans/2026-08-21-aws-live-run.md` — Part A tasks, Part B runbook
-- `.superpowers/sdd/2026-08-21-aws-live-run/progress.md` — the SDD ledger (gitignored)
+- `docs/superpowers/plans/2026-08-21-aws-live-run.md` — Part B runbook, now with Checkpoint 0
+- `docs/superpowers/plans/2026-08-21-aws-preflight-findings.md` — the audit and its gaps
 - `scripts/aws/RUNBOOK.md` — the nine steps and teardown
-- `deploy/README.md` — Verification status, including what `ENV=aws` has never proven
+- `deploy/README.md` — Verification status (stale, see Next #3)
 
 ## Blocked
 
-Nothing blocked. Three standing constraints: `rm`/`git rm` and `git push` are
-human-gated, and **no assistant may run a billed AWS command** — every `make aws-*`,
-`terraform`, and `scripts/aws/*` invocation is the operator's to execute.
+Nothing. Standing constraints: `rm`/`git rm` and `git push` are human-gated, and **no
+assistant runs a billed AWS command** — every `make aws-*`, `terraform`, and
+`scripts/aws/*` invocation is the operator's.
