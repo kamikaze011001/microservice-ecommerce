@@ -179,9 +179,11 @@ IMAGE_TAG="${TAG:-dev}"
 # The offline oracle could never catch this: it rendered a DIFFERENT command
 # than the one that runs.
 #
-# `--set`, never `--set-string`: --set-string would make this the STRING
-# "false", and Helm evaluates the dependency `condition: infra.enabled` as
-# truthy for any non-empty string, so the subchart would render anyway.
+# `--set`, never `--set-string`. --set-string would make this the STRING
+# "false", and Helm's processDependencyEnabled type-asserts a condition value
+# to bool: on a non-bool it logs `Warning: Condition path ... returned non-bool
+# value` and leaves Enabled at its pre-initialized `true`. So the subchart
+# renders anyway -- the flag looks present while doing nothing.
 HELM_FLAGS=(
   --set infra.enabled=false
   --set-string "apps.irsa.s3RoleArn=${S3_ROLE_ARN}"

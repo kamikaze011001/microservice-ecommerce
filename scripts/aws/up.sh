@@ -27,7 +27,18 @@ APEX_DOMAIN="${APEX_DOMAIN:-microecom.click}"
 # performs is advisory and a check the script performs is a guard.
 if [ -z "${SKIP_DNS_PRECHECK:-}" ]; then
   if command -v dig >/dev/null 2>&1; then
-    if ! dig @8.8.8.8 +short +time=5 +tries=2 NS "$APEX_DOMAIN" 2>/dev/null | grep -q .; then
+    # Capture rather than pipe to `grep -q`, so "8.8.8.8 unreachable" (dig exit 9 --
+    # captive portal, offline, outbound 53 blocked) is distinguishable from "the
+    # domain has no NS records". Reporting a network failure as a domain failure is
+    # a false negative that reads as a real problem.
+    dig_rc=0
+    NS_OUT="$(dig @8.8.8.8 +short +time=5 +tries=2 NS "$APEX_DOMAIN" 2>/dev/null)" || dig_rc=$?
+    if [ "$dig_rc" -ne 0 ]; then
+      # Unreachable resolver is NOT evidence about the domain. Say so and carry
+      # on rather than refusing — and do not print the "delegates publicly"
+      # success line either, because nothing was actually established.
+      echo "note: could not reach 8.8.8.8 (dig exit $dig_rc) — skipping the DNS pre-check" >&2
+    elif [ -z "$NS_OUT" ]; then
       echo "✋ '$APEX_DOMAIN' does not resolve NS records on the public internet." >&2
       echo "   ACM DNS validation cannot complete, so 'terraform apply' would build" >&2
       echo "   the whole stack and then block ~1h15m before failing. Refusing to start." >&2
@@ -44,8 +55,9 @@ if [ -z "${SKIP_DNS_PRECHECK:-}" ]; then
       echo "   To proceed anyway (infra-only, expect the ACM step to fail):" >&2
       echo "     SKIP_DNS_PRECHECK=1 $0" >&2
       exit 1
+    else
+      echo "✓ $APEX_DOMAIN delegates publicly — ACM validation can complete"
     fi
-    echo "✓ $APEX_DOMAIN delegates publicly — ACM validation can complete"
   else
     echo "note: dig not found; skipping the DNS pre-check" >&2
   fi
@@ -69,21 +81,51 @@ terraform -chdir="$DIR" apply -auto-approve || rc=$?
 # Best-effort by design: if the outputs do not resolve, the cluster genuinely
 # is not there and that is not a failure worth masking. The apply's own exit
 # status is preserved and re-raised at the end either way.
+#
+# `update-kubeconfig` is guarded by its own `if` rather than run bare in the
+# then-branch: bare, `errexit` would kill the script the moment it failed —
+# skipping the BILLING warning below and replacing the apply's exit status with
+# the aws CLI's. That is the failure the whole block exists to prevent, so it
+# must not be able to happen inside the block itself.
+kubeconfig_ok=0
 if CLUSTER_NAME="$(terraform -chdir="$DIR" output -raw cluster_name 2>/dev/null)" \
    && CLUSTER_REGION="$(terraform -chdir="$DIR" output -raw region 2>/dev/null)" \
    && [ -n "$CLUSTER_NAME" ] && [ -n "$CLUSTER_REGION" ]; then
-  aws eks update-kubeconfig \
-    --name "$CLUSTER_NAME" \
-    --region "$CLUSTER_REGION" \
-    --alias microecom-eks
+  if aws eks update-kubeconfig \
+       --name "$CLUSTER_NAME" \
+       --region "$CLUSTER_REGION" \
+       --alias microecom-eks; then
+    kubeconfig_ok=1
+  else
+    echo "note: update-kubeconfig failed — kubectl is NOT pointed at the cluster" >&2
+  fi
 else
   echo "note: cluster_name/region outputs unavailable — kubeconfig not updated" >&2
 fi
 
+# A successful apply that cannot wire kubectl IS a failure — do not report
+# "✅ up." when the operator has no way to reach what was just built.
+if [ "$rc" -eq 0 ] && [ "$kubeconfig_ok" -ne 1 ]; then
+  echo "✋ terraform apply succeeded but kubectl could not be pointed at the cluster." >&2
+  echo "   Fix credentials/region, then:" >&2
+  echo "     aws eks update-kubeconfig --name microecom-eks --region ap-southeast-1 \\" >&2
+  echo "       --alias microecom-eks" >&2
+  echo "   The stack is UP and BILLING." >&2
+  exit 1
+fi
+
 if [ "$rc" -ne 0 ]; then
   echo "✋ terraform apply failed (exit $rc)." >&2
-  echo "   kubectl has been pointed at whatever cluster DOES exist, so you can" >&2
-  echo "   inspect it and 'make aws-down' can tear it down cleanly." >&2
+  if [ "$kubeconfig_ok" -eq 1 ]; then
+    echo "   kubectl has been pointed at whatever cluster DOES exist, so you can" >&2
+    echo "   inspect it and 'make aws-down' can tear it down cleanly." >&2
+  else
+    # Do not claim kubectl was re-pointed when it was not: down.sh's guard
+    # refuses (rc=1 or 2) until the context resolves and answers.
+    echo "   kubectl was NOT re-pointed, so 'make aws-down' will refuse until you run:" >&2
+    echo "     aws eks update-kubeconfig --name microecom-eks --region ap-southeast-1 \\" >&2
+    echo "       --alias microecom-eks" >&2
+  fi
   echo "   Anything already created is BILLING — tear down if you are not" >&2
   echo "   continuing: make aws-down && make aws-leak-check" >&2
   exit "$rc"

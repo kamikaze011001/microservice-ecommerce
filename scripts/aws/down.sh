@@ -32,8 +32,8 @@ case $rc in
      echo "  an ALB created by the in-cluster controller is NOT in terraform state." >&2
      # --name is the CLUSTER name (var.cluster_name, aws/main/variables.tf:16),
      # not the context alias. They differ in general and happen to coincide
-     # here. up.sh:13 resolves it with `terraform output -raw cluster_name`
-     # rather than hardcoding; infra-up.sh:28 and aws-deploy.sh:189 print the
+     # here. up.sh resolves it with `terraform output -raw cluster_name`
+     # rather than hardcoding; infra-up.sh:28 and aws-deploy.sh print the
      # same literal as below. An operator reaching this branch is already in a
      # failure state — a remedy that names a nonexistent cluster sends them to
      # a second, unrelated one.
