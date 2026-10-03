@@ -2,6 +2,7 @@ package org.aibles.ecommerce.orchestrator_service.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.aibles.ecommerce.common_dto.avro_kafka.PaymentCanceled;
 import org.aibles.ecommerce.common_dto.avro_kafka.PaymentFailed;
 import org.aibles.ecommerce.common_dto.avro_kafka.PaymentSuccess;
 import org.aibles.ecommerce.common_dto.event.*;
@@ -9,6 +10,7 @@ import org.aibles.ecommerce.orchestrator_service.config.ApplicationKafkaProperti
 import org.aibles.ecommerce.orchestrator_service.entity.*;
 import org.aibles.ecommerce.orchestrator_service.repository.SagaInstanceRepository;
 import org.aibles.ecommerce.orchestrator_service.service.SagaOrchestrationService;
+import org.apache.avro.specific.SpecificRecordBase;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -88,7 +90,7 @@ public class SagaOrchestrationServiceImpl implements SagaOrchestrationService {
         if (event instanceof PaymentSuccessEvent) {
             handleSuccess(saga, orderId);
         } else if (event instanceof PaymentFailedEvent) {
-            compensate(saga, topic("order-service.order.failed-status"));
+            compensate(saga, CompensationReason.PAYMENT_FAILED);
         } else if (event instanceof PaymentCanceledEvent) {
             // A PayPal-approval cancel abandons THIS payment attempt but does NOT
             // cancel the order — the user can retry payment, and a later
@@ -103,13 +105,13 @@ public class SagaOrchestrationServiceImpl implements SagaOrchestrationService {
 
     @Override
     @Transactional
-    public void compensate(SagaInstance saga, String compensationTopic) {
-        log.info("(compensate) Compensating saga orderId: {} via topic: {}", saga.getOrderId(), compensationTopic);
+    public void compensate(SagaInstance saga, CompensationReason compensationReason) {
+        log.info("(compensate) Compensating saga orderId: {} via topic: {}", saga.getOrderId(), compensationReason.getTopicKey());
         saga.setState(SagaState.COMPENSATING);
         repo.save(saga);
 
         String orderId = saga.getOrderId();
-        boolean sent = sendWithRetry(compensationTopic, buildPaymentFailed(orderId));
+        boolean sent = sendWithRetry(topic(compensationReason.getTopicKey()), buildPaymentCompensation(compensationReason, orderId));
         if (!sent) {
             saga.setState(SagaState.FAILED);
             repo.save(saga);
@@ -130,14 +132,14 @@ public class SagaOrchestrationServiceImpl implements SagaOrchestrationService {
         boolean orderSent = sendWithRetry(topic("order-service.order.success-status"), avro);
         if (!orderSent) {
             log.error("(handleSuccess) Failed to notify order-service for orderId: {} — compensating", orderId);
-            compensate(saga, topic("order-service.order.failed-status"));
+            compensate(saga, CompensationReason.PAYMENT_FAILED);
             return;
         }
 
         boolean inventorySent = sendWithRetry(topic("inventory-service.inventory-product.update-quantity"), avro);
         if (!inventorySent) {
             log.error("(handleSuccess) Failed to notify inventory-service for orderId: {} — compensating", orderId);
-            compensate(saga, topic("order-service.order.failed-status"));
+            compensate(saga, CompensationReason.PAYMENT_FAILED);
             return;
         }
 
@@ -162,8 +164,11 @@ public class SagaOrchestrationServiceImpl implements SagaOrchestrationService {
         return kafkaProperties.getTopics().get(key);
     }
 
-    private PaymentFailed buildPaymentFailed(String orderId) {
-        return PaymentFailed.newBuilder().setOrderId(orderId).build();
+    private SpecificRecordBase buildPaymentCompensation(CompensationReason compensationReason, String orderId) {
+        return switch (compensationReason) {
+            case PAYMENT_FAILED -> PaymentFailed.newBuilder().setOrderId(orderId).build();
+            case TIMED_OUT      -> PaymentCanceled.newBuilder().setOrderId(orderId).build();
+        };
     }
 
     private String extractOrderId(Object data) {

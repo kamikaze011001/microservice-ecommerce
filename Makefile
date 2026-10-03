@@ -217,6 +217,12 @@ seed-live-verify:
 svc-test-staleness:
 	@bash scripts/lib/tests/eureka-test.sh
 
+## check-human: fail while coworking markers remain. PR=0 → only KAFKA-PR0.*;
+## ID=<prefix> for any other workstream; neither → every open marker.
+.PHONY: check-human
+check-human:
+	@bash scripts/check-human.sh $(if $(PR),KAFKA-PR$(PR).,$(ID))
+
 # ============================================================================
 # Kafka
 # ============================================================================

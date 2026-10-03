@@ -36,7 +36,7 @@ class SagaTimeoutSchedulerTest {
         SagaTimeoutScheduler scheduler = new SagaTimeoutScheduler(repo, orchestrationService, redissonClient);
         scheduler.checkExpiredSagas();
 
-        verify(orchestrationService).compensate(eq(expired), eq("order-service.order.canceled-status"));
+        verify(orchestrationService).compensate(expired, CompensationReason.TIMED_OUT);
         verify(lock).unlock();
     }
 

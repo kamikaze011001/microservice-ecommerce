@@ -2,6 +2,7 @@ package org.aibles.ecommerce.orchestrator_service.scheduler;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.aibles.ecommerce.orchestrator_service.entity.CompensationReason;
 import org.aibles.ecommerce.orchestrator_service.entity.SagaInstance;
 import org.aibles.ecommerce.orchestrator_service.repository.SagaInstanceRepository;
 import org.aibles.ecommerce.orchestrator_service.service.SagaOrchestrationService;
@@ -41,7 +42,7 @@ public class SagaTimeoutScheduler {
 
             for (SagaInstance saga : expired) {
                 log.info("(checkExpiredSagas) Timeout compensation for orderId: {}", saga.getOrderId());
-                orchestrationService.compensate(saga, "order-service.order.canceled-status");
+                orchestrationService.compensate(saga, CompensationReason.TIMED_OUT);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
