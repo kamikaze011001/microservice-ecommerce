@@ -4,8 +4,7 @@ import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheReposit
 import org.aibles.ecommerce.core_redis.constant.RedisConstant;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.ecommerce.inventory_service.constant.PaymentEventType;
-import org.aibles.ecommerce.inventory_service.entity.ProcessedPaymentEvent;
-import org.aibles.ecommerce.inventory_service.repository.ProcessedPaymentEventRepository;
+import org.aibles.ecommerce.inventory_service.repository.master.MasterProcessedPaymentEventRepo;
 import org.aibles.ecommerce.inventory_service.repository.master.MasterInventoryProductRepository;
 import org.aibles.ecommerce.inventory_service.repository.master.MasterProductQuantityHistoryRepo;
 import org.aibles.ecommerce.inventory_service.repository.slave.SlaveInventoryProductRepository;
@@ -15,7 +14,6 @@ import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.dao.DuplicateKeyException;
 
 import java.util.Map;
 import java.util.Optional;
@@ -34,7 +32,7 @@ class InventoryCommitPathTest {
     private RedisRepository redisRepository;
     private PendingOrderCacheRepository pendingOrderCacheRepository;
     private RedissonClient redissonClient;
-    private ProcessedPaymentEventRepository processedPaymentEventRepository;
+    private MasterProcessedPaymentEventRepo masterProcessedPaymentEventRepo;
 
     private InventoryServiceImpl inventoryService;
 
@@ -48,7 +46,7 @@ class InventoryCommitPathTest {
         redisRepository = mock(RedisRepository.class);
         pendingOrderCacheRepository = mock(PendingOrderCacheRepository.class);
         redissonClient = mock(RedissonClient.class);
-        processedPaymentEventRepository = mock(ProcessedPaymentEventRepository.class);
+        masterProcessedPaymentEventRepo = mock(MasterProcessedPaymentEventRepo.class);
 
         inventoryService = new InventoryServiceImpl(
                 masterInventoryProductRepository,
@@ -59,7 +57,7 @@ class InventoryCommitPathTest {
                 redisRepository,
                 pendingOrderCacheRepository,
                 redissonClient,
-                processedPaymentEventRepository
+                masterProcessedPaymentEventRepo
         );
 
         // Default lock stub
@@ -74,8 +72,6 @@ class InventoryCommitPathTest {
     @Test
     void handleSuccessPayment_doesNotDecrRedisQueueCounter() {
         // Arrange
-        when(processedPaymentEventRepository.save(any(ProcessedPaymentEvent.class)))
-                .thenReturn(new ProcessedPaymentEvent());
         when(pendingOrderCacheRepository.getProductQuantitiesForOrder("order-1"))
                 .thenReturn(Optional.of(Map.of("prod-1", 3L)));
         when(masterInventoryProductRepository.decrementStockIfSufficient("prod-1", 3L))
@@ -96,8 +92,6 @@ class InventoryCommitPathTest {
 
     @Test
     void handleSuccessPayment_callsDecrementStockIfSufficient_forEachProduct() {
-        when(processedPaymentEventRepository.save(any(ProcessedPaymentEvent.class)))
-                .thenReturn(new ProcessedPaymentEvent());
         when(pendingOrderCacheRepository.getProductQuantitiesForOrder("order-2"))
                 .thenReturn(Optional.of(Map.of("prod-A", 2L, "prod-B", 5L)));
         when(masterInventoryProductRepository.decrementStockIfSufficient("prod-A", 2L)).thenReturn(1);
@@ -112,8 +106,6 @@ class InventoryCommitPathTest {
     @Test
     void handleSuccessPayment_dbFloorReturnsZero_logsAlertAndSkipsLedgerWrite() {
         // Arrange — stock already 0 (DB floor would be violated)
-        when(processedPaymentEventRepository.save(any(ProcessedPaymentEvent.class)))
-                .thenReturn(new ProcessedPaymentEvent());
         when(pendingOrderCacheRepository.getProductQuantitiesForOrder("order-3"))
                 .thenReturn(Optional.of(Map.of("prod-depleted", 1L)));
         when(masterInventoryProductRepository.decrementStockIfSufficient("prod-depleted", 1L))
@@ -130,8 +122,6 @@ class InventoryCommitPathTest {
 
     @Test
     void handleSuccessPayment_oneProductFloorBlocked_otherStillProcessed() {
-        when(processedPaymentEventRepository.save(any(ProcessedPaymentEvent.class)))
-                .thenReturn(new ProcessedPaymentEvent());
         when(pendingOrderCacheRepository.getProductQuantitiesForOrder("order-mix"))
                 .thenReturn(Optional.of(Map.of("prod-ok", 2L, "prod-blocked", 4L)));
         when(masterInventoryProductRepository.decrementStockIfSufficient("prod-ok", 2L)).thenReturn(1);
@@ -149,13 +139,39 @@ class InventoryCommitPathTest {
 
     @Test
     void handleSuccessPayment_alreadyProcessed_skipsEverything() {
-        when(processedPaymentEventRepository.save(any(ProcessedPaymentEvent.class)))
-                .thenThrow(new DuplicateKeyException("duplicate"));
+        when(masterProcessedPaymentEventRepo.existsById("order-dup:PAYMENT_SUCCESS")).thenReturn(true);
 
         inventoryService.handleSuccessPayment("order-dup");
 
         verifyNoInteractions(pendingOrderCacheRepository);
         verifyNoInteractions(masterInventoryProductRepository);
         verifyNoInteractions(redisRepository);
+    }
+
+    @Test
+    void handleSuccessPayment_firstDelivery_writesInboxRowBeforeTouchingStock() {
+        when(pendingOrderCacheRepository.getProductQuantitiesForOrder("order-4"))
+                .thenReturn(Optional.of(Map.of("prod-1", 2L)));
+        when(masterInventoryProductRepository.decrementStockIfSufficient("prod-1", 2L)).thenReturn(1);
+
+        inventoryService.handleSuccessPayment("order-4");
+
+        // The inbox row is flushed first: a concurrent pod collides on its primary key
+        // before either of them decrements stock.
+        org.mockito.InOrder inOrder = inOrder(masterProcessedPaymentEventRepo, masterInventoryProductRepository);
+        inOrder.verify(masterProcessedPaymentEventRepo).saveAndFlush(argThat(e ->
+                e.getId().equals("order-4:PAYMENT_SUCCESS")));
+        inOrder.verify(masterInventoryProductRepository).decrementStockIfSufficient("prod-1", 2L);
+    }
+
+    @Test
+    void handleSuccessPayment_redelivery_doesNotDecrementAgain() {
+        when(masterProcessedPaymentEventRepo.existsById("order-5:PAYMENT_SUCCESS")).thenReturn(true);
+
+        inventoryService.handleSuccessPayment("order-5");
+
+        verify(masterInventoryProductRepository, never()).decrementStockIfSufficient(anyString(), anyLong());
+        verify(masterProductQuantityHistoryRepo, never()).save(any());
+        verify(masterProcessedPaymentEventRepo, never()).saveAndFlush(any());
     }
 }

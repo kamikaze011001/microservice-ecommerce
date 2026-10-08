@@ -21,7 +21,6 @@ import org.aibles.ecommerce.core_redis.constant.RedisConstant;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.order_service.client.InventoryGrpcClientService;
 import org.aibles.order_service.constant.OrderStatus;
-import org.aibles.order_service.constant.PaymentEventType;
 import org.aibles.order_service.dto.request.OrderItemRequest;
 import org.aibles.order_service.dto.request.OrderRequest;
 import org.aibles.order_service.dto.response.OrderCreatedResponse;
@@ -31,8 +30,6 @@ import org.aibles.order_service.dto.response.OrderSummaryResponse;
 import org.aibles.order_service.entity.Order;
 import org.aibles.order_service.entity.OrderItem;
 import org.aibles.order_service.exception.InvalidProductQuantityException;
-import org.aibles.order_service.entity.ProcessedPaymentEvent;
-import org.aibles.order_service.repository.ProcessedPaymentEventRepository;
 import org.aibles.order_service.repository.master.MasterOrderItemRepo;
 import org.aibles.order_service.repository.master.MasterOrderRepo;
 import org.aibles.order_service.repository.slave.SlaveOrderItemRepo;
@@ -41,7 +38,6 @@ import org.aibles.order_service.service.OrderService;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,7 +64,6 @@ public class OrderServiceImpl implements OrderService {
     private final MasterOrderRepo masterOrderRepo;
     private final MasterOrderItemRepo masterOrderItemRepo;
     private final RedissonClient redissonClient;
-    private final ProcessedPaymentEventRepository processedPaymentEventRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final SlaveOrderRepo slaveOrderRepo;
     private final SlaveOrderItemRepo slaveOrderItemRepo;
@@ -79,7 +74,6 @@ public class OrderServiceImpl implements OrderService {
                             MasterOrderRepo masterOrderRepo,
                             MasterOrderItemRepo masterOrderItemRepo,
                             RedissonClient redissonClient,
-                            ProcessedPaymentEventRepository processedPaymentEventRepository,
                             ApplicationEventPublisher eventPublisher,
                             SlaveOrderRepo slaveOrderRepo,
                             SlaveOrderItemRepo slaveOrderItemRepo) {
@@ -89,7 +83,6 @@ public class OrderServiceImpl implements OrderService {
         this.masterOrderRepo = masterOrderRepo;
         this.masterOrderItemRepo = masterOrderItemRepo;
         this.redissonClient = redissonClient;
-        this.processedPaymentEventRepository = processedPaymentEventRepository;
         this.eventPublisher = eventPublisher;
         this.slaveOrderRepo = slaveOrderRepo;
         this.slaveOrderItemRepo = slaveOrderItemRepo;
@@ -371,109 +364,49 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public void handleCanceledOrder(String orderId) {
-        log.info("(handleCanceledOrder) Processing canceled order: {}", orderId);
-
-        // Idempotency check: Skip if already processed
-        // If this returns false, the record is ALREADY saved by isEventAlreadyProcessed()
-        if (isEventAlreadyProcessed(orderId, PaymentEventType.PAYMENT_CANCELED)) {
-            log.warn("(handleCanceledOrder) Order {} already processed, skipping", orderId);
-            return;
-        }
-
-        // Process the order status change (event already recorded above)
-        processOrderStatusChange(orderId, OrderStatus.CANCELED);
+        finishOrder(orderId, OrderStatus.CANCELED);
     }
 
     @Override
     @Transactional
     public void handleFailedOrder(String orderId) {
-        log.info("(handleFailedOrder) Processing failed order: {}", orderId);
-
-        // Idempotency check: Skip if already processed
-        // If this returns false, the record is ALREADY saved by isEventAlreadyProcessed()
-        if (isEventAlreadyProcessed(orderId, PaymentEventType.PAYMENT_FAILED)) {
-            log.warn("(handleFailedOrder) Order {} already processed, skipping", orderId);
-            return;
-        }
-
-        // Process the order status change (event already recorded above)
-        processOrderStatusChange(orderId, OrderStatus.FAILED);
+        finishOrder(orderId, OrderStatus.FAILED);
     }
 
     @Override
     @Transactional
     public void handleSuccessOrder(String orderId) {
-        log.info("(handleSuccessOrder) Processing successful order: {}", orderId);
-
-        // Idempotency check: Skip if already processed
-        // If this returns false, the record is ALREADY saved by isEventAlreadyProcessed()
-        if (isEventAlreadyProcessed(orderId, PaymentEventType.PAYMENT_SUCCESS)) {
-            log.warn("(handleSuccessOrder) Order {} already processed, skipping", orderId);
-            return;
-        }
-
-        // For SUCCESS: only update order status
-        // inventory-service will handle: read pending orders → decrement inventory → release queue → remove pending orders
-        // This prevents race condition where order-service removes data before inventory-service can read it
-        updateOrderStatus(orderId, OrderStatus.COMPLETED);
-    }
-
-    private void processOrderStatusChange(String orderId, OrderStatus newStatus) {
-        log.info("(processOrderStatusChange) Processing order {} status change to {}", orderId, newStatus);
-
-        Optional<Map<String, Long>> productQuantityMapOptional = pendingOrderCacheRepository.getProductQuantitiesForOrder(orderId);
-
-        Map<String, Long> productQuantityMap = productQuantityMapOptional.orElse(new HashMap<>());
-
-        if (productQuantityMap.isEmpty()) {
-            log.warn("(processOrderStatusChange) Order ID: {} is invalid or expired", orderId);
-            return;
-        }
-
-        updateInventoryCacheWithLocks(productQuantityMap);
-        updateOrderStatus(orderId, newStatus);
-
-        // Remove from pending orders ZSET (order is now processed)
-        // This also removes the price and product quantities stored in ZSET
-        pendingOrderCacheRepository.removeFromPendingOrders(orderId);
-        log.debug("(processOrderStatusChange) Removed order {} from pending orders ZSET", orderId);
-    }
-
-    /**
-     * Releases inventory reservations for canceled/failed orders
-     * by incrementing the available counter for each product.
-     */
-    private void updateInventoryCacheWithLocks(Map<String, Long> productQuantityMap) {
-        log.info("(updateInventoryCacheWithLocks) Releasing inventory reservations for products: {}", productQuantityMap.keySet());
-        if (productQuantityMap.isEmpty()) {
-            return;
-        }
-
-        List<String> productIds = new ArrayList<>(productQuantityMap.keySet());
-        Collections.sort(productIds);
-
-        DistributedLockContext lockContext = new DistributedLockContext(productIds);
-
-        try {
-            for (String productId : productIds) {
-                String lockKey = RedisConstant.LOCK_QUEUE_PRODUCT_KEY + productId;
-                RLock lock = acquireLockWithRetry(lockKey, lockContext);
-                lockContext.addLock(productId, lock);
-            }
-
-            for (Map.Entry<String, Long> entry : productQuantityMap.entrySet()) {
-                redisRepository.incr(RedisConstant.AVAILABLE_PRODUCT_KEY + entry.getKey(), entry.getValue());
-            }
-
-        } finally {
-            lockContext.releaseAllInReverse();
+        // Only the status changes here. inventory-service consumes the reservation
+        // (reads the pending order → decrements stock → removes it), so releasing it
+        // to `available` from this side would hand sold units back.
+        if (masterOrderRepo.updateStatusIfCurrent(orderId, OrderStatus.PROCESSING, OrderStatus.COMPLETED) == 0) {
+            log.info("order not PROCESSING, success reply ignored (redelivery or already final). orderId={}", orderId);
         }
     }
 
     /**
-     * Acquires a distributed lock with retry and exponential backoff.
-     * CRITICAL FIX: On InterruptedException, releases lock if acquired and cleans up all locks in context.
+     * Idempotent terminal transition for cancel/failure replies — safe to receive any
+     * number of times, on any pod, in any order relative to other replies:
+     * 1. the state guard lets exactly one delivery move PROCESSING → {@code target};
+     *    a redelivery, a concurrent duplicate or a late cancel after COMPLETED gets 0
+     *    rows and stops here;
+     * 2. that one delivery gives the reserved units back through the atomic Redis
+     *    claim, which also guards against the expiry cleanup job releasing the same
+     *    reservation concurrently.
+     * If the process dies between 1 and 2, the reservation stays pending and the
+     * expiry cleanup job releases it later — late, but exactly once.
      */
+    private void finishOrder(String orderId, OrderStatus target) {
+        if (masterOrderRepo.updateStatusIfCurrent(orderId, OrderStatus.PROCESSING, target) == 0) {
+            log.info("order not PROCESSING, {} reply ignored (redelivery or already final). orderId={}", target, orderId);
+            return;
+        }
+        pendingOrderCacheRepository.releaseReservation(orderId, RedisConstant.AVAILABLE_PRODUCT_KEY)
+                .ifPresentOrElse(
+                        released -> log.debug("reservation released orderId={} products={}", orderId, released),
+                        () -> log.warn("order moved to {} but its reservation was already gone. orderId={}", target, orderId));
+    }
+
     private RLock acquireLockWithRetry(String lockKey, DistributedLockContext lockContext) {
         log.info("(acquireLockWithRetry) Acquiring lock with key: {}", lockKey);
         RLock lock = redissonClient.getFairLock(lockKey);
@@ -520,11 +453,6 @@ public class OrderServiceImpl implements OrderService {
         throw new InternalErrorException("order.lock.acquire_failed", Map.of("key", lockKey));
     }
 
-    private void updateOrderStatus(String orderId, OrderStatus status) {
-        log.info("(updateOrderStatus) Updating order {} status to {}", orderId, status);
-        masterOrderRepo.updateStatus(orderId, status);
-    }
-
 
     private Order saveOrder(String address, String phoneNumber, String userId) {
         log.info("(saveOrder) Saving order for user: {}", userId);
@@ -565,42 +493,6 @@ public class OrderServiceImpl implements OrderService {
         return inventoryGrpcClientService.fetchInventoryData(request.getIds());
     }
 
-    /**
-     * Checks if a payment event has already been processed for this order.
-     * MongoDB's unique compound index on (orderId, eventType) ensures atomicity.
-     *
-     * IMPORTANT: This method SAVES the record if it doesn't exist (returns false).
-     * No need to call a separate "record" method afterward.
-     *
-     * @param orderId Order ID to check
-     * @param eventType Event type (PAYMENT_SUCCESS, PAYMENT_FAILED, PAYMENT_CANCELED)
-     * @return true if event was already processed, false otherwise (and saves the record)
-     */
-    private boolean isEventAlreadyProcessed(String orderId, PaymentEventType eventType) {
-        log.debug("(isEventAlreadyProcessed) Checking if event {} for order {} was already processed",
-                eventType, orderId);
-
-        try {
-            // Try to insert the record
-            ProcessedPaymentEvent event = ProcessedPaymentEvent.builder()
-                    .orderId(orderId)
-                    .eventType(eventType)
-                    .processedAt(LocalDateTime.now())
-                    .build();
-
-            processedPaymentEventRepository.save(event);
-
-            // If save succeeded, event was NOT processed before (and we just saved it)
-            log.info("(isEventAlreadyProcessed) First time processing event {} for order {}, record saved",
-                    eventType, orderId);
-            return false;
-        } catch (DuplicateKeyException e) {
-            // Duplicate key means event was already processed
-            log.info("(isEventAlreadyProcessed) Event {} for order {} already processed, skipping",
-                    eventType, orderId);
-            return true;
-        }
-    }
 
     @Override
     @Transactional(readOnly = true)

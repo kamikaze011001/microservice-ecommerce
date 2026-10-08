@@ -6,13 +6,11 @@ import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheReposit
 import org.aibles.ecommerce.core_redis.constant.RedisConstant;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.order_service.client.InventoryGrpcClientService;
+import org.aibles.order_service.constant.OrderStatus;
 import org.aibles.order_service.dto.request.OrderItemRequest;
 import org.aibles.order_service.dto.request.OrderRequest;
 import org.aibles.order_service.entity.Order;
-import org.aibles.order_service.entity.ProcessedPaymentEvent;
-import org.aibles.order_service.repository.ProcessedPaymentEventRepository;
 import org.junit.jupiter.api.Assertions;
-import org.springframework.dao.DuplicateKeyException;
 import org.aibles.order_service.repository.master.MasterOrderItemRepo;
 import org.aibles.order_service.repository.master.MasterOrderRepo;
 import org.aibles.order_service.repository.slave.SlaveOrderItemRepo;
@@ -20,6 +18,7 @@ import org.aibles.order_service.repository.slave.SlaveOrderRepo;
 import org.aibles.order_service.service.impl.OrderServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.context.ApplicationEventPublisher;
@@ -39,7 +38,6 @@ class OrderReserveAvailableTest {
     private MasterOrderRepo masterOrderRepo;
     private MasterOrderItemRepo masterOrderItemRepo;
     private RedissonClient redissonClient;
-    private ProcessedPaymentEventRepository processedPaymentEventRepository;
     private ApplicationEventPublisher eventPublisher;
     private SlaveOrderRepo slaveOrderRepo;
     private SlaveOrderItemRepo slaveOrderItemRepo;
@@ -54,7 +52,6 @@ class OrderReserveAvailableTest {
         masterOrderRepo = mock(MasterOrderRepo.class);
         masterOrderItemRepo = mock(MasterOrderItemRepo.class);
         redissonClient = mock(RedissonClient.class);
-        processedPaymentEventRepository = mock(ProcessedPaymentEventRepository.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
         slaveOrderRepo = mock(SlaveOrderRepo.class);
         slaveOrderItemRepo = mock(SlaveOrderItemRepo.class);
@@ -66,7 +63,6 @@ class OrderReserveAvailableTest {
                 masterOrderRepo,
                 masterOrderItemRepo,
                 redissonClient,
-                processedPaymentEventRepository,
                 eventPublisher,
                 slaveOrderRepo,
                 slaveOrderItemRepo
@@ -136,44 +132,54 @@ class OrderReserveAvailableTest {
     }
 
     @Test
-    void handleCanceledOrder_incrsAvailableKey_notDecrsQueueKey() {
-        // Arrange
-        when(processedPaymentEventRepository.save(any(ProcessedPaymentEvent.class)))
-                .thenReturn(new ProcessedPaymentEvent());
-        when(pendingOrderCacheRepository.getProductQuantitiesForOrder("order-cancel"))
+    void handleCanceledOrder_firstDelivery_movesStatusThenReleasesAtomically() {
+        when(masterOrderRepo.updateStatusIfCurrent("order-cancel", OrderStatus.PROCESSING, OrderStatus.CANCELED))
+                .thenReturn(1);
+        when(pendingOrderCacheRepository.releaseReservation("order-cancel", RedisConstant.AVAILABLE_PRODUCT_KEY))
                 .thenReturn(Optional.of(Map.of("prod-1", 3L)));
 
-        // Act
         orderService.handleCanceledOrder("order-cancel");
 
-        // Assert — release uses AVAILABLE_PRODUCT_KEY incr
-        verify(redisRepository).incr(RedisConstant.AVAILABLE_PRODUCT_KEY + "prod-1", 3L);
-        verify(redisRepository, never()).decr(eq(RedisConstant.QUEUE_PRODUCT_KEY + "prod-1"), anyLong());
+        InOrder inOrder = inOrder(masterOrderRepo, pendingOrderCacheRepository);
+        inOrder.verify(masterOrderRepo).updateStatusIfCurrent("order-cancel", OrderStatus.PROCESSING, OrderStatus.CANCELED);
+        inOrder.verify(pendingOrderCacheRepository).releaseReservation("order-cancel", RedisConstant.AVAILABLE_PRODUCT_KEY);
+        // never the non-atomic read → incr path two pods could both run
+        verify(redisRepository, never()).incr(anyString(), anyLong());
     }
 
     @Test
-    void handleFailedOrder_incrsAvailableKey_notDecrsQueueKey() {
-        when(processedPaymentEventRepository.save(any(ProcessedPaymentEvent.class)))
-                .thenReturn(new ProcessedPaymentEvent());
-        when(pendingOrderCacheRepository.getProductQuantitiesForOrder("order-fail"))
-                .thenReturn(Optional.of(Map.of("prod-2", 1L)));
+    void handleFailedOrder_firstDelivery_movesToFailedAndReleases() {
+        when(masterOrderRepo.updateStatusIfCurrent("order-fail", OrderStatus.PROCESSING, OrderStatus.FAILED))
+                .thenReturn(1);
+        when(pendingOrderCacheRepository.releaseReservation(anyString(), anyString())).thenReturn(Optional.empty());
 
         orderService.handleFailedOrder("order-fail");
 
-        verify(redisRepository).incr(RedisConstant.AVAILABLE_PRODUCT_KEY + "prod-2", 1L);
-        verify(redisRepository, never()).decr(eq(RedisConstant.QUEUE_PRODUCT_KEY + "prod-2"), anyLong());
+        verify(pendingOrderCacheRepository).releaseReservation("order-fail", RedisConstant.AVAILABLE_PRODUCT_KEY);
     }
 
     @Test
-    void handleCanceledOrder_alreadyProcessed_doesNotIncrAvailable() {
-        // stub the processed-event save to throw DuplicateKeyException —
-        // isEventAlreadyProcessed catches this and returns true → early return
-        when(processedPaymentEventRepository.save(any(ProcessedPaymentEvent.class)))
-                .thenThrow(new DuplicateKeyException("duplicate key"));
+    void handleCanceledOrder_redeliveryOrAlreadyFinal_releasesNothing() {
+        // the state guard matched no row: a redelivery, a concurrent duplicate on another
+        // pod, or a cancel arriving after COMPLETED
+        when(masterOrderRepo.updateStatusIfCurrent(anyString(), any(), any())).thenReturn(0);
 
         orderService.handleCanceledOrder("order-cancel-dup");
 
-        // duplicate event: inventory must NOT be released a second time
+        verify(pendingOrderCacheRepository, never()).releaseReservation(anyString(), anyString());
         verify(redisRepository, never()).incr(anyString(), anyLong());
+    }
+
+    @Test
+    void handleSuccessOrder_onlyMovesStatus_neverReleasesTheReservation() {
+        // inventory-service consumes the reservation of a paid order; releasing it here
+        // would hand sold units back to `available`
+        when(masterOrderRepo.updateStatusIfCurrent("order-ok", OrderStatus.PROCESSING, OrderStatus.COMPLETED))
+                .thenReturn(1);
+
+        orderService.handleSuccessOrder("order-ok");
+
+        verify(masterOrderRepo).updateStatusIfCurrent("order-ok", OrderStatus.PROCESSING, OrderStatus.COMPLETED);
+        verify(pendingOrderCacheRepository, never()).releaseReservation(anyString(), anyString());
     }
 }

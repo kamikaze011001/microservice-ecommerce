@@ -6,7 +6,7 @@ import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheReposit
 import org.aibles.ecommerce.core_redis.configuration.EnableCoreRedis;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.ecommerce.core_routing_db.configuration.EnableDatasourceRouting;
-import org.aibles.ecommerce.inventory_service.repository.ProcessedPaymentEventRepository;
+import org.aibles.ecommerce.inventory_service.repository.master.MasterProcessedPaymentEventRepo;
 import org.aibles.ecommerce.inventory_service.repository.master.MasterInventoryProductRepository;
 import org.aibles.ecommerce.inventory_service.repository.master.MasterProductQuantityHistoryRepo;
 import org.aibles.ecommerce.inventory_service.repository.slave.SlaveInventoryProductRepository;
@@ -49,7 +49,7 @@ public class InventoryServiceConfiguration {
                                              RedisRepository redisRepository,
                                              PendingOrderCacheRepository pendingOrderCacheRepository,
                                              RedissonClient redissonClient,
-                                             ProcessedPaymentEventRepository processedPaymentEventRepository) {
+                                             MasterProcessedPaymentEventRepo masterProcessedPaymentEventRepo) {
         return new InventoryServiceImpl(masterInventoryProductRepository,
                 slaveInventoryProductRepository,
                 masterProductQuantityHistoryRepo,
@@ -58,6 +58,6 @@ public class InventoryServiceConfiguration {
                 redisRepository,
                 pendingOrderCacheRepository,
                 redissonClient,
-                processedPaymentEventRepository);
+                masterProcessedPaymentEventRepo);
     }
 }

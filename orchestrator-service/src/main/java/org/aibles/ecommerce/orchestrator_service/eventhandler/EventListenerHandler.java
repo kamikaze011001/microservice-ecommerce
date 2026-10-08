@@ -5,13 +5,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.aibles.ecommerce.common_dto.avro_kafka.*;
 import org.aibles.ecommerce.common_dto.event.*;
 import org.aibles.ecommerce.orchestrator_service.config.ApplicationKafkaProperties;
+import org.aibles.ecommerce.orchestrator_service.listener.CdcRecordSource;
 import org.aibles.ecommerce.orchestrator_service.util.AvroConverter;
 import org.apache.avro.specific.SpecificRecordBase;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.context.event.EventListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -43,7 +46,7 @@ public class EventListenerHandler {
         );
 
         if (converted != null) {
-            publishToTopics(converted, converted.getProductId().toString(), Collections.singletonList(
+            publishToTopics(converted, converted.getProductId().toString(), sourceEventId(event), Collections.singletonList(
                     "product-service.product.update-quantity"
             ));
         }
@@ -60,10 +63,14 @@ public class EventListenerHandler {
         );
 
         if (converted != null) {
-            publishToTopics(converted, converted.getId().toString(), Collections.singletonList(
+            publishToTopics(converted, converted.getId().toString(), sourceEventId(event), Collections.singletonList(
                     "inventory-service.product.update"
             ));
         }
+    }
+
+    private static String sourceEventId(BaseEvent event) {
+        return event.getSource() instanceof CdcRecordSource cdc ? cdc.eventId() : null;
     }
 
     /**
@@ -98,13 +105,19 @@ public class EventListenerHandler {
      *
      * @param message   The message to publish
      * @param productId Kafka record key
+     * @param sourceEventId id of the CDC record this was derived from, sent as the
+     *                      {@link EventHeaders#SOURCE_EVENT_ID} header; null if unknown
      * @param topicKeys List of topic keys to publish to
      */
-    private void publishToTopics(Object message, String productId, List<String> topicKeys) {
+    private void publishToTopics(Object message, String productId, String sourceEventId, List<String> topicKeys) {
         for (String topicKey : topicKeys) {
             String topic = applicationKafkaProperties.getTopics().get(topicKey);
+            ProducerRecord<String, Object> record = new ProducerRecord<>(topic, productId, message);
+            if (sourceEventId != null) {
+                record.headers().add(EventHeaders.SOURCE_EVENT_ID, sourceEventId.getBytes(StandardCharsets.UTF_8));
+            }
             try {
-                kafkaTemplate.send(topic, productId, message)
+                kafkaTemplate.send(record)
                         .get(SEND_ACK_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

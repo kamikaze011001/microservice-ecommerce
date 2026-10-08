@@ -9,8 +9,6 @@ import org.aibles.order_service.dto.request.OrderItemRequest;
 import org.aibles.order_service.dto.request.OrderRequest;
 import org.aibles.order_service.entity.Order;
 import org.aibles.order_service.entity.OrderItem;
-import org.aibles.order_service.entity.ProcessedPaymentEvent;
-import org.aibles.order_service.repository.ProcessedPaymentEventRepository;
 import org.aibles.order_service.repository.master.MasterOrderItemRepo;
 import org.aibles.order_service.repository.master.MasterOrderRepo;
 import org.aibles.order_service.repository.slave.SlaveOrderItemRepo;
@@ -43,7 +41,6 @@ class OrderCreateSnapshotTest {
     private MasterOrderRepo masterOrderRepo;
     private MasterOrderItemRepo masterOrderItemRepo;
     private RedissonClient redissonClient;
-    private ProcessedPaymentEventRepository processedPaymentEventRepository;
     private ApplicationEventPublisher eventPublisher;
     private SlaveOrderRepo slaveOrderRepo;
     private SlaveOrderItemRepo slaveOrderItemRepo;
@@ -58,7 +55,6 @@ class OrderCreateSnapshotTest {
         masterOrderRepo = mock(MasterOrderRepo.class);
         masterOrderItemRepo = mock(MasterOrderItemRepo.class);
         redissonClient = mock(RedissonClient.class);
-        processedPaymentEventRepository = mock(ProcessedPaymentEventRepository.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
         slaveOrderRepo = mock(SlaveOrderRepo.class);
         slaveOrderItemRepo = mock(SlaveOrderItemRepo.class);
@@ -70,7 +66,6 @@ class OrderCreateSnapshotTest {
                 masterOrderRepo,
                 masterOrderItemRepo,
                 redissonClient,
-                processedPaymentEventRepository,
                 eventPublisher,
                 slaveOrderRepo,
                 slaveOrderItemRepo
