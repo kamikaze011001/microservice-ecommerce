@@ -54,6 +54,7 @@ install_module "$SCRIPT_DIR/core/core-paypal" "core-paypal"
 install_module "$SCRIPT_DIR/core/core-email" "core-email"
 install_module "$SCRIPT_DIR/core/core-exception-api" "core-exception-api"
 install_module "$SCRIPT_DIR/core/core-mongo-event" "core-mongo-event"
+install_module "$SCRIPT_DIR/core/core-kafka-consumer" "core-kafka-consumer"
 
 echo "========================================="
 echo "PHASE 2: Installing Service Modules"

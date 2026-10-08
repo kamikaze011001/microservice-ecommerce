@@ -21,10 +21,19 @@ spring:
 
     consumer:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+      # Wraps the Avro deserializer so an unreadable record becomes a DeserializationException
+      # the error handler dead-letters (core-kafka-consumer). A bare KafkaAvroDeserializer
+      # throws inside poll() and wedges the partition on that record forever.
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
+        spring.deserializer.value.delegate.class: io.confluent.kafka.serializers.KafkaAvroDeserializer
         specific.avro.reader: false
-      auto-offset-reset: latest
+        # Incremental rebalances: when a pod joins or leaves, only the partitions that change
+        # owner pause; every other partition keeps consuming.
+        partition.assignment.strategy: org.apache.kafka.clients.consumer.CooperativeStickyAssignor
+      # A brand-new consumer group starts from the oldest retained record instead of
+      # silently skipping everything already on the topic.
+      auto-offset-reset: earliest
   jpa:
     hibernate:
       ddl-auto: update
@@ -50,7 +59,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,prometheus,dltreplay
       base-path: /actuator
   endpoint:
     health:

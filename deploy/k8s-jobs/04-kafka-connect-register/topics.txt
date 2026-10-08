@@ -30,6 +30,14 @@ product-service.product.update-quantity                12  delete
 # Mongo CDC — written by the source connector, key = fullDocument.aggregateId
 ecommerce_db.ecommerce_inventory.event                 12  delete
 
-# Dead-letter topics (unused until PR4 wires DLTs)
-dlq-mongodb-sink                                       1   delete
-dlq-order-processing                                   1   delete
+# Dead-letter topics — one per consumed topic, written by core-kafka-consumer's error
+# handler after retries are exhausted (or at once for an unreadable record). The
+# recoverer keeps the SOURCE partition number, so each DLT needs at least as many
+# partitions as its source: 12. Replay with `make dlt-replay svc=<service> topic=<topic>`.
+order-service.order.success-status.DLT                    12  delete
+order-service.order.failed-status.DLT                     12  delete
+order-service.order.canceled-status.DLT                   12  delete
+inventory-service.product.update.DLT                      12  delete
+inventory-service.inventory-product.update-quantity.DLT   12  delete
+product-service.product.update-quantity.DLT               12  delete
+ecommerce_db.ecommerce_inventory.event.DLT                12  delete

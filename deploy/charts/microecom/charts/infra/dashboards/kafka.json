@@ -260,6 +260,45 @@
         "mode": "markdown",
         "content": "**RF=1 single broker** — replication metrics are degenerate locally; kept to show what to watch in prod.\n\nIn a production multi-broker cluster:\n- **Under-replicated** should be 0; any spike indicates a broker lagging or down.\n- **In-sync replicas** should equal the replication factor for every partition."
       }
+    },
+    { "id": 19, "type": "row", "title": "6 Dead letters", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 69 } },
+    {
+      "id": 20,
+      "type": "stat",
+      "title": "Dead-lettered in the last hour",
+      "description": "Records the consumers' error handler gave up on — after blocking retries, or at once when unreadable. Anything above 0 needs a look: fix the cause, then `make dlt-replay svc=<service> topic=<topic>`.",
+      "datasource": { "type": "prometheus", "uid": "${DS_VICTORIAMETRICS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 70 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_VICTORIAMETRICS}" },
+          "expr": "sum(increase(kafka_topic_partition_current_offset{topic=~\".+[.]DLT\"}[1h])) or vector(0)",
+          "legendFormat": "dead letters / 1h"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Dead letters by topic (per 5m)",
+      "datasource": { "type": "prometheus", "uid": "${DS_VICTORIAMETRICS}" },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 70 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_VICTORIAMETRICS}" },
+          "expr": "sum by (topic)(increase(kafka_topic_partition_current_offset{topic=~\".+[.]DLT\"}[5m]))",
+          "legendFormat": "{{topic}}"
+        }
+      ]
     }
   ]
 }

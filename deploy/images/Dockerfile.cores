@@ -46,3 +46,6 @@ RUN cd core-exception-api && mvn -B -DskipTests install
 
 COPY core/core-mongo-event/ ./core-mongo-event/
 RUN cd core-mongo-event && mvn -B -DskipTests install
+
+COPY core/core-kafka-consumer/ ./core-kafka-consumer/
+RUN cd core-kafka-consumer && mvn -B -DskipTests install
