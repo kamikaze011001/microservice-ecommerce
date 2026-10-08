@@ -22,7 +22,6 @@ NC='\033[0m' # No Color
 KAFKA_CONTAINER="${KAFKA_CONTAINER:-docker-kafka-1}"
 BOOTSTRAP_SERVER="${BOOTSTRAP_SERVER:-localhost:9092}"
 REPLICATION_FACTOR="${REPLICATION_FACTOR:-1}"
-PARTITIONS="${PARTITIONS:-3}"
 
 # =============================================================================
 # Topic Definitions
@@ -35,29 +34,11 @@ CONNECT_TOPICS=(
     "connect-status:5:compact"
 )
 
-# Application topics for e-commerce microservices
-APP_TOPICS=(
-    # Order Service topics
-    "order-service.order.success-status:${PARTITIONS}:delete"
-    "order-service.order.failed-status:${PARTITIONS}:delete"
-    "order-service.order.canceled-status:${PARTITIONS}:delete"
-
-    # Inventory Service topics
-    "inventory-service.product.update:${PARTITIONS}:delete"
-    "inventory-service.inventory-product.update-quantity:${PARTITIONS}:delete"
-
-    # Product Service topics
-    "product-service.product.update-quantity:${PARTITIONS}:delete"
-
-    # Dead Letter Queue topics
-    "dlq-mongodb-sink:1:delete"
-    "dlq-order-processing:1:delete"
-)
-
-# MongoDB Change Stream topic (created by connector, but we can pre-create)
-MONGO_TOPICS=(
-    "ecommerce_db.ecommerce_inventory.event:${PARTITIONS}:delete"
-)
+# Application + CDC + DLQ topics come from the canonical list shared with the
+# k8s/AWS create-topics initContainer — the ONE place partitions are declared.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TOPICS_FILE="${TOPICS_FILE:-${SCRIPT_DIR}/../../deploy/k8s-jobs/04-kafka-connect-register/topics.txt}"
+CREATE_TOPICS="${SCRIPT_DIR}/../../deploy/k8s-jobs/04-kafka-connect-register/create-topics.sh"
 
 # =============================================================================
 # Helper Functions
@@ -179,8 +160,8 @@ delete_topic() {
 delete_all_app_topics() {
     log_warning "Deleting all application topics..."
 
-    for topic_spec in "${APP_TOPICS[@]}" "${MONGO_TOPICS[@]}"; do
-        local topic_name=$(echo $topic_spec | cut -d: -f1)
+    local topic_name
+    for topic_name in $(grep -v '^[[:space:]]*#' "${TOPICS_FILE}" | awk 'NF {print $1}'); do
         delete_topic "$topic_name"
     done
 }
@@ -213,7 +194,7 @@ Topics Created:
 Usage: $0 [options]
 
 Options:
-  (no args)     Create all required topics
+  (no args)     Create missing topics; grow any with fewer partitions than topics.txt
   --list        List existing topics
   --describe    Show detailed topic information
   --delete-app  Delete all application topics (not Kafka Connect topics)
@@ -223,13 +204,12 @@ Environment Variables:
   KAFKA_CONTAINER     Docker container name (default: docker-kafka-1)
   BOOTSTRAP_SERVER    Kafka bootstrap server (default: localhost:9092)
   REPLICATION_FACTOR  Topic replication factor (default: 1)
-  PARTITIONS          Default partition count (default: 3)
+  TOPICS_FILE         Canonical topic list (default: deploy/k8s-jobs/04-kafka-connect-register/topics.txt)
 
 Examples:
   $0                  # Create all topics
   $0 --list           # List existing topics
   $0 --describe       # Show topic details
-  PARTITIONS=6 $0     # Create with 6 partitions
 EOF
 }
 
@@ -277,7 +257,7 @@ main() {
     echo "  Kafka Container:    ${KAFKA_CONTAINER}"
     echo "  Bootstrap Server:   ${BOOTSTRAP_SERVER}"
     echo "  Replication Factor: ${REPLICATION_FACTOR}"
-    echo "  Default Partitions: ${PARTITIONS}"
+    echo "  Topics File:        ${TOPICS_FILE}"
     echo ""
 
     # Check Kafka availability
@@ -288,12 +268,12 @@ main() {
     create_topics "${CONNECT_TOPICS[@]}"
 
     echo ""
-    log_info "Creating application topics..."
-    create_topics "${APP_TOPICS[@]}"
-
-    echo ""
-    log_info "Creating MongoDB change stream topics..."
-    create_topics "${MONGO_TOPICS[@]}"
+    log_info "Creating / growing topics from ${TOPICS_FILE}..."
+    KAFKA_TOPICS="docker exec ${KAFKA_CONTAINER} kafka-topics" \
+    BOOTSTRAP="${BOOTSTRAP_SERVER}" \
+    TOPICS_FILE="${TOPICS_FILE}" \
+    REPLICATION_FACTOR="${REPLICATION_FACTOR}" \
+        sh "${CREATE_TOPICS}"
 
     echo ""
     echo "============================================="

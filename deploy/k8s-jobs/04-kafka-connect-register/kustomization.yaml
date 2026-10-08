@@ -7,5 +7,7 @@ configMapGenerator:
   - name: kafka-connect-register-scripts
     files:
       - seed.sh
+      - create-topics.sh
+      - topics.txt
 generatorOptions:
   disableNameSuffixHash: true

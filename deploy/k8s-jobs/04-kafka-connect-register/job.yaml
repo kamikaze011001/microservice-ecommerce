@@ -9,6 +9,22 @@ spec:
   template:
     spec:
       restartPolicy: OnFailure
+      # Topics first: brokers run with auto.create.topics.enable=false, so the
+      # CDC topic must exist before the connector below starts producing to it.
+      initContainers:
+        - name: create-topics
+          image: apache/kafka:3.9.1   # same image as the broker → matching kafka-topics CLI
+          command: ["/bin/sh", "/scripts/create-topics.sh"]
+          env:
+            - name: KAFKA_TOPICS
+              value: /opt/kafka/bin/kafka-topics.sh
+            - name: BOOTSTRAP
+              value: kafka.infra.svc.cluster.local:9092
+            - name: TOPICS_FILE
+              value: /scripts/topics.txt
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
       containers:
         - name: register
           image: curlimages/curl:8.10.1

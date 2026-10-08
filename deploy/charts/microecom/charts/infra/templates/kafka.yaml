@@ -20,9 +20,10 @@
 #
 # Consumers connect at kafka.infra.svc.cluster.local:9092 (PLAINTEXT) — both
 # the core services (via Vault, seeded by 03-vault-seed) and kafka-connect.
-# Replication factor 1 everywhere (single broker). App/saga topics are created
-# by Spring KafkaAdmin (NewTopic beans) + auto-create; Connect creates its own
-# internal topics via AdminClient — so no separate topic-creation Job.
+# Replication factor 1 everywhere (single broker). App/saga/CDC topics are
+# declared in deploy/k8s-jobs/04-kafka-connect-register/topics.txt and created by
+# that Job's create-topics initContainer (auto-create is OFF). Connect and
+# Schema Registry create their own internal topics via AdminClient.
 #
 # LOCAL-DEV ONLY: PLAINTEXT, no SASL/TLS. AWS overlay points services at MSK
 # (bootstrap + SASL via Vault) — a Vault-only change, no app change.
@@ -109,8 +110,12 @@ spec:
               value: "1"
             - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
               value: "0"
+            # Topics come only from deploy/k8s-jobs/04-kafka-connect-register/topics.txt
+            # (created by that Job's initContainer). Auto-create would silently make a
+            # mistyped or unlisted topic with 1 partition — capping its consumer group at
+            # one pod no matter how far the HPA scales.
             - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
-              value: "true"
+              value: "false"
             - name: KAFKA_LOG_DIRS
               value: "/var/lib/kafka/data"
           ports:
