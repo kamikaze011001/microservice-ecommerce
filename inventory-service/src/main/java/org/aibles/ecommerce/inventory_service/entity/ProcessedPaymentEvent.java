@@ -1,61 +1,52 @@
 package org.aibles.ecommerce.inventory_service.entity;
 
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.aibles.ecommerce.inventory_service.constant.PaymentEventType;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
 
 /**
- * Tracks processed payment events to ensure idempotency.
- * Prevents duplicate processing when Kafka delivers same event multiple times.
+ * Inbox row: one per (order, payment event) inventory-service has applied.
  *
- * MongoDB compound unique index on (orderId, eventType) ensures atomic deduplication.
+ * Lives in MySQL and is written in the SAME transaction as the stock decrement and
+ * ledger rows it guards. So the work and the "done" mark commit or roll back
+ * together: a failure leaves no mark and the redelivery redoes the work, a success
+ * leaves the mark and the redelivery skips it. The old marker sat in MongoDB, was
+ * written BEFORE the work and outside the MySQL transaction, so a failure after it
+ * turned the retry into a silent skip — the event was lost.
+ *
+ * The primary key is the uniqueness guarantee: no separate index to create.
  */
+@Entity
+@Table(name = "processed_payment_event")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-@Document(collection = "processed_payment_events")
-@CompoundIndex(
-    name = "unique_order_event",
-    def = "{'orderId': 1, 'eventType': 1}",
-    unique = true
-)
 public class ProcessedPaymentEvent {
 
+    /** {@code <orderId>:<eventType>} */
     @Id
     private String id;
 
-    /**
-     * Order ID that this event processed
-     */
     private String orderId;
 
-    /**
-     * Type of payment event: PAYMENT_SUCCESS, PAYMENT_FAILED, PAYMENT_CANCELED
-     */
+    @Enumerated(EnumType.STRING)
     private PaymentEventType eventType;
 
-    /**
-     * When this event was first processed
-     */
-    @CreatedDate
     private LocalDateTime processedAt;
 
-    /**
-     * Kafka partition for debugging (optional)
-     */
-    private Integer kafkaPartition;
+    public static String idOf(String orderId, PaymentEventType eventType) {
+        return orderId + ":" + eventType;
+    }
 
-    /**
-     * Kafka offset for debugging (optional)
-     */
-    private Long kafkaOffset;
+    public static ProcessedPaymentEvent of(String orderId, PaymentEventType eventType) {
+        return new ProcessedPaymentEvent(idOf(orderId, eventType), orderId, eventType, LocalDateTime.now());
+    }
 }

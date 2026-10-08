@@ -9,6 +9,7 @@ import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheReposit
 import org.springframework.data.redis.connection.ReturnType;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.RedisSerializer;
 
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -113,6 +114,25 @@ public class PendingOrderCacheRepositoryImpl implements PendingOrderCacheReposit
             "end\n" +
             "\n" +
             "return 1  -- Success\n";
+
+    /**
+     * Claim-and-release for one pending order. ZREM returns 1 to exactly one caller,
+     * so only the caller that actually removed the entry increments the available
+     * counters — the cleanup job on every pod, the cancel/fail consumer and any
+     * redelivery can all race here and the stock is still released once.
+     *
+     * ARGV[1] zset key · ARGV[2] serialized member · ARGV[3] available-key prefix ·
+     * ARGV[4] n · ARGV[5..4+n] product ids · ARGV[5+n..4+2n] quantities
+     */
+    private static final String RELEASE_RESERVATION_LUA_SCRIPT =
+            "if redis.call('ZREM', ARGV[1], ARGV[2]) == 0 then\n" +
+            "    return 0  -- someone else already claimed (or consumed) this order\n" +
+            "end\n" +
+            "local n = tonumber(ARGV[4])\n" +
+            "for i = 1, n do\n" +
+            "    redis.call('INCRBY', ARGV[3] .. ARGV[4 + i], tonumber(ARGV[4 + n + i]))\n" +
+            "end\n" +
+            "return 1\n";
 
     public PendingOrderCacheRepositoryImpl(RedisTemplate<String, Object> redisTemplate, ObjectMapper objectMapper) {
         this.redisTemplate = redisTemplate;
@@ -375,6 +395,44 @@ public class PendingOrderCacheRepositoryImpl implements PendingOrderCacheReposit
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public Optional<Map<String, Long>> releaseReservation(String orderId, String availableKeyPrefix) {
+        Object zsetMemberObj = redisTemplate.opsForHash().get(OrderCacheConstant.PENDING_ORDERS_INDEX, orderId);
+        if (zsetMemberObj == null) {
+            return Optional.empty();   // never pending, or already claimed/consumed
+        }
+        String zsetMember = zsetMemberObj.toString();
+        // A corrupt entry still gets claimed (with nothing to release) so it stops resurfacing.
+        Map<String, Long> quantities = parseProductQuantities(orderId, zsetMember).orElse(Map.of());
+
+        List<String> productIds = new ArrayList<>(quantities.keySet());
+        List<byte[]> args = new ArrayList<>();
+        args.add(OrderCacheConstant.PENDING_ORDERS_ZSET.getBytes(StandardCharsets.UTF_8));
+        // Same bytes the template wrote the member with — ZREM matches on exact bytes.
+        args.add(((RedisSerializer<Object>) redisTemplate.getValueSerializer()).serialize(zsetMember));
+        args.add(availableKeyPrefix.getBytes(StandardCharsets.UTF_8));
+        args.add(String.valueOf(productIds.size()).getBytes(StandardCharsets.UTF_8));
+        productIds.forEach(id -> args.add(id.getBytes(StandardCharsets.UTF_8)));
+        productIds.forEach(id -> args.add(String.valueOf(quantities.get(id)).getBytes(StandardCharsets.UTF_8)));
+
+        // Not swallowed: a Redis failure must surface so the caller (a Kafka consumer)
+        // retries instead of committing an offset for stock that was never released.
+        Long claimed = redisTemplate.execute((RedisCallback<Long>) connection ->
+                connection.scriptingCommands().eval(
+                        RELEASE_RESERVATION_LUA_SCRIPT.getBytes(StandardCharsets.UTF_8),
+                        ReturnType.INTEGER, 0, args.toArray(byte[][]::new)));
+
+        // The index entry is stale either way once the ZSET member is gone.
+        redisTemplate.opsForHash().delete(OrderCacheConstant.PENDING_ORDERS_INDEX, orderId);
+
+        if (claimed != null && claimed == 1L) {
+            log.debug("reservation released orderId={} products={}", orderId, quantities);
+            return Optional.of(quantities);
+        }
+        return Optional.empty();
+    }
+
+    @Override
     public Optional<Map<String, Long>> getProductQuantitiesForOrder(String orderId) {
         log.info("(getProductQuantitiesForOrder) Fetching product quantities for order: {}", orderId);
 
@@ -390,38 +448,7 @@ public class PendingOrderCacheRepositoryImpl implements PendingOrderCacheReposit
                 return Optional.empty();
             }
 
-            String zsetMember = zsetMemberObj.toString();
-
-            // Extract JSON from member (format: orderId:jsonData)
-            int separatorIndex = zsetMember.indexOf(':');
-            if (separatorIndex == -1) {
-                log.warn("(getProductQuantitiesForOrder) Invalid member format for order: {}", orderId);
-                return Optional.empty();
-            }
-
-            String orderDataJson = zsetMember.substring(separatorIndex + 1);
-
-            // Deserialize order data
-            Map<String, Object> orderData = objectMapper.readValue(
-                    orderDataJson,
-                    new TypeReference<Map<String, Object>>() {}
-            );
-
-            // Extract products
-            Object productsObj = orderData.get("products");
-            if (productsObj instanceof Map<?, ?> rawMap) {
-                Map<String, Long> productQuantities = new HashMap<>();
-                for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
-                    if (entry.getKey() instanceof String key && entry.getValue() instanceof Number value) {
-                        productQuantities.put(key, value.longValue());
-                    }
-                }
-                log.debug("(getProductQuantitiesForOrder) Found product quantities for order: {}", orderId);
-                return Optional.of(productQuantities);
-            }
-
-            log.warn("(getProductQuantitiesForOrder) Invalid products data for order: {}", orderId);
-            return Optional.empty();
+            return parseProductQuantities(orderId, zsetMemberObj.toString());
         } catch (Exception e) {
             log.error("(getProductQuantitiesForOrder) Exception while fetching product quantities for order: {}", orderId, e);
             return Optional.empty();
@@ -473,6 +500,33 @@ public class PendingOrderCacheRepositoryImpl implements PendingOrderCacheReposit
             return Optional.empty();
         } catch (Exception e) {
             log.error("(getOrderPrice) Exception while fetching order price for order: {}", orderId, e);
+            return Optional.empty();
+        }
+    }
+
+    /** Parses the {@code products} map out of a ZSET member of the form {@code orderId:json}. */
+    private Optional<Map<String, Long>> parseProductQuantities(String orderId, String zsetMember) {
+        int separatorIndex = zsetMember.indexOf(':');
+        if (separatorIndex == -1) {
+            log.warn("pending-order entry has no separator, orderId={}", orderId);
+            return Optional.empty();
+        }
+        try {
+            Map<String, Object> orderData = objectMapper.readValue(
+                    zsetMember.substring(separatorIndex + 1), new TypeReference<Map<String, Object>>() {});
+            if (orderData.get("products") instanceof Map<?, ?> rawMap) {
+                Map<String, Long> productQuantities = new HashMap<>();
+                for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+                    if (entry.getKey() instanceof String key && entry.getValue() instanceof Number value) {
+                        productQuantities.put(key, value.longValue());
+                    }
+                }
+                return Optional.of(productQuantities);
+            }
+            log.warn("pending-order entry has no products map, orderId={}", orderId);
+            return Optional.empty();
+        } catch (JsonProcessingException e) {
+            log.warn("pending-order entry is not valid JSON, orderId={}", orderId, e);
             return Optional.empty();
         }
     }

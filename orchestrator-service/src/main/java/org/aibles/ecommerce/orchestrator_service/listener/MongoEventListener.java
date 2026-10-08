@@ -44,6 +44,8 @@ public class MongoEventListener {
     @KafkaListener(groupId = "${application.kafka.group-id.mongo.event}",
     topics = "${application.kafka.topics.mongo.event}")
     private void handleChangeStream(@Payload final GenericRecord genericRecord,
+                                    @Header(KafkaHeaders.RECEIVED_TOPIC) final String topic,
+                                    @Header(KafkaHeaders.RECEIVED_PARTITION) final Integer partition,
                                     @Header(KafkaHeaders.OFFSET) final Long offset) throws JsonProcessingException {
         log.info("(handleChangeStream) offset: {}", offset);
 
@@ -82,8 +84,10 @@ public class MongoEventListener {
             return;
         }
 
-        // Flows 2 & 3: stateless routing via EventListenerHandler
-        eventPublisher.publishEvent(ecommerceEvent.createEvent(this, eventDTO.getData()));
+        // Flows 2 & 3: stateless routing via EventListenerHandler. The CDC record is the
+        // event source so the forward can carry its id for downstream deduplication.
+        eventPublisher.publishEvent(ecommerceEvent.createEvent(
+                new CdcRecordSource(topic, partition, offset), eventDTO.getData()));
     }
 
     private String extractOrderId(Object data) {

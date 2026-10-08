@@ -71,4 +71,15 @@ public interface PendingOrderCacheRepository {
      * @return true if all products were successfully reserved, false if any product has insufficient stock
      */
     boolean checkAndReserveAvailableAtomic(String keyPrefix, Map<String, Long> productQuantities);
+
+    /**
+     * Atomically claims a pending order and releases its reserved units back to the
+     * available counters ({@code availableKeyPrefix + productId}). Exactly one caller
+     * across all pods wins; every other concurrent or later caller gets empty.
+     * Use this — never read-then-incr-then-remove — wherever a reservation is given back
+     * (cancel, failure, expiry).
+     *
+     * @return the released quantities if this call released them, empty otherwise
+     */
+    Optional<Map<String, Long>> releaseReservation(String orderId, String availableKeyPrefix);
 }

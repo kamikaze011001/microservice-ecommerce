@@ -2,68 +2,61 @@ package org.aibles.order_service.scheduler;
 
 import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheRepository;
 import org.aibles.ecommerce.core_redis.constant.RedisConstant;
-import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
 
 import java.util.Map;
+import java.util.Optional;
 
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 class ExpiredOrderCleanupJobTest {
 
-    private RedisRepository redisRepository;
     private PendingOrderCacheRepository pendingOrderCacheRepository;
-    private RedissonClient redissonClient;
-
     private ExpiredOrderCleanupJob job;
 
     @BeforeEach
     void setUp() {
-        redisRepository = mock(RedisRepository.class);
         pendingOrderCacheRepository = mock(PendingOrderCacheRepository.class);
-        redissonClient = mock(RedissonClient.class);
-
-        job = new ExpiredOrderCleanupJob(redisRepository, pendingOrderCacheRepository, redissonClient);
-
-        RLock lock = mock(RLock.class);
-        when(redissonClient.getFairLock(anyString())).thenReturn(lock);
-        try {
-            when(lock.tryLock(anyLong(), anyLong(), any())).thenReturn(true);
-        } catch (InterruptedException ignored) {}
-        when(lock.isHeldByCurrentThread()).thenReturn(true);
+        job = new ExpiredOrderCleanupJob(pendingOrderCacheRepository);
     }
 
     @Test
-    void cleanupExpiredOrders_incrsAvailableKey_notDecrsQueueKey() {
+    void cleanupExpiredOrders_releasesEachThroughTheAtomicClaim() {
         when(pendingOrderCacheRepository.getExpiredOrders(anyLong()))
-                .thenReturn(Map.of("order-expired", Map.of("prod-1", 4L)));
+                .thenReturn(Map.of("order-a", Map.of("prod-1", 4L), "order-b", Map.of("prod-2", 1L)));
+        when(pendingOrderCacheRepository.releaseReservation(anyString(), anyString()))
+                .thenReturn(Optional.of(Map.of()));
 
         job.cleanupExpiredOrders();
 
-        verify(redisRepository).incr(RedisConstant.AVAILABLE_PRODUCT_KEY + "prod-1", 4L);
-        verify(redisRepository, never()).decr(eq(RedisConstant.QUEUE_PRODUCT_KEY + "prod-1"), anyLong());
+        verify(pendingOrderCacheRepository).releaseReservation("order-a", RedisConstant.AVAILABLE_PRODUCT_KEY);
+        verify(pendingOrderCacheRepository).releaseReservation("order-b", RedisConstant.AVAILABLE_PRODUCT_KEY);
+        // never the old read → incr → remove sequence, which two pods could both run
+        verify(pendingOrderCacheRepository, never()).removeFromPendingOrders(anyString());
     }
 
     @Test
-    void cleanupExpiredOrders_noExpiredOrders_doesNothing() {
+    void cleanupExpiredOrders_oneFailure_doesNotStopTheRest() {
+        when(pendingOrderCacheRepository.getExpiredOrders(anyLong()))
+                .thenReturn(Map.of("order-a", Map.of("prod-1", 4L), "order-b", Map.of("prod-2", 1L)));
+        when(pendingOrderCacheRepository.releaseReservation(eq("order-a"), anyString()))
+                .thenThrow(new RuntimeException("redis down"));
+        when(pendingOrderCacheRepository.releaseReservation(eq("order-b"), anyString()))
+                .thenReturn(Optional.empty());
+
+        job.cleanupExpiredOrders();
+
+        verify(pendingOrderCacheRepository).releaseReservation(eq("order-b"), anyString());
+    }
+
+    @Test
+    void cleanupExpiredOrders_noExpiredOrders_releasesNothing() {
         when(pendingOrderCacheRepository.getExpiredOrders(anyLong())).thenReturn(Map.of());
 
         job.cleanupExpiredOrders();
 
-        verifyNoInteractions(redisRepository);
-    }
-
-    @Test
-    void cleanupExpiredOrders_removesFromPendingOrdersAfterRelease() {
-        when(pendingOrderCacheRepository.getExpiredOrders(anyLong()))
-                .thenReturn(Map.of("order-expired", Map.of("prod-1", 2L)));
-
-        job.cleanupExpiredOrders();
-
-        verify(pendingOrderCacheRepository).removeFromPendingOrders("order-expired");
+        verify(pendingOrderCacheRepository, never()).releaseReservation(anyString(), anyString());
     }
 }
