@@ -238,7 +238,11 @@ mongo-connector-ensure:
 ## kafka-capacity-check: fail if any consumer's max pods × listener concurrency
 ## exceeds the smallest partition count in topics.txt (extra consumers sit idle).
 ## kafka-topics-test: offline decision-table test for create-topics.sh.
-.PHONY: kafka-capacity-check kafka-topics-test
+## dlt-replay: put <topic>.DLT back onto <topic> via the owning service's internal
+## actuator endpoint. Fix the cause first. ENV=k8s needs CONTEXT=<kube-context>.
+.PHONY: kafka-capacity-check kafka-topics-test dlt-replay
+dlt-replay:
+	@ENV=$(or $(ENV),compose) CONTEXT=$(CONTEXT) bash scripts/kafka/dlt-replay.sh $(svc) $(topic)
 kafka-capacity-check:
 	@bash scripts/kafka/check-partition-capacity.sh
 kafka-topics-test:

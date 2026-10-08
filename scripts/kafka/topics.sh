@@ -187,9 +187,8 @@ Topics Created:
     - product-service.product.update-quantity
     - ecommerce_db.ecommerce_inventory.event (MongoDB change stream)
 
-  Dead Letter Queues:
-    - dlq-mongodb-sink
-    - dlq-order-processing
+  Dead-letter topics:
+    - <each consumed topic>.DLT  (see topics.txt)
 
 Usage: $0 [options]
 

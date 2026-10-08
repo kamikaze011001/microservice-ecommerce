@@ -18,6 +18,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+import org.aibles.ecommerce.core_kafka_consumer.EnableKafkaConsumerResilience;
 import org.aibles.ecommerce.core_mongo_event.configuration.EnableMongoEvent;
 import org.springframework.data.mongodb.config.EnableMongoAuditing;
 import org.springframework.scheduling.annotation.EnableAsync;
@@ -28,6 +29,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @EnableAsync
 @EnableMongoAuditing
 @EnableMongoEvent
+@EnableKafkaConsumerResilience
 @EnableCoreRedis
 @EnableOrderCache
 @EnableJpaAuditing

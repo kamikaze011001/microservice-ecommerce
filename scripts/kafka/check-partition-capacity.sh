@@ -17,8 +17,8 @@ VALUES="${VALUES:-$ROOT/deploy/charts/microecom/charts/apps/values.yaml}"
 TOPICS_FILE="${TOPICS_FILE:-$ROOT/deploy/k8s-jobs/04-kafka-connect-register/topics.txt}"
 CONSUMERS="${CONSUMERS:-order-service inventory-service product-service orchestrator-service}"
 
-# Smallest partition count among business topics (dead-letter topics excluded).
-min_partitions="$(grep -v '^[[:space:]]*#' "$TOPICS_FILE" | awk 'NF && $1 !~ /^dlq-/ {print $2}' | sort -n | head -n 1)"
+# Smallest partition count among consumed topics (dead-letter topics excluded).
+min_partitions="$(grep -v '^[[:space:]]*#' "$TOPICS_FILE" | awk 'NF && $1 !~ /\.DLT$/ {print $2}' | sort -n | head -n 1)"
 default_replicas="$(awk '/^  replicas:/ {print $2; exit}' "$VALUES")"
 
 # Max pods for one service: its block runs from "  <svc>:" to the next 2-space key.
