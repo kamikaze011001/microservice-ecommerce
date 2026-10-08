@@ -43,3 +43,6 @@ RUN cd core-email && mvn -B -DskipTests install
 
 COPY core/core-exception-api/ ./core-exception-api/
 RUN cd core-exception-api && mvn -B -DskipTests install
+
+COPY core/core-mongo-event/ ./core-mongo-event/
+RUN cd core-mongo-event && mvn -B -DskipTests install

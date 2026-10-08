@@ -60,6 +60,7 @@ public class PaymentRecorder {
         masterPaymentRepo.markSuccess(orderId, PaymentStatus.SUCCESS, captureId);
         eventPublisher.publishEvent(new MongoSavedEvent(this,
                 EcommerceEvent.PAYMENT_SUCCESS.getValue(),
+                orderId,
                 PaymentSuccess.newBuilder().setOrderId(orderId).build()));
     }
 
@@ -68,6 +69,7 @@ public class PaymentRecorder {
         masterPaymentRepo.updateStatus(orderId, PaymentStatus.CANCELED);
         eventPublisher.publishEvent(new MongoSavedEvent(this,
                 EcommerceEvent.PAYMENT_CANCELED.getValue(),
+                orderId,
                 PaymentCanceled.newBuilder().setOrderId(orderId).build()));
     }
 
@@ -76,6 +78,7 @@ public class PaymentRecorder {
         masterPaymentRepo.updateStatus(orderId, PaymentStatus.FAILED);
         eventPublisher.publishEvent(new MongoSavedEvent(this,
                 EcommerceEvent.PAYMENT_FAILED.getValue(),
+                orderId,
                 PaymentFailed.newBuilder().setOrderId(orderId).build()));
     }
 }

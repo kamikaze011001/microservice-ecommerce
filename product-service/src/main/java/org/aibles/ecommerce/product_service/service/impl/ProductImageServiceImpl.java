@@ -70,7 +70,7 @@ public class ProductImageServiceImpl implements ProductImageService {
                 .setImageUrl(saved.getImageUrl())
                 .build();
         applicationEventPublisher.publishEvent(
-                new MongoSavedEvent(this, EcommerceEvent.PRODUCT_UPDATE.getValue(), productUpdate));
+                new MongoSavedEvent(this, EcommerceEvent.PRODUCT_UPDATE.getValue(), saved.getId(), productUpdate));
 
         return ProductResponse.from(saved, 0);
     }
