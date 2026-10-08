@@ -235,6 +235,15 @@ mongo-connector:
 mongo-connector-ensure:
 	@bash scripts/kafka/ensure-connector.sh
 
+## kafka-capacity-check: fail if any consumer's max pods × listener concurrency
+## exceeds the smallest partition count in topics.txt (extra consumers sit idle).
+## kafka-topics-test: offline decision-table test for create-topics.sh.
+.PHONY: kafka-capacity-check kafka-topics-test
+kafka-capacity-check:
+	@bash scripts/kafka/check-partition-capacity.sh
+kafka-topics-test:
+	@bash scripts/kafka/tests/create-topics-test.sh
+
 # ============================================================================
 # Maven
 # ============================================================================

@@ -1,0 +1,35 @@
+# Canonical Kafka topic list — the ONE place topics are declared.
+#
+#   <name>  <partitions>  <cleanup.policy>
+#
+# Read by create-topics.sh, which runs in two places:
+#   - compose:          scripts/kafka/topics.sh  (make kafka-topics / bootstrap-compose)
+#   - minikube + AWS:   the create-topics initContainer of job/kafka-connect-register
+# It lives in this directory because kustomize's configMapGenerator can only read
+# files under its own kustomization root.
+#
+# Brokers run with auto.create.topics.enable=false, so a topic missing here is a
+# loud UNKNOWN_TOPIC_OR_PARTITION error, not a silent 1-partition topic.
+#
+# Keyed business topics have 12 partitions: 12 divides evenly by 1/2/3/4/6/12
+# consumers, and a consumer group can never use more consumers than partitions.
+# scripts/kafka/check-partition-capacity.sh fails if HPA maxReplicas x listener
+# concurrency could exceed it. Raising a count later re-maps keys to partitions
+# (hash(key) % N), so per-key order breaks across the change — size up front.
+
+# Saga replies to order-service (key = orderId)
+order-service.order.success-status                     12  delete
+order-service.order.failed-status                      12  delete
+order-service.order.canceled-status                    12  delete
+
+# Product fan-out (key = orderId for update-quantity, productId for the rest)
+inventory-service.product.update                       12  delete
+inventory-service.inventory-product.update-quantity    12  delete
+product-service.product.update-quantity                12  delete
+
+# Mongo CDC — written by the source connector, key = fullDocument.aggregateId
+ecommerce_db.ecommerce_inventory.event                 12  delete
+
+# Dead-letter topics (unused until PR4 wires DLTs)
+dlq-mongodb-sink                                       1   delete
+dlq-order-processing                                   1   delete

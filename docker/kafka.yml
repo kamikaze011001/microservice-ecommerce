@@ -29,6 +29,10 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      # Topics come only from deploy/k8s-jobs/04-kafka-connect-register/topics.txt
+      # (make kafka-topics). Auto-create would silently make an unlisted topic with
+      # 1 partition, capping its consumer group at one instance.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
     healthcheck:
       test: kafka-topics --bootstrap-server kafka:9092 --list
       interval: 30s
