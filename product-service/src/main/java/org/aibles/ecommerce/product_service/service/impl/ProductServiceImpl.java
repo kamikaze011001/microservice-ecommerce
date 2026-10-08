@@ -48,7 +48,7 @@ public class ProductServiceImpl implements ProductService {
         }
         ProductUpdate productUpdate = productUpdateBuilder.build();
 
-        MongoSavedEvent event = new MongoSavedEvent(this, EcommerceEvent.PRODUCT_UPDATE.getValue(), productUpdate);
+        MongoSavedEvent event = new MongoSavedEvent(this, EcommerceEvent.PRODUCT_UPDATE.getValue(), product.getId(), productUpdate);
         applicationEventPublisher.publishEvent(event);
         return ProductResponse.from(product, 0);
     }
@@ -91,6 +91,7 @@ public class ProductServiceImpl implements ProductService {
 
         MongoSavedEvent event = new MongoSavedEvent(this,
                 EcommerceEvent.PRODUCT_UPDATE.getValue(),
+                product.getId(),
                 productUpdate);
         applicationEventPublisher.publishEvent(event);
         productRepository.save(product);

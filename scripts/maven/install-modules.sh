@@ -53,6 +53,7 @@ install_module "$SCRIPT_DIR/core/core-routing-db" "core-routing-db"
 install_module "$SCRIPT_DIR/core/core-paypal" "core-paypal"
 install_module "$SCRIPT_DIR/core/core-email" "core-email"
 install_module "$SCRIPT_DIR/core/core-exception-api" "core-exception-api"
+install_module "$SCRIPT_DIR/core/core-mongo-event" "core-mongo-event"
 
 echo "========================================="
 echo "PHASE 2: Installing Service Modules"

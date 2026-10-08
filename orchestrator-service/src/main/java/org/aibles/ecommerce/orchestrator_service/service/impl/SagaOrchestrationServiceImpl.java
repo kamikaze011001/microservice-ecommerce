@@ -17,14 +17,19 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
 public class SagaOrchestrationServiceImpl implements SagaOrchestrationService {
+
+    /** Bounded so a hung broker can't hold the consumer thread past max.poll.interval.ms (5 min). */
+    private static final Duration SEND_ACK_TIMEOUT = Duration.ofSeconds(10);
 
     private final SagaInstanceRepository repo;
     private final KafkaTemplate<String, Object> kafkaTemplate;
@@ -111,7 +116,8 @@ public class SagaOrchestrationServiceImpl implements SagaOrchestrationService {
         repo.save(saga);
 
         String orderId = saga.getOrderId();
-        boolean sent = sendWithRetry(topic(compensationReason.getTopicKey()), buildPaymentCompensation(compensationReason, orderId));
+        boolean sent = sendWithRetry(topic(compensationReason.getTopicKey()), orderId,
+                buildPaymentCompensation(compensationReason, orderId));
         if (!sent) {
             saga.setState(SagaState.FAILED);
             repo.save(saga);
@@ -129,14 +135,14 @@ public class SagaOrchestrationServiceImpl implements SagaOrchestrationService {
         repo.save(saga);
 
         PaymentSuccess avro = PaymentSuccess.newBuilder().setOrderId(orderId).build();
-        boolean orderSent = sendWithRetry(topic("order-service.order.success-status"), avro);
+        boolean orderSent = sendWithRetry(topic("order-service.order.success-status"), orderId, avro);
         if (!orderSent) {
             log.error("(handleSuccess) Failed to notify order-service for orderId: {} — compensating", orderId);
             compensate(saga, CompensationReason.PAYMENT_FAILED);
             return;
         }
 
-        boolean inventorySent = sendWithRetry(topic("inventory-service.inventory-product.update-quantity"), avro);
+        boolean inventorySent = sendWithRetry(topic("inventory-service.inventory-product.update-quantity"), orderId, avro);
         if (!inventorySent) {
             log.error("(handleSuccess) Failed to notify inventory-service for orderId: {} — compensating", orderId);
             compensate(saga, CompensationReason.PAYMENT_FAILED);
@@ -148,13 +154,26 @@ public class SagaOrchestrationServiceImpl implements SagaOrchestrationService {
         log.info("(handleSuccess) Saga COMPLETED for orderId: {}", orderId);
     }
 
-    private boolean sendWithRetry(String topicName, Object message) {
+    /**
+     * Sends {@code message} keyed by {@code orderId} and returns true only once the
+     * broker has acknowledged it. The key pins every message about one order to one
+     * partition; waiting for the ack matters because send() returns as soon as the
+     * record is buffered, so a broker rejection would otherwise go unseen and the
+     * saga would advance for a message nobody received.
+     */
+    private boolean sendWithRetry(String topicName, String orderId, Object message) {
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                kafkaTemplate.send(topicName, message);
+                kafkaTemplate.send(topicName, orderId, message)
+                        .get(SEND_ACK_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
                 return true;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("send interrupted. topic={} orderId={}", topicName, orderId);
+                return false;
             } catch (Exception e) {
-                log.warn("(sendWithRetry) Attempt {}/{} failed for topic: {}", attempt, maxRetries, topicName, e);
+                log.warn("send not acknowledged, attempt {}/{}. topic={} orderId={}",
+                        attempt, maxRetries, topicName, orderId, e);
             }
         }
         return false;

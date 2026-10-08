@@ -16,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.core.KafkaTemplate;
 import java.time.LocalDateTime;
+import java.util.concurrent.CompletableFuture;
 import java.util.Map;
 import java.util.Optional;
 import static org.assertj.core.api.Assertions.*;
@@ -46,6 +47,9 @@ class SagaOrchestrationServiceImplTest {
                 "order-service.order.canceled-status", CANCELED_TOPIC,
                 "inventory-service.inventory-product.update-quantity", INVENTORY_TOPIC
         ));
+        // Default: the broker acknowledges every send. Tests that need a failure override this.
+        lenient().when(kafkaTemplate.send(anyString(), anyString(), any()))
+                .thenReturn(CompletableFuture.completedFuture(null));
         service = new SagaOrchestrationServiceImpl(repo, kafkaTemplate, kafkaProperties, objectMapper, 3, 30);
     }
 
@@ -74,7 +78,7 @@ class SagaOrchestrationServiceImplTest {
         service.handlePaymentReply(event);
 
         assertThat(saga.getState()).isEqualTo(SagaState.COMPLETED);
-        verify(kafkaTemplate, times(2)).send(anyString(), any()); // order + inventory
+        verify(kafkaTemplate, times(2)).send(anyString(), anyString(), any()); // order + inventory
     }
 
     @Test
@@ -86,7 +90,7 @@ class SagaOrchestrationServiceImplTest {
         service.handlePaymentReply(event);
 
         assertThat(saga.getState()).isEqualTo(SagaState.COMPENSATED);
-        verify(kafkaTemplate).send(eq(FAILED_TOPIC), isA(PaymentFailed.class));
+        verify(kafkaTemplate).send(eq(FAILED_TOPIC), anyString(), isA(PaymentFailed.class));
         verifyNoMoreInteractions(kafkaTemplate);
     }
 
@@ -101,7 +105,7 @@ class SagaOrchestrationServiceImplTest {
         service.handlePaymentReply(event);
 
         assertThat(saga.getState()).isEqualTo(SagaState.AWAITING_PAYMENT);
-        verify(kafkaTemplate, never()).send(anyString(), any());
+        verify(kafkaTemplate, never()).send(anyString(), anyString(), any());
     }
 
     @Test
@@ -110,13 +114,13 @@ class SagaOrchestrationServiceImplTest {
         // failed saga (order FAILED), never a timeout (order CANCELED).
         SagaInstance saga = existingSaga("order-9", SagaState.AWAITING_PAYMENT);
         when(repo.findByOrderId("order-9")).thenReturn(Optional.of(saga));
-        when(kafkaTemplate.send(eq(SUCCESS_TOPIC), any())).thenThrow(new RuntimeException("Kafka down"));
+        when(kafkaTemplate.send(eq(SUCCESS_TOPIC), anyString(), any())).thenThrow(new RuntimeException("Kafka down"));
 
         service.handlePaymentReply(new PaymentSuccessEvent(this, Map.of("orderId", "order-9")));
 
         assertThat(saga.getState()).isEqualTo(SagaState.COMPENSATED);
-        verify(kafkaTemplate).send(eq(FAILED_TOPIC), isA(PaymentFailed.class));
-        verify(kafkaTemplate, never()).send(eq(CANCELED_TOPIC), any());
+        verify(kafkaTemplate).send(eq(FAILED_TOPIC), anyString(), isA(PaymentFailed.class));
+        verify(kafkaTemplate, never()).send(eq(CANCELED_TOPIC), anyString(), any());
     }
 
     @Test
@@ -124,13 +128,13 @@ class SagaOrchestrationServiceImplTest {
         SagaInstance saga = existingSaga("order-10", SagaState.AWAITING_PAYMENT);
         when(repo.findByOrderId("order-10")).thenReturn(Optional.of(saga));
         // lenient: other sends (success-status, failed-status) use different args
-        lenient().when(kafkaTemplate.send(eq(INVENTORY_TOPIC), any())).thenThrow(new RuntimeException("Kafka down"));
+        lenient().when(kafkaTemplate.send(eq(INVENTORY_TOPIC), anyString(), any())).thenThrow(new RuntimeException("Kafka down"));
 
         service.handlePaymentReply(new PaymentSuccessEvent(this, Map.of("orderId", "order-10")));
 
         assertThat(saga.getState()).isEqualTo(SagaState.COMPENSATED);
-        verify(kafkaTemplate).send(eq(FAILED_TOPIC), isA(PaymentFailed.class));
-        verify(kafkaTemplate, never()).send(eq(CANCELED_TOPIC), any());
+        verify(kafkaTemplate).send(eq(FAILED_TOPIC), anyString(), isA(PaymentFailed.class));
+        verify(kafkaTemplate, never()).send(eq(CANCELED_TOPIC), anyString(), any());
     }
 
     @Test
@@ -141,7 +145,7 @@ class SagaOrchestrationServiceImplTest {
         PaymentSuccessEvent event = new PaymentSuccessEvent(this, Map.of("orderId", "order-4"));
         service.handlePaymentReply(event);
 
-        verify(kafkaTemplate, never()).send(anyString(), any());
+        verify(kafkaTemplate, never()).send(anyString(), anyString(), any());
     }
 
     @Test
@@ -151,7 +155,7 @@ class SagaOrchestrationServiceImplTest {
         PaymentSuccessEvent event = new PaymentSuccessEvent(this, Map.of("orderId", "order-x"));
         service.handlePaymentReply(event);
 
-        verify(kafkaTemplate, never()).send(anyString(), any());
+        verify(kafkaTemplate, never()).send(anyString(), anyString(), any());
     }
 
     @Test
@@ -162,7 +166,7 @@ class SagaOrchestrationServiceImplTest {
 
         assertThat(saga.getState()).isEqualTo(SagaState.COMPENSATED);
         ArgumentCaptor<Object> record = ArgumentCaptor.forClass(Object.class);
-        verify(kafkaTemplate).send(eq(FAILED_TOPIC), record.capture());
+        verify(kafkaTemplate).send(eq(FAILED_TOPIC), anyString(), record.capture());
         assertThat(record.getValue()).isInstanceOfSatisfying(PaymentFailed.class,
                 r -> assertThat(r.getOrderId().toString()).isEqualTo("order-5"));
     }
@@ -178,7 +182,7 @@ class SagaOrchestrationServiceImplTest {
 
         assertThat(saga.getState()).isEqualTo(SagaState.COMPENSATED);
         ArgumentCaptor<Object> record = ArgumentCaptor.forClass(Object.class);
-        verify(kafkaTemplate).send(eq(CANCELED_TOPIC), record.capture());
+        verify(kafkaTemplate).send(eq(CANCELED_TOPIC), anyString(), record.capture());
         assertThat(record.getValue()).isInstanceOfSatisfying(PaymentCanceled.class,
                 r -> assertThat(r.getOrderId().toString()).isEqualTo("order-8"));
     }
@@ -186,13 +190,42 @@ class SagaOrchestrationServiceImplTest {
     @Test
     void compensate_kafkaFailsAllRetries_transitionsToFailed() {
         SagaInstance saga = existingSaga("order-6", SagaState.AWAITING_PAYMENT);
-        when(kafkaTemplate.send(anyString(), any())).thenThrow(new RuntimeException("Kafka down"));
+        when(kafkaTemplate.send(anyString(), anyString(), any())).thenThrow(new RuntimeException("Kafka down"));
 
         service.compensate(saga, CompensationReason.TIMED_OUT);
 
         assertThat(saga.getState()).isEqualTo(SagaState.FAILED);
         // 3 retries attempted (maxRetries=3 set in setUp)
-        verify(kafkaTemplate, times(3)).send(anyString(), any());
+        verify(kafkaTemplate, times(3)).send(anyString(), anyString(), any());
+    }
+
+    @Test
+    void sends_areKeyedByOrderId() {
+        // Key → partition: every message about one order must share a partition.
+        SagaInstance saga = existingSaga("order-11", SagaState.AWAITING_PAYMENT);
+        when(repo.findByOrderId("order-11")).thenReturn(Optional.of(saga));
+
+        service.handlePaymentReply(new PaymentSuccessEvent(this, Map.of("orderId", "order-11")));
+        service.compensate(existingSaga("order-12", SagaState.AWAITING_PAYMENT), CompensationReason.TIMED_OUT);
+
+        verify(kafkaTemplate).send(eq(SUCCESS_TOPIC), eq("order-11"), any());
+        verify(kafkaTemplate).send(eq(INVENTORY_TOPIC), eq("order-11"), any());
+        verify(kafkaTemplate).send(eq(CANCELED_TOPIC), eq("order-12"), any());
+    }
+
+    @Test
+    void compensate_brokerRejectsSend_countsAsFailure() {
+        // send() returning normally only means "queued in the producer buffer". The
+        // broker can still reject it later; that must count as a failed attempt,
+        // or the saga is marked COMPENSATED for a message that was never delivered.
+        SagaInstance saga = existingSaga("order-13", SagaState.AWAITING_PAYMENT);
+        when(kafkaTemplate.send(anyString(), anyString(), any()))
+                .thenReturn(CompletableFuture.failedFuture(new RuntimeException("NOT_ENOUGH_REPLICAS")));
+
+        service.compensate(saga, CompensationReason.TIMED_OUT);
+
+        assertThat(saga.getState()).isEqualTo(SagaState.FAILED);
+        verify(kafkaTemplate, times(3)).send(anyString(), anyString(), any());
     }
 
     private SagaInstance existingSaga(String orderId, SagaState state) {

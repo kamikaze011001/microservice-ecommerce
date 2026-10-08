@@ -39,6 +39,13 @@ until curl -sf "${CONNECT}/connector-plugins" 2>/dev/null \
 done
 echo "MongoSourceConnector plugin present"
 
+# Record KEY = fullDocument.aggregateId as a plain string (orderId / productId), so
+# every event of one aggregate lands on one partition, in order. The key schema
+# projects it out of the change event; two ExtractField$Key SMTs unwrap the struct;
+# StringConverter emits the raw string. Every field is nullable: docs without an
+# aggregateId (pre-PR2) and deletes get a null key instead of a DataException,
+# which errors.tolerance=all would otherwise turn into a silently dropped record.
+# The VALUE format is unchanged — orchestrator still reads value.fullDocument.
 cat >/tmp/connector.json <<'JSON'
 {
   "connector.class": "com.mongodb.kafka.connect.MongoSourceConnector",
@@ -53,7 +60,13 @@ cat >/tmp/connector.json <<'JSON'
   "key.converter": "org.apache.kafka.connect.storage.StringConverter",
   "value.converter": "io.confluent.connect.avro.AvroConverter",
   "value.converter.schema.registry.url": "http://schema-registry.infra.svc.cluster.local:8081",
-  "output.format.key": "json",
+  "output.format.key": "schema",
+  "output.schema.key": "{\"type\":\"record\",\"name\":\"AggregateKey\",\"fields\":[{\"name\":\"fullDocument\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"FullDocumentKey\",\"fields\":[{\"name\":\"aggregateId\",\"type\":[\"null\",\"string\"],\"default\":null}]}],\"default\":null}]}",
+  "transforms": "keyFullDoc,keyAggId",
+  "transforms.keyFullDoc.type": "org.apache.kafka.connect.transforms.ExtractField$Key",
+  "transforms.keyFullDoc.field": "fullDocument",
+  "transforms.keyAggId.type": "org.apache.kafka.connect.transforms.ExtractField$Key",
+  "transforms.keyAggId.field": "aggregateId",
   "output.format.value": "schema",
   "copy.existing": "true",
   "copy.existing.pipeline": "[]",

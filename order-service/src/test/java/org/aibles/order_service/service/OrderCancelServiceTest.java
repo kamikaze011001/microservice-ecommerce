@@ -122,6 +122,10 @@ class OrderCancelServiceTest {
         assertThat(capturedEvent.getEventName())
                 .isEqualTo(EcommerceEvent.PAYMENT_CANCELED.getValue());
 
+        // Kafka key of the CDC record → must be the order, so the cancel shares a
+        // partition with that order's Order.Created
+        assertThat(capturedEvent.getAggregateId()).isEqualTo(orderId);
+
         assertThat(capturedEvent.getData()).isInstanceOf(PaymentCanceled.class);
         PaymentCanceled payload = (PaymentCanceled) capturedEvent.getData();
         assertThat(payload.getOrderId().toString()).isEqualTo(orderId);

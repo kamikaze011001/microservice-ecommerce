@@ -174,6 +174,7 @@ public class InventoryServiceImpl implements InventoryService {
 
         MongoSavedEvent mongoSavedEvent = new MongoSavedEvent(this,
                 EcommerceEvent.PRODUCT_QUANTITY_UPDATED.getValue(),
+                id,
                 eventData);
         applicationEventPublisher.publishEvent(mongoSavedEvent);
     }
@@ -301,6 +302,7 @@ public class InventoryServiceImpl implements InventoryService {
                         .build();
                 mongoSavedEvent = new MongoSavedEvent(this,
                         EcommerceEvent.PRODUCT_QUANTITY_UPDATED.getValue(),
+                        productId,
                         productQuantityUpdated);
                 applicationEventPublisher.publishEvent(mongoSavedEvent);
             }

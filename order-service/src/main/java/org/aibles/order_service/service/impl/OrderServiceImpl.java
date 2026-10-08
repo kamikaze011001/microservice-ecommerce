@@ -166,6 +166,7 @@ public class OrderServiceImpl implements OrderService {
             eventPublisher.publishEvent(new MongoSavedEvent(
                     this,
                     EcommerceEvent.ORDER_CREATED.getValue(),
+                    order.getId(),
                     orderCreated
             ));
 
@@ -659,7 +660,7 @@ public class OrderServiceImpl implements OrderService {
         PaymentCanceled paymentCanceled = PaymentCanceled.newBuilder().setOrderId(orderId).build();
 
         eventPublisher.publishEvent(new MongoSavedEvent(
-                this, EcommerceEvent.PAYMENT_CANCELED.getValue(), paymentCanceled));
+                this, EcommerceEvent.PAYMENT_CANCELED.getValue(), orderId, paymentCanceled));
 
         return OrderCancelResponse.builder().orderId(orderId).status(OrderStatus.CANCELED).build();
     }

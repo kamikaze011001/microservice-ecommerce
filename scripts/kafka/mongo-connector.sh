@@ -163,7 +163,6 @@ configure_source_connector() {
     log_info "Collection: ${MONGO_COLLECTION}"
     log_info "Output topic: ${MONGO_DB_NAME}.${MONGO_COLLECTION}"
 
-    # Create connector configuration for MongoDB Source (Change Streams)
     local connector_config=$(cat <<EOF
 {
     "name": "${CONNECTOR_NAME}",
@@ -185,7 +184,13 @@ configure_source_connector() {
         "value.converter": "io.confluent.connect.avro.AvroConverter",
         "value.converter.schema.registry.url": "http://kafka-schema-registry:8081",
 
-        "output.format.key": "json",
+        "output.format.key": "schema",
+        "output.schema.key": "{\"type\":\"record\",\"name\":\"AggregateKey\",\"fields\":[{\"name\":\"fullDocument\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"FullDocumentKey\",\"fields\":[{\"name\":\"aggregateId\",\"type\":[\"null\",\"string\"],\"default\":null}]}],\"default\":null}]}",
+        "transforms": "keyFullDoc,keyAggId",
+        "transforms.keyFullDoc.type": "org.apache.kafka.connect.transforms.ExtractField\$Key",
+        "transforms.keyFullDoc.field": "fullDocument",
+        "transforms.keyAggId.type": "org.apache.kafka.connect.transforms.ExtractField\$Key",
+        "transforms.keyAggId.field": "aggregateId",
         "output.format.value": "schema",
 
         "copy.existing": "true",

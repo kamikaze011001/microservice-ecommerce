@@ -12,8 +12,12 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.apache.avro.Schema;
 
 @Component
@@ -23,6 +27,8 @@ public class EventListenerHandler {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final ApplicationKafkaProperties applicationKafkaProperties;
+    /** Bounded so a hung broker can't hold the CDC consumer past max.poll.interval.ms (5 min). */
+    private static final Duration SEND_ACK_TIMEOUT = Duration.ofSeconds(10);
     private static final String FAILED_CONVERT_OBJECT_MSG = "Failed to convert data to avro object";
 
     @EventListener
@@ -37,7 +43,7 @@ public class EventListenerHandler {
         );
 
         if (converted != null) {
-            publishToTopics(converted, Collections.singletonList(
+            publishToTopics(converted, converted.getProductId().toString(), Collections.singletonList(
                     "product-service.product.update-quantity"
             ));
         }
@@ -54,7 +60,7 @@ public class EventListenerHandler {
         );
 
         if (converted != null) {
-            publishToTopics(converted, Collections.singletonList(
+            publishToTopics(converted, converted.getId().toString(), Collections.singletonList(
                     "inventory-service.product.update"
             ));
         }
@@ -83,15 +89,29 @@ public class EventListenerHandler {
     }
 
     /**
-     * Publishes a message to multiple Kafka topics
+     * Publishes a message to each topic, keyed by {@code productId} so every update
+     * of one product lands on one partition and is applied in order.
      *
-     * @param message The message to publish
+     * Waits for the broker ack and throws if it doesn't come: this runs on the CDC
+     * consumer thread, so the exception makes the container retry the CDC record.
+     * Swallowing it would commit the offset and lose the update for good.
+     *
+     * @param message   The message to publish
+     * @param productId Kafka record key
      * @param topicKeys List of topic keys to publish to
      */
-    private void publishToTopics(Object message, List<String> topicKeys) {
+    private void publishToTopics(Object message, String productId, List<String> topicKeys) {
         for (String topicKey : topicKeys) {
             String topic = applicationKafkaProperties.getTopics().get(topicKey);
-            kafkaTemplate.send(topic, message);
+            try {
+                kafkaTemplate.send(topic, productId, message)
+                        .get(SEND_ACK_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted forwarding to " + topic + " productId=" + productId, e);
+            } catch (ExecutionException | TimeoutException e) {
+                throw new IllegalStateException("forward not acknowledged. topic=" + topic + " productId=" + productId, e);
+            }
         }
     }
 }
