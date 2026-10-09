@@ -663,7 +663,7 @@ assert_lacks "gateway management port was not derived"     'containerPort: 16868
 
 # env: null semantics — mergo would have silently kept these.
 mock="$(doc_named Deployment mock-paypal-service "$apps_out")"
-assert_lacks "mock-paypal-service does not inherit VAULT_TOKEN (null unset)" \
+assert_lacks "mock-paypal-service does not inherit VAULT_TOKEN ("" unset)" \
              'VAULT_TOKEN' "$mock"
 assert_lacks "mock-paypal-service does not inherit SPRING_CLOUD_VAULT_URI" \
              'SPRING_CLOUD_VAULT_URI' "$mock"
@@ -1018,6 +1018,65 @@ assert_has   "local: PAYPAL_TUNNEL_URL points at the local ingress host" \
 assert_lacks "aws: payment-service does NOT point at mock-paypal" \
              'mock-paypal-service\.apps\.svc\.cluster\.local:8585' \
              "$(doc_named Deployment payment-service "$aws_out")"
+
+# ── devbox: one Argo CD Application per service ─────────────────────────────
+section "apps subchart — devbox per-service renders"
+
+# The devbox (deploy/devbox/) renders the apps subchart ON ITS OWN, once per
+# service, with the env repo's env.yaml + services/<svc>.yaml and
+# onlyService=<svc>. Ten partial renders must add up to exactly what the umbrella
+# render produces today — otherwise "prod-like" quietly differs from the stack
+# every other path deploys.
+DEVBOX_ENV="$CHART_DIR/../../devbox/env-repo/envs/prod-like"
+devbox_render() {
+  helm template microecom "$CHART_DIR/charts/apps" --namespace apps \
+    -f "$DEVBOX_ENV/env.yaml" -f "$DEVBOX_ENV/services/$1.yaml" \
+    --set onlyService="$1" "${@:2}" 2>&1
+}
+
+# Every apps-namespace document as one line, `# Source:` comments dropped (their
+# paths differ between the two renders by construction), sorted — so the
+# comparison is "same set of objects", independent of the order helm emits them
+# in. The namespace filter drops the umbrella's infra objects and Namespaces.
+canonical_docs() {
+  grep -v '^# Source:' | sed 's/^---$/@@DOC@@/' \
+    | awk 'BEGIN { RS = "@@DOC@@\n" } NF { gsub(/\n/, "\\n"); sub(/(\\n)+$/, ""); print }' \
+    | grep -F '\n  namespace: apps\n' | sort
+}
+
+devbox_all=""
+devbox_fail=""
+for f in "$DEVBOX_ENV"/services/*.yaml; do
+  svc="$(basename "$f" .yaml)"
+  one="$(devbox_render "$svc")"
+  if grep -qiE '^Error:' <<<"$one"; then devbox_fail="$devbox_fail $svc"; fi
+  # Exactly one Deployment, and it is this service — onlyService really narrows.
+  deps="$(grep -cE '^kind: Deployment$' <<<"$one")"
+  if [ "$deps" -ne 1 ] || [ -z "$(doc_named Deployment "$svc" "$one")" ]; then
+    devbox_fail="$devbox_fail $svc(deployments=$deps)"
+  fi
+  devbox_all="$devbox_all"$'\n---\n'"$one"
+done
+if [ -z "$devbox_fail" ]; then ok "each service file renders exactly its own Deployment"
+else bad "devbox renders wrong for:$devbox_fail"; fi
+
+umbrella_canon="$(apps_render -f "$CHART_DIR/envs/local-k8s.yaml" | canonical_docs)"
+devbox_canon="$(canonical_docs <<<"$devbox_all")"
+if [ "$umbrella_canon" = "$devbox_canon" ]; then
+  ok "devbox renders == umbrella local-k8s render (apps namespace, object for object)"
+else
+  bad "devbox renders differ from the umbrella render:"
+  diff <(tr '\\' '\n' <<<"$umbrella_canon") <(tr '\\' '\n' <<<"$devbox_canon") | head -20
+fi
+
+# A per-service tag wins over the global one, and only for that service.
+pinned="$(devbox_render order-service --set apps.order-service.image.tag=9f8e7d6)"
+assert_has   "per-service image.tag overrides global.appImage.tag" \
+             'image: localhost:5000/order-service:9f8e7d6' "$pinned"
+assert_has   "a service without its own tag falls back to the global tag" \
+             'image: localhost:5000/gateway:dev' \
+             "$(helm template microecom "$CHART_DIR/charts/apps" -f "$DEVBOX_ENV/env.yaml" \
+                  --set onlyService=gateway 2>&1)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

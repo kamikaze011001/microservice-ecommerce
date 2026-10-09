@@ -1,0 +1,62 @@
+# Argo CD — the devbox's GitOps controller (chart argo/argo-cd 10.10.2, Argo CD v3.5).
+#
+# It watches the env-config repo in Gitea and keeps the `apps` namespace equal
+# to what that repo describes. See docs/platform/01-gitops.html for the model.
+
+# Single sign-on and Slack/email notifications are company concerns; a laptop
+# has one user (admin) and you're looking at the UI anyway.
+dex:
+  enabled: false
+notifications:
+  enabled: false
+
+configs:
+  params:
+    # Plain HTTP behind `kubectl port-forward` (make devbox-open). TLS here would
+    # only buy a self-signed-certificate warning.
+    server.insecure: true
+  cm:
+    # How often Argo CD re-reads git on its own. Default 180s; 60s so a commit
+    # to env-config shows up while you're still looking. (Phase 2's devbox-ship
+    # triggers a sync directly and doesn't wait for this.)
+    timeout.reconciliation: 60s
+    # Track owned objects by annotation, not by overwriting the
+    # app.kubernetes.io/instance label. The apps chart already uses that label
+    # (= the Helm release name) inside immutable Deployment selectors, so Argo CD
+    # must not touch it.
+    application.resourceTrackingMethod: annotation
+    # Built-in Ingress health = Progressing until status.loadBalancer has an
+    # address. On minikube the ingress-nginx LoadBalancer only gets one while
+    # `minikube tunnel` runs — which needs sudo and is a browsing convenience,
+    # not a health requirement (deploy/CLAUDE.md). Without this, gateway and
+    # frontend sat "Progressing" forever with both pods 1/1 Ready.
+    resource.customizations.health.networking.k8s.io_Ingress: |
+      hs = {}
+      hs.status = "Healthy"
+      if obj.status ~= nil and obj.status.loadBalancer ~= nil and obj.status.loadBalancer.ingress ~= nil then
+        hs.message = "routable"
+      else
+        hs.message = "no address yet (local: run 'sudo -v && make k8s-tunnel' to browse)"
+      end
+      return hs
+
+controller:
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 1000m, memory: 768Mi }
+repoServer:
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 1000m, memory: 512Mi }
+server:
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 500m, memory: 256Mi }
+applicationSet:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits:   { cpu: 500m, memory: 256Mi }
+redis:
+  resources:
+    requests: { cpu: 20m, memory: 32Mi }
+    limits:   { cpu: 200m, memory: 128Mi }

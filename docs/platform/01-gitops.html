@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Devbox 1 — GitOps</title>
+<style>
+  :root{
+    --bg:#fbf6ee; --bg2:#fff;
+    --ink:#2d2a26; --ink2:#5b554d; --faint:#9a9489;
+    --line:#ece3d6; --shadow:0 10px 30px rgba(120,100,70,.13);
+    --git:#f0773a; --argo:#ef7b4d; --k8s:#326ce5; --good:#3fb27f; --bad:#ef5f5f; --warn:#e8a33d; --purple:#7a4fd0;
+    --codebg:#f1e9db; --codeink:#7a5a33;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#1d1b18; --bg2:#27241f; --ink:#f1ebe2; --ink2:#c9c0b3; --faint:#8d857a;
+      --line:#3a352e; --shadow:0 10px 30px rgba(0,0,0,.35); --codebg:#332e27; --codeink:#e9c79a;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#1d1b18; --bg2:#27241f; --ink:#f1ebe2; --ink2:#c9c0b3; --faint:#8d857a;
+    --line:#3a352e; --shadow:0 10px 30px rgba(0,0,0,.35); --codebg:#332e27; --codeink:#e9c79a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.6}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;background:var(--codebg);border-radius:6px;padding:.06em .4em;font-size:.86em;color:var(--codeink);word-break:break-word}
+  pre{background:var(--codebg);color:var(--codeink);border-radius:12px;padding:12px 14px;overflow-x:auto;font-size:13px;line-height:1.5}
+  pre code{background:none;padding:0}
+  a{color:var(--git);font-weight:600;text-decoration:none} a:hover{text-decoration:underline}
+
+  header.hero{text-align:center;padding:48px 16px 22px}
+  header.hero .icon{font-size:56px;line-height:1}
+  header.hero h1{margin:12px 0 6px;font-size:32px;letter-spacing:-.5px}
+  header.hero p{margin:0 auto;max-width:600px;color:var(--ink2);font-size:17px}
+  .series{margin-top:10px;font-size:13px;color:var(--faint);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+
+  nav.toc{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);padding:10px 16px;display:flex;gap:8px;overflow-x:auto}
+  nav.toc a{font-size:13px;color:var(--ink2);white-space:nowrap;background:var(--bg2);border:1px solid var(--line);border-radius:999px;padding:5px 12px}
+
+  main{max-width:820px;margin:0 auto;padding:26px 16px 70px}
+  h2{font-size:24px;margin:44px 0 10px;letter-spacing:-.3px}
+  h2 .n{color:var(--faint);font-weight:800;margin-right:6px}
+  p.lead{color:var(--ink2);margin-top:0}
+
+  .bigidea{background:var(--bg2);border:2px solid color-mix(in srgb,var(--git) 35%,var(--line));border-radius:22px;padding:22px 24px;box-shadow:var(--shadow)}
+  .bigidea .big{font-size:19px;margin:.2em 0}
+  .bigidea b{color:var(--git)}
+
+  /* architecture map */
+  .map{display:grid;grid-template-columns:1fr;gap:10px;margin:18px 0}
+  .lane{background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:14px 16px;box-shadow:var(--shadow)}
+  .lane h4{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+  .boxes{display:flex;flex-wrap:wrap;gap:8px}
+  .box{border-radius:12px;padding:8px 12px;font-size:14px;font-weight:600;border:1px solid var(--line);background:var(--bg)}
+  .box small{display:block;font-weight:500;color:var(--ink2);font-size:12px}
+  .box.git{border-color:color-mix(in srgb,var(--git) 55%,var(--line))}
+  .box.argo{border-color:color-mix(in srgb,var(--purple) 55%,var(--line))}
+  .box.k8s{border-color:color-mix(in srgb,var(--k8s) 55%,var(--line))}
+  .arrow{text-align:center;color:var(--faint);font-size:13px;font-weight:700}
+
+  /* reconcile demo */
+  .demo{background:var(--bg2);border:2px solid color-mix(in srgb,var(--good) 40%,var(--line));border-radius:20px;padding:18px 20px;box-shadow:var(--shadow);margin:16px 0}
+  .demo .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+  .state{border:1px solid var(--line);border-radius:14px;padding:10px 12px;background:var(--bg)}
+  .state h5{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+  .state .v{font-family:ui-monospace,Menlo,monospace;font-size:14px;transition:background .3s}
+  .state .v.flash{background:color-mix(in srgb,var(--warn) 35%,transparent)}
+  .pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:800;color:#fff}
+  .pill.ok{background:var(--good)} .pill.drift{background:var(--bad)} .pill.work{background:var(--warn)}
+  .demo button{font:inherit;font-weight:700;font-size:14px;border:1px solid var(--line);border-radius:12px;padding:8px 14px;cursor:pointer;background:var(--bg);color:var(--ink);margin:4px 6px 4px 0}
+  .demo button:hover{border-color:var(--git)}
+  .log{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:var(--ink2);min-height:60px;max-height:130px;overflow:auto;border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}
+
+  /* concept cards */
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:14px 16px;box-shadow:var(--shadow)}
+  .card h3{margin:0 0 4px;font-size:16px}
+  .card p{margin:.3em 0;font-size:14.5px;color:var(--ink2)}
+  .card .here{font-size:13.5px;margin-top:8px;border-top:1px dashed var(--line);padding-top:6px}
+
+  table{width:100%;border-collapse:collapse;font-size:14px;background:var(--bg2);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint)}
+  .tablewrap{overflow-x:auto}
+
+  .scar{background:var(--bg2);border-left:5px solid var(--bad);border-radius:12px;padding:12px 16px;margin:12px 0;box-shadow:var(--shadow)}
+  .scar h3{margin:0 0 4px;font-size:16px}
+  .scar p{margin:.35em 0;font-size:14.5px}
+
+  .try{counter-reset:t;list-style:none;padding:0}
+  .try li{counter-increment:t;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:12px 14px 12px 52px;margin:10px 0;position:relative}
+  .try li::before{content:counter(t);position:absolute;left:14px;top:12px;width:26px;height:26px;border-radius:50%;background:var(--git);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .try .expect{color:var(--good);font-weight:700;font-size:14px}
+
+  details{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:10px 14px;margin:8px 0}
+  summary{cursor:pointer;font-weight:700}
+  details p{color:var(--ink2);font-size:14.5px;margin:.5em 0 .2em}
+
+  .next{background:linear-gradient(135deg,color-mix(in srgb,var(--purple) 12%,var(--bg2)),var(--bg2));border:1px solid var(--line);border-radius:18px;padding:16px 20px;margin-top:20px}
+  @media (max-width:560px){ .demo .cols{grid-template-columns:1fr} header.hero h1{font-size:26px} }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="icon">🔁</div>
+  <h1>GitOps: git says, the cluster does</h1>
+  <p>Phase 1 of the devbox. Argo CD now deploys every service from a git repo, so <em>what runs</em> is always <em>what's committed</em>.</p>
+  <div class="series">Devbox · platform engineering series · 1 / 6</div>
+</header>
+
+<nav class="toc">
+  <a href="#idea">Big idea</a><a href="#map">The map</a><a href="#loop">The loop</a><a href="#words">Vocabulary</a>
+  <a href="#wiring">In this repo</a><a href="#scars">What broke</a><a href="#try">Try it</a><a href="#interview">Interview</a><a href="#next">Next</a>
+</nav>
+
+<main>
+
+<section id="idea">
+  <div class="bigidea">
+    <p class="big">Before: you <b>tell</b> the cluster what to do — <code>helm upgrade</code>, <code>kubectl edit</code>. The cluster's state is the sum of every command anyone ever ran.</p>
+    <p class="big">After: you <b>write down</b> what you want in git. A controller <b>keeps</b> the cluster equal to it, forever.</p>
+    <p style="color:var(--ink2);margin-bottom:0">That swap — from <em>push commands</em> to <em>pull desired state</em> — is all GitOps is. Everything else (history, rollback, audit, drift repair) falls out of it for free, because git already does history and rollback.</p>
+  </div>
+</section>
+
+<section id="map">
+  <h2><span class="n">1</span>The map</h2>
+  <p class="lead">Three places hold state. Only one of them is allowed to be the truth.</p>
+  <div class="map">
+    <div class="lane">
+      <h4>Your laptop</h4>
+      <div class="boxes">
+        <div class="box">microecom repo<small>your branch — code + Helm chart</small></div>
+        <div class="box">deploy/.run/env-config<small>your working copy of the env repo</small></div>
+      </div>
+    </div>
+    <div class="arrow">↓ <code>make devbox-push</code> (chart) · <code>git push</code> (env changes)</div>
+    <div class="lane">
+      <h4>Gitea — namespace <code>devbox</code> (the truth)</h4>
+      <div class="boxes">
+        <div class="box git">devbox/microecom @ <code>devbox</code><small>the HOW — templates</small></div>
+        <div class="box git">devbox/env-config @ <code>main</code><small>the WHAT — versions + config per env</small></div>
+      </div>
+    </div>
+    <div class="arrow">↓ Argo CD pulls every 60 s (and on demand)</div>
+    <div class="lane">
+      <h4>Argo CD — namespace <code>argocd</code> (the loop)</h4>
+      <div class="boxes">
+        <div class="box argo">ApplicationSet <code>microecom-envs</code><small>one Application per services/*.yaml</small></div>
+        <div class="box argo">prod-like-order-service<small>…and 9 more, one per service</small></div>
+      </div>
+    </div>
+    <div class="arrow">↓ render chart + values → apply → watch → repair</div>
+    <div class="lane">
+      <h4>Cluster — namespace <code>apps</code> (the result)</h4>
+      <div class="boxes">
+        <div class="box k8s">Deployments · Services · HPAs · Ingresses<small>never edited by hand any more</small></div>
+      </div>
+    </div>
+    <div class="lane" style="opacity:.75">
+      <h4>Unchanged — still <code>make</code></h4>
+      <div class="boxes">
+        <div class="box">infra: Kafka, Mongo, MySQL, Redis, Vault, MinIO<small>stateful + seeded; GitOps for these is a later phase</small></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="loop">
+  <h2><span class="n">2</span>The reconcile loop — play with it</h2>
+  <p class="lead">Argo CD compares <b>desired</b> (rendered from git) with <b>live</b> (read from the cluster) and acts on the difference. Click the buttons.</p>
+  <div class="demo">
+    <div class="cols">
+      <div class="state"><h5>Desired — env-config repo</h5><div class="v" id="desired">order-service image: dev<br>LOG_LEVEL: INFO</div></div>
+      <div class="state"><h5>Live — namespace apps</h5><div class="v" id="live">order-service image: dev<br>LOG_LEVEL: INFO</div></div>
+    </div>
+    <div>Sync: <span class="pill ok" id="sync">Synced</span> &nbsp; Health: <span class="pill ok" id="health">Healthy</span></div>
+    <div style="margin-top:10px">
+      <button id="b-edit">✋ kubectl edit LOG_LEVEL=DEBUG</button>
+      <button id="b-commit">📝 commit LOG_LEVEL=DEBUG</button>
+      <button id="b-revert">⏪ git revert</button>
+    </div>
+    <div class="log" id="log"></div>
+  </div>
+  <p style="font-size:14.5px;color:var(--ink2)">The two edits that look the same have opposite outcomes. A <code>kubectl edit</code> creates <b>drift</b> — self-heal reverts it. A commit changes the <b>truth</b> — the cluster follows. That's why "change it in git" isn't a ceremony: it's the only change that sticks.</p>
+</section>
+
+<section id="words">
+  <h2><span class="n">3</span>Vocabulary you'll see in the UI</h2>
+  <div class="cards">
+    <div class="card"><h3>Application</h3><p>One unit Argo CD reconciles: <em>a source</em> (repo + path + values) → <em>a destination</em> (cluster + namespace).</p><p class="here">Here: <code>prod-like-order-service</code> = the apps chart, narrowed to order-service, into <code>apps</code>.</p></div>
+    <div class="card"><h3>ApplicationSet</h3><p>A factory for Applications. A <em>generator</em> lists things (files, folders, clusters, PRs); a template stamps one Application per item.</p><p class="here">Here: the git <em>files</em> generator over <code>envs/*/services/*.yaml</code>. New file → new Application.</p></div>
+    <div class="card"><h3>Sync status</h3><p><b>Synced</b> = live equals git. <b>OutOfSync</b> = they differ (a new commit, or drift). Says nothing about whether the app works.</p></div>
+    <div class="card"><h3>Health status</h3><p><b>Healthy / Progressing / Degraded / Missing</b> — does the thing actually run? A Deployment is Healthy when its new pods are Ready.</p><p class="here">Synced + Degraded = "git was applied, and what git says is broken".</p></div>
+    <div class="card"><h3>selfHeal</h3><p>When live drifts from git <em>without</em> a commit, put it back. On here.</p></div>
+    <div class="card"><h3>prune</h3><p>When something is <em>removed</em> from git, delete it from the cluster. Without it, deleting a service file would leave the service running forever.</p></div>
+    <div class="card"><h3>Multi-source</h3><p>One Application, several repos. One renders; another only supplies values (<code>ref: env</code> → <code>$env/…</code>).</p><p class="here">Here: chart from <code>microecom</code>, values from <code>env-config</code>. HOW and WHAT change at different speeds, so they live apart.</p></div>
+    <div class="card"><h3>App repo vs config repo</h3><p>The classic split. App repo: code + templates, changes with features. Config repo: which version runs where, changes with deploys.</p><p class="here">Here: the config repo is local (Gitea) because your deploys are experiments, not GitHub history.</p></div>
+  </div>
+</section>
+
+<section id="wiring">
+  <h2><span class="n">4</span>How it's wired in this repo</h2>
+  <div class="tablewrap"><table>
+    <tr><th>File</th><th>What it is</th><th>Why it's shaped this way</th></tr>
+    <tr><td><code>deploy/devbox/devbox.sh</code></td><td>platform · push · apps · wait · open · close · status</td><td>Requires <code>CONTEXT</code>, refuses <code>*eks*</code> — the devbox never touches the billed cluster.</td></tr>
+    <tr><td><code>deploy/devbox/applicationset.yaml</code></td><td>The factory: one Application per service file</td><td>Per-service Applications give per-service health, history and rollback — one big Application would roll back all ten together.</td></tr>
+    <tr><td><code>deploy/devbox/env-repo/</code></td><td>Seed for <code>devbox/env-config</code></td><td>Pushed <b>once</b>. After that Gitea is the truth; re-seeding would erase the env's history.</td></tr>
+    <tr><td><code>deploy/devbox/gitea-values.yaml</code></td><td>Gitea on SQLite, push-to-create</td><td>~150 MB instead of the chart's default Postgres-HA + Valkey (~1.5 GB).</td></tr>
+    <tr><td><code>deploy/devbox/argocd-values.yaml</code></td><td>Argo CD, no SSO/notifications, 60 s poll</td><td>Annotation tracking — Argo CD must not rewrite <code>app.kubernetes.io/instance</code>, which sits inside immutable selectors.</td></tr>
+    <tr><td><code>charts/apps/templates/_helpers.tpl</code></td><td><code>onlyService</code>, per-service <code>image.tag</code></td><td>Both no-ops when unset, so the umbrella and AWS renders are byte-identical to before.</td></tr>
+    <tr><td><code>tests/render-test.sh</code> (devbox section)</td><td>10 per-service renders == the umbrella render</td><td>Proves "prod-like" deploys exactly the objects every other path deploys.</td></tr>
+    <tr><td><code>make devbox-up</code></td><td><code>k8s-bootstrap-helm</code> with one swap</td><td>Argo CD instead of <code>helm upgrade</code> for apps; every seed step, and its order, unchanged.</td></tr>
+  </table></div>
+</section>
+
+<section id="scars">
+  <h2><span class="n">5</span>What broke while building it</h2>
+  <div class="scar">
+    <h3>A <code>null</code> that only works inside an umbrella chart</h3>
+    <p><b>Symptom:</b> rendered per service, mock-paypal-service got <code>VAULT_TOKEN</code> and <code>SPRING_CLOUD_VAULT_URI</code> — vars its values explicitly unset with <code>null</code>.</p>
+    <p><b>Cause:</b> Helm keeps a <em>default</em> <code>null</code> when the chart is merged in as a subchart, but deletes the key when the chart renders on its own — which is exactly what each Argo CD Application does. The template never saw the "unset".</p>
+    <p><b>Fix:</b> <code>""</code> instead of <code>null</code> (the template already drops any empty value). Caught by the parity test, not by eye — the two renders differed by four lines out of ~1,500.</p>
+  </div>
+  <div class="scar">
+    <h3>Two managers, one object</h3>
+    <p><b>Risk:</b> if <code>make k8s-apps-helm</code> already installed the apps, Argo CD would adopt the same Deployments; every <code>helm upgrade</code> and every Argo CD sync would then overwrite each other.</p>
+    <p><b>Guard:</b> <code>devbox.sh apps</code> refuses while any Deployment in <code>apps</code> lacks Argo CD's tracking annotation, and prints the command that hands them back. One owner per object is a platform rule, not a preference.</p>
+  </div>
+  <div class="scar">
+    <h3>A rolling update that can never finish</h3>
+    <p><b>Risk:</b> Gitea's chart defaults to RollingUpdate with 100 % surge. Its SQLite volume is ReadWriteOnce; on a 4-node cluster the surge pod may land on another node, never mount the volume, and hang the rollout.</p>
+    <p><b>Fix:</b> <code>strategy: Recreate</code>. Single-writer storage ⇒ stop the old pod first.</p>
+  </div>
+  <div class="scar">
+    <h3>Rootless image, root-owned volume</h3>
+    <p><b>Symptom:</b> Gitea stuck in <code>Init:CrashLoopBackOff</code>: <code>mkdir: can't create directory '/data/git/': Permission denied</code>.</p>
+    <p><b>Cause:</b> the rootless image runs as uid 1000; minikube's storage-provisioner creates hostPath volumes owned by root, and <code>fsGroup</code> is ignored for hostPath. On EKS (EBS + fsGroup) this wouldn't happen — a reminder that "works on my cluster" includes the storage driver.</p>
+    <p><b>Fix:</b> a tiny root init container that <code>chown</code>s <code>/data</code> before the chart's own init runs.</p>
+  </div>
+  <div class="scar">
+    <h3>Healthy pods, "Progressing" app</h3>
+    <p><b>Symptom:</b> gateway and frontend stuck at Progressing for 25 minutes with both pods 1/1 Ready; the other 8 were Healthy.</p>
+    <p><b>Cause:</b> they're the two with an Ingress. Argo CD's built-in Ingress health waits for <code>status.loadBalancer</code> to get an address; on minikube the ingress-nginx LoadBalancer only gets one while <code>minikube tunnel</code> (sudo) runs.</p>
+    <p><b>Fix:</b> a Lua health override in <code>argocd-values.yaml</code>: an Ingress is Healthy once it exists, and its message says whether it's routable. Health checks encode <em>your</em> definition of healthy — the defaults are someone else's.</p>
+  </div>
+  <div class="scar">
+    <h3>Your own guardrails apply to your platform too</h3>
+    <p><b>Symptom:</b> seeding the env repo failed: <code>pre-push: push to main is blocked</code>.</p>
+    <p><b>Cause:</b> a global git pre-push hook that protects <code>main</code> and blocks force-pushes on every remote — including the local Gitea, whose env repo deploys from <code>main</code> and whose <code>devbox</code> branch is force-updated on every push.</p>
+    <p><b>Fix:</b> exempt exactly <code>http://…localhost:3300/devbox/*</code> from those two rules while keeping the secret scan. Narrow exceptions beat turning a guard off.</p>
+  </div>
+</section>
+
+<section id="try">
+  <h2><span class="n">6</span>Try it (10 minutes)</h2>
+  <ol class="try">
+    <li><code>make devbox-open</code>, log in to Argo CD. Find the ten <code>prod-like-*</code> tiles. Open one and look at the resource tree: Deployment → ReplicaSet → Pods.
+      <div class="expect">All Synced + Healthy.</div></li>
+    <li>Drift it: <code>kubectl --context microecom -n apps scale deploy/bff-service --replicas=3</code>. Watch the tile.
+      <div class="expect">OutOfSync for a moment, then back to 1 replica. Self-heal.</div></li>
+    <li>Change the truth: in <code>deploy/.run/env-config</code>, add <code>env: { LOGGING_LEVEL_ROOT: DEBUG }</code> under <code>apps.bff-service</code> in <code>envs/prod-like/services/bff-service.yaml</code>. Commit and <code>git push</code>.
+      <div class="expect">Within 1–2 minutes (the 60 s poll plus Argo CD's repo cache; measured 101 s): a new pod with the env var. Check the Application's History tab. Impatient? Press <b>Refresh</b> on the tile — phase 2's <code>devbox-ship</code> does that for you.</div></li>
+    <li>Undo it the GitOps way: <code>git revert HEAD &amp;&amp; git push</code>.
+      <div class="expect">A third revision; the pod rolls back. Gitea's commit list for env-config <em>is</em> the change log.</div></li>
+    <li>Delete a service file (<code>git rm envs/prod-like/services/mock-paypal-service.yaml</code>, commit, push), watch, then restore it with <code>git revert</code>.
+      <div class="expect">Prune removes the Application's objects; the revert brings them back.</div></li>
+  </ol>
+</section>
+
+<section id="interview">
+  <h2><span class="n">7</span>Interview questions</h2>
+  <details><summary>What's the difference between push-based CD and GitOps (pull-based)?</summary>
+    <p>Push: a pipeline holds cluster credentials and runs <code>kubectl/helm</code> at the end of a build. Pull: a controller <em>inside</em> the cluster watches git and applies changes itself. Pull means CI never needs cluster credentials, drift gets corrected continuously instead of only at deploy time, and the cluster can be rebuilt from git alone.</p></details>
+  <details><summary>Synced but Degraded — what does that tell you?</summary>
+    <p>Argo CD applied exactly what git says, and what git says doesn't work (crashing image, failing probe, missing secret). The fix goes into git; re-syncing won't help.</p></details>
+  <details><summary>Why can't you use Argo CD's "Rollback" button when auto-sync is on?</summary>
+    <p>Rollback syncs an <em>old revision</em> while git still says the new one — auto-sync would immediately sync forward again. With auto-sync, rollback is a git operation (revert, or pin the old version), which also keeps the history honest.</p></details>
+  <details><summary>Why keep config in a separate repo from application code?</summary>
+    <p>Different change rates, owners and permissions: a deploy shouldn't need a code PR, and promoting a version between envs is a one-line config change. It also stops CI on the app repo from triggering itself when it writes a new tag.</p></details>
+  <details><summary>What would you NOT put under GitOps, and why?</summary>
+    <p>Secrets in plain text (use Vault/External Secrets/SOPS), and things whose desired state isn't declarative: data migrations, seed data, one-off jobs. Stateful infra can be GitOps'd but needs ordering (sync waves) and care with destructive diffs.</p></details>
+  <details><summary>Two tools manage the same Deployment. What happens?</summary>
+    <p>They fight: each apply overwrites the other's fields, and with server-side apply you get field-manager conflicts. Platforms enforce one owner per object — here, <code>devbox.sh apps</code> refuses to start while helm-owned apps exist.</p></details>
+</section>
+
+<section id="next">
+  <div class="next">
+    <h2 style="margin-top:0">Next — phase 2: versions you can roll back to</h2>
+    <p>Right now every service runs tag <code>dev</code>, and every build overwrites it. So "roll back order-service" would pull <em>today's</em> image again — git history says one thing, the registry says another. Phase 2 gives each build a tag from its commit (<code>order-service:9f8e7d6</code>, or <code>…-dirty-1009-1432</code> for uncommitted work), adds <code>make devbox-ship</code> and <code>make devbox-deploy</code>, a registry browser, and a cleanup that never deletes a tag an env still points at.</p>
+  </div>
+</section>
+
+</main>
+
+<script>
+(function(){
+  var desired={log:"INFO"}, live={log:"INFO"}, rev=1, history=[], busy=false;
+  var $=function(id){return document.getElementById(id)};
+  function render(){
+    $("desired").innerHTML="order-service image: dev<br>LOG_LEVEL: "+desired.log;
+    $("live").innerHTML="order-service image: dev<br>LOG_LEVEL: "+live.log;
+    var same=desired.log===live.log;
+    var s=$("sync"); s.textContent=same?"Synced":"OutOfSync"; s.className="pill "+(same?"ok":"drift");
+  }
+  function log(t){var l=$("log"); l.innerHTML+="<div>"+t+"</div>"; l.scrollTop=l.scrollHeight}
+  function flash(id){var e=$(id); e.classList.add("flash"); setTimeout(function(){e.classList.remove("flash")},700)}
+  function reconcile(reason){
+    busy=true; var h=$("health");
+    setTimeout(function(){
+      log("argo: diff found ("+reason+") — desired LOG_LEVEL="+desired.log+", live="+live.log);
+      h.textContent="Progressing"; h.className="pill work";
+      setTimeout(function(){
+        live.log=desired.log; flash("live"); render();
+        h.textContent="Healthy"; h.className="pill ok";
+        log("argo: applied revision "+rev+" → Synced, Healthy"); busy=false;
+      },1200);
+    },1100);
+  }
+  $("b-edit").onclick=function(){ if(busy)return; live.log="DEBUG"; flash("live"); render();
+    log("you: kubectl edit — live changed, git did not"); reconcile("drift → selfHeal"); };
+  $("b-commit").onclick=function(){ if(busy)return; if(desired.log==="DEBUG"){log("git: already DEBUG in git");return}
+    history.push(desired.log); desired.log="DEBUG"; rev++; flash("desired"); render();
+    log("you: git commit + push (revision "+rev+")"); reconcile("new commit"); };
+  $("b-revert").onclick=function(){ if(busy)return; if(!history.length){log("git: nothing to revert");return}
+    desired.log=history.pop(); rev++; flash("desired"); render();
+    log("you: git revert (revision "+rev+") — history keeps both commits"); reconcile("new commit"); };
+  render(); log("argo: watching env-config@main, revision 1");
+})();
+</script>
+</body>
+</html>

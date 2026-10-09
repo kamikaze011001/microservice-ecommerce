@@ -1,0 +1,6 @@
+# mock-paypal-service in prod-like. One file = one Argo CD Application (prod-like-mock-paypal-service).
+# Deploy another version: change image.tag and commit.
+apps:
+  mock-paypal-service:
+    image:
+      tag: dev

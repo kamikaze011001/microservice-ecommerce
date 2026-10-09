@@ -1,0 +1,6 @@
+# product-service in prod-like. One file = one Argo CD Application (prod-like-product-service).
+# Deploy another version: change image.tag and commit.
+apps:
+  product-service:
+    image:
+      tag: dev

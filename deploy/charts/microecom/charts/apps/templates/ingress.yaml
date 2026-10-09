@@ -2,7 +2,7 @@
 {{- if eq .Values.global.ingress.className "nginx" }}
 {{/* Local: one Ingress per service that declares a host. */}}
 {{- range $name, $svc := .Values.apps }}
-{{- if and $svc.enabled $svc.ingress }}
+{{- if and (include "apps.selected" (dict "name" $name "svc" $svc "root" $)) $svc.ingress }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress

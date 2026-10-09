@@ -819,6 +819,58 @@ k8s-down: k8s-cluster-down
 	@echo "==> k8s cluster destroyed"
 
 # ============================================================================
+# Devbox — GitOps on the local cluster (deploy/devbox/, docs/platform/)
+# ============================================================================
+.PHONY: devbox-up devbox-platform devbox-push devbox-apps devbox-wait devbox-status devbox-open devbox-close
+
+DEVBOX := CONTEXT=$(K8S_CLUSTER) deploy/devbox/devbox.sh
+
+# k8s-bootstrap-helm with ONE swap: instead of `helm upgrade` installing the apps
+# (k8s-apps-helm), Argo CD deploys them from the env-config repo in Gitea. Every
+# other step and its order is unchanged — including post-apps seeding, which
+# needs the apps' Hibernate-created tables, so it runs after devbox-wait.
+# Opt-in: k8s-bootstrap-helm still works and is still what `make bootstrap
+# ENV=k8s` runs. Don't run both on one cluster — `devbox.sh apps` refuses if
+# the helm path's apps are already there.
+devbox-up: k8s-cluster-up k8s-infra-helm k8s-build-reuse
+	@$(MAKE) --no-print-directory secrets-seed ENV=k8s CONTEXT=$(K8S_CLUSTER)
+	@$(MAKE) --no-print-directory seed ENV=k8s STAGE=pre-apps CONTEXT=$(K8S_CLUSTER)
+	@$(MAKE) --no-print-directory k8s-seed
+	@$(MAKE) --no-print-directory k8s-app-secrets
+	@$(DEVBOX) platform
+	@$(DEVBOX) push
+	@$(DEVBOX) apps
+	@$(DEVBOX) wait
+	@$(MAKE) --no-print-directory seed ENV=k8s STAGE=post-apps CONTEXT=$(K8S_CLUSTER)
+	@$(MAKE) --no-print-directory k8s-seed-perftest
+	@$(DEVBOX) open
+
+## devbox-platform: install/upgrade Gitea + Argo CD only
+devbox-platform:
+	@$(DEVBOX) platform
+
+## devbox-push: send HEAD to Gitea — Argo CD renders the chart from it
+devbox-push:
+	@$(DEVBOX) push
+
+devbox-apps:
+	@$(DEVBOX) apps
+
+devbox-wait:
+	@$(DEVBOX) wait
+
+## devbox-status: sync / health / image per Application
+devbox-status:
+	@$(DEVBOX) status
+
+## devbox-open: port-forward Argo CD :8180, Gitea :3300, Grafana :3301
+devbox-open:
+	@$(DEVBOX) open
+
+devbox-close:
+	@$(DEVBOX) close
+
+# ============================================================================
 # AWS (ephemeral EKS) — see docs/superpowers/specs/2026-06-10-aws-deployment-design.md
 # ============================================================================
 .PHONY: aws-bootstrap aws-up aws-push aws-infra-up aws-down aws-leak-check aws-all aws-deploy-apps

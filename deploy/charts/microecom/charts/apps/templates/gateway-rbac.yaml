@@ -1,5 +1,5 @@
 {{- $gw := .Values.apps.gateway }}
-{{- if and $gw.enabled $gw.rbac }}
+{{- if and (include "apps.selected" (dict "name" "gateway" "svc" $gw "root" $)) $gw.rbac }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:

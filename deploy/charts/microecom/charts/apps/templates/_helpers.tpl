@@ -26,6 +26,25 @@ app.kubernetes.io/instance: {{ .root.Release.Name }}
 {{- end }}
 
 {{/*
+Is this service rendered? "true" or "" (a define cannot return a bool).
+
+`onlyService` narrows the release to ONE service. The devbox (deploy/devbox/)
+renders this subchart once per service, as one Argo CD Application each, so
+every service gets its own sync status, history and rollback. Unset — the
+umbrella `helm upgrade` path and AWS — it changes nothing.
+
+`enabled` is read from the RAW values block, same as the merge preamble's
+rule 1 in deployments.yaml.
+
+  usage: {{- if include "apps.selected" (dict "name" $name "svc" $svc "root" $) }}
+*/}}
+{{- define "apps.selected" -}}
+{{- if and .svc.enabled (or (not .root.Values.onlyService) (eq .root.Values.onlyService .name)) -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
 The container block: name, image, ports, env, envFrom, both probes, resources,
 and the AWS app-config volume mount.
 
@@ -34,12 +53,23 @@ and the AWS app-config volume mount.
 `.svc` must be the MERGED service (see the four-line preamble each template
 repeats), not the raw values block.
 */}}
+{{/*
+The image tag: the service's own `image.tag` wins over `global.appImage.tag`.
+A per-service tag is what lets the devbox run order-service at one version and
+inventory-service at another, and roll back one without the other.
+*/}}
+{{- define "apps.imageTag" -}}
+{{- $own := "" -}}
+{{- with .svc.image }}{{ $own = .tag }}{{ end -}}
+{{- $own | default (required "global.appImage.tag must be set (the image tag) -- stamped by the deploy script (deploy/scripts/aws-deploy.sh, or --set-string global.appImage.tag=... by hand, or TAG=<tag>); see envs/aws.yaml" .root.Values.global.appImage.tag) -}}
+{{- end }}
+
 {{- define "apps.container" -}}
 {{- $name := .name -}}
 {{- $s := .svc -}}
 {{- $root := .root -}}
 - name: {{ $name }}
-  image: {{ required "global.appImage.registry must be set (the ECR registry) -- stamped by the deploy script (deploy/scripts/aws-deploy.sh, or --set-string global.appImage.registry=... by hand) from `terraform output ecr_registry` (aws/bootstrap); see envs/aws.yaml" $root.Values.global.appImage.registry }}/{{ $name }}:{{ required "global.appImage.tag must be set (the image tag) -- stamped by the deploy script (deploy/scripts/aws-deploy.sh, or --set-string global.appImage.tag=... by hand, or TAG=<tag>); see envs/aws.yaml" $root.Values.global.appImage.tag }}
+  image: {{ required "global.appImage.registry must be set (the ECR registry) -- stamped by the deploy script (deploy/scripts/aws-deploy.sh, or --set-string global.appImage.registry=... by hand) from `terraform output ecr_registry` (aws/bootstrap); see envs/aws.yaml" $root.Values.global.appImage.registry }}/{{ $name }}:{{ include "apps.imageTag" (dict "svc" $s "root" $root) }}
   imagePullPolicy: {{ $s.imagePullPolicy }}
   ports:
     - name: http

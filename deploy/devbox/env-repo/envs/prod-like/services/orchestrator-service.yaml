@@ -1,0 +1,6 @@
+# orchestrator-service in prod-like. One file = one Argo CD Application (prod-like-orchestrator-service).
+# Deploy another version: change image.tag and commit.
+apps:
+  orchestrator-service:
+    image:
+      tag: dev

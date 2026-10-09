@@ -1,5 +1,5 @@
 {{- range $name, $svc := .Values.apps }}
-{{- if and $svc.enabled $svc.hpa }}
+{{- if and (include "apps.selected" (dict "name" $name "svc" $svc "root" $)) $svc.hpa }}
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

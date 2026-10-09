@@ -1,0 +1,6 @@
+# frontend in prod-like. One file = one Argo CD Application (prod-like-frontend).
+# Deploy another version: change image.tag and commit.
+apps:
+  frontend:
+    image:
+      tag: dev
