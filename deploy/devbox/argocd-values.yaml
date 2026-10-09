@@ -25,6 +25,20 @@ configs:
     # (= the Helm release name) inside immutable Deployment selectors, so Argo CD
     # must not touch it.
     application.resourceTrackingMethod: annotation
+    # Built-in Ingress health = Progressing until status.loadBalancer has an
+    # address. On minikube the ingress-nginx LoadBalancer only gets one while
+    # `minikube tunnel` runs — which needs sudo and is a browsing convenience,
+    # not a health requirement (deploy/CLAUDE.md). Without this, gateway and
+    # frontend sat "Progressing" forever with both pods 1/1 Ready.
+    resource.customizations.health.networking.k8s.io_Ingress: |
+      hs = {}
+      hs.status = "Healthy"
+      if obj.status ~= nil and obj.status.loadBalancer ~= nil and obj.status.loadBalancer.ingress ~= nil then
+        hs.message = "routable"
+      else
+        hs.message = "no address yet (local: run 'sudo -v && make k8s-tunnel' to browse)"
+      end
+      return hs
 
 controller:
   resources:

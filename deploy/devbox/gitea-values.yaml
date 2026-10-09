@@ -33,6 +33,20 @@ persistence:
   enabled: true
   size: 2Gi
 
+# The rootless image runs as uid 1000, but minikube's storage-provisioner hands
+# out hostPath volumes owned by root — and fsGroup does nothing for hostPath.
+# Without this, the chart's own init container dies on
+# `mkdir: can't create directory '/data/git/': Permission denied`.
+preExtraInitContainers:
+  - name: chown-data
+    image: busybox:1.36
+    command: ["sh", "-c", "chown -R 1000:1000 /data"]
+    securityContext:
+      runAsUser: 0
+    volumeMounts:
+      - name: data
+        mountPath: /data
+
 resources:
   requests: { cpu: 50m, memory: 128Mi }
   limits:   { cpu: 1000m, memory: 512Mi }
