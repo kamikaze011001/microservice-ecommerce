@@ -54,7 +54,13 @@ for env in compose k8s aws; do
     if [ ! -f "$SECRETS/$svc.yaml" ]; then
       printf '  \033[33m..\033[0m   %s (no canonical file yet)\n' "$svc"; pending=$((pending + 1)); continue
     fi
-    want="$(jq -S --arg s "$svc" '.[$s]' "$HERE/golden/$env.json")"
+    # deviations/<env>.jq: deliberate changes since the golden capture, each
+    # documented there. Applied to the golden, never written into it.
+    if [ -f "$HERE/deviations/$env.jq" ]; then
+      want="$(jq -S --arg s "$svc" '.[$s]' "$HERE/golden/$env.json" | jq -S -f "$HERE/deviations/$env.jq")"
+    else
+      want="$(jq -S --arg s "$svc" '.[$s]' "$HERE/golden/$env.json")"
+    fi
     got="$(jq -S --arg s "$svc" '.[$s]' <<<"$actual")"
     if [ "$want" = "$got" ]; then
       printf '  \033[32mok\033[0m   %s\n' "$svc"; pass=$((pass + 1))

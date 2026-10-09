@@ -82,9 +82,27 @@ inventory-service at another, and roll back one without the other.
     - name: management
       containerPort: {{ $s.managementPort }}
     {{- end }}
-  {{- if $s.env }}
+  {{- /*
+    springConfig: Spring properties as a nested map, deep-merged from
+    defaults.springConfig (env-wide) and the service's own block — because it
+    goes through the preamble's mergeOverwrite like every other non-env key.
+    Rendered as SPRING_APPLICATION_JSON, which outranks every config import
+    (Vault included) and, unlike plain env vars, keeps map keys with dots AND
+    dashes exact (`application.kafka.topics.order-service.order.failed-status`).
+    orchestrator-service's EnvOverridePrecedenceTest pins that behaviour.
+    One container has one SPRING_APPLICATION_JSON, so setting it in `env` as
+    well is refused rather than letting one silently win.
+  */ -}}
+  {{- $env := deepCopy (default (dict) $s.env) }}
+  {{- if $s.springConfig }}
+  {{- if get $env "SPRING_APPLICATION_JSON" }}
+  {{- fail (printf "%s: set either springConfig or env.SPRING_APPLICATION_JSON, not both" $name) }}
+  {{- end }}
+  {{- $_ := set $env "SPRING_APPLICATION_JSON" (toJson $s.springConfig) }}
+  {{- end }}
+  {{- if $env }}
   env:
-    {{- range $k, $v := $s.env }}
+    {{- range $k, $v := $env }}
     {{- if $v }}
     - name: {{ $k }}
       value: {{ $v | quote }}
