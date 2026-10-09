@@ -1,0 +1,52 @@
+# Joxit docker-registry-ui — a browser for the minikube registry addon.
+# `make devbox-open` forwards it to http://localhost:8181.
+#
+# Proxy mode (NGINX_PROXY_PASS_URL): the UI's own nginx forwards /v2/ to the
+# registry, so the browser talks to one origin and the registry needs no CORS
+# config. Read-only on purpose (DELETE_IMAGES=false): deleting a tag an env
+# still points at turns the next sync or rollback into ImagePullBackOff, so
+# deletion goes through `make devbox-gc`, which checks the env repo first.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry-ui
+  namespace: devbox
+  labels: { app.kubernetes.io/name: registry-ui, app.kubernetes.io/part-of: devbox }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: registry-ui }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: registry-ui, app.kubernetes.io/part-of: devbox }
+    spec:
+      containers:
+        - name: registry-ui
+          image: joxit/docker-registry-ui:2.5.7
+          ports:
+            - { name: http, containerPort: 80 }
+          env:
+            - { name: SINGLE_REGISTRY, value: "true" }
+            - { name: REGISTRY_TITLE, value: "microecom devbox registry" }
+            - { name: NGINX_PROXY_PASS_URL, value: "http://registry.kube-system.svc.cluster.local" }
+            - { name: DELETE_IMAGES, value: "false" }
+            - { name: SHOW_CONTENT_DIGEST, value: "true" }
+            - { name: SHOW_CATALOG_NB_TAGS, value: "true" }
+            - { name: TAGLIST_ORDER, value: "num-desc;alpha-asc" }
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits:   { cpu: 200m, memory: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry-ui
+  namespace: devbox
+  labels: { app.kubernetes.io/name: registry-ui, app.kubernetes.io/part-of: devbox }
+spec:
+  selector: { app.kubernetes.io/name: registry-ui }
+  ports:
+    - { name: http, port: 80, targetPort: http }

@@ -870,6 +870,36 @@ devbox-open:
 devbox-close:
 	@$(DEVBOX) close
 
+.PHONY: devbox-version devbox-ship devbox-deploy devbox-tags devbox-gc devbox-proof devbox-test
+
+## devbox-version svc=X: the tag a build of X would get now (commit, or -dirty-<time>)
+devbox-version:
+	@$(DEVBOX) version $(or $(svc),$(error svc= is required))
+
+## devbox-ship svc=X [env=]: build X from your tree → registry → env repo → Argo CD sync
+devbox-ship:
+	@$(DEVBOX) ship $(or $(svc),$(error svc= is required)) $(env)
+
+## devbox-deploy svc=X tag=T [env=]: pin an existing tag — this is rollback
+devbox-deploy:
+	@$(DEVBOX) deploy $(or $(svc),$(error svc= is required)) $(or $(tag),$(error tag= is required)) $(env)
+
+## devbox-tags svc=X: registry tags newest first, marked with the envs using them
+devbox-tags:
+	@$(DEVBOX) tags $(or $(svc),$(error svc= is required))
+
+## devbox-gc [KEEP=5] [APPLY=1]: drop old tags (dry run by default); never one an env pins
+devbox-gc:
+	@$(DEVBOX) gc $(or $(KEEP),5) $(or $(APPLY),0)
+
+## devbox-proof: ship → rollback → history → drift on order-service, PASS/FAIL table
+devbox-proof:
+	@$(DEVBOX) proof
+
+# Offline: tag rules against a throwaway git repo. No cluster needed.
+devbox-test:
+	@bash deploy/devbox/tests/version-test.sh
+
 # ============================================================================
 # AWS (ephemeral EKS) — see docs/superpowers/specs/2026-06-10-aws-deployment-design.md
 # ============================================================================

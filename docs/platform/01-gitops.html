@@ -4,105 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Devbox 1 — GitOps</title>
-<style>
-  :root{
-    --bg:#fbf6ee; --bg2:#fff;
-    --ink:#2d2a26; --ink2:#5b554d; --faint:#9a9489;
-    --line:#ece3d6; --shadow:0 10px 30px rgba(120,100,70,.13);
-    --git:#f0773a; --argo:#ef7b4d; --k8s:#326ce5; --good:#3fb27f; --bad:#ef5f5f; --warn:#e8a33d; --purple:#7a4fd0;
-    --codebg:#f1e9db; --codeink:#7a5a33;
-  }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg:#1d1b18; --bg2:#27241f; --ink:#f1ebe2; --ink2:#c9c0b3; --faint:#8d857a;
-      --line:#3a352e; --shadow:0 10px 30px rgba(0,0,0,.35); --codebg:#332e27; --codeink:#e9c79a;
-    }
-  }
-  :root[data-theme="dark"]{
-    --bg:#1d1b18; --bg2:#27241f; --ink:#f1ebe2; --ink2:#c9c0b3; --faint:#8d857a;
-    --line:#3a352e; --shadow:0 10px 30px rgba(0,0,0,.35); --codebg:#332e27; --codeink:#e9c79a;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;background:var(--bg);color:var(--ink);
-    font-family:ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    -webkit-font-smoothing:antialiased;line-height:1.6}
-  code{font-family:ui-monospace,Menlo,Consolas,monospace;background:var(--codebg);border-radius:6px;padding:.06em .4em;font-size:.86em;color:var(--codeink);word-break:break-word}
-  pre{background:var(--codebg);color:var(--codeink);border-radius:12px;padding:12px 14px;overflow-x:auto;font-size:13px;line-height:1.5}
-  pre code{background:none;padding:0}
-  a{color:var(--git);font-weight:600;text-decoration:none} a:hover{text-decoration:underline}
-
-  header.hero{text-align:center;padding:48px 16px 22px}
-  header.hero .icon{font-size:56px;line-height:1}
-  header.hero h1{margin:12px 0 6px;font-size:32px;letter-spacing:-.5px}
-  header.hero p{margin:0 auto;max-width:600px;color:var(--ink2);font-size:17px}
-  .series{margin-top:10px;font-size:13px;color:var(--faint);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
-
-  nav.toc{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(8px);
-    border-bottom:1px solid var(--line);padding:10px 16px;display:flex;gap:8px;overflow-x:auto}
-  nav.toc a{font-size:13px;color:var(--ink2);white-space:nowrap;background:var(--bg2);border:1px solid var(--line);border-radius:999px;padding:5px 12px}
-
-  main{max-width:820px;margin:0 auto;padding:26px 16px 70px}
-  h2{font-size:24px;margin:44px 0 10px;letter-spacing:-.3px}
-  h2 .n{color:var(--faint);font-weight:800;margin-right:6px}
-  p.lead{color:var(--ink2);margin-top:0}
-
-  .bigidea{background:var(--bg2);border:2px solid color-mix(in srgb,var(--git) 35%,var(--line));border-radius:22px;padding:22px 24px;box-shadow:var(--shadow)}
-  .bigidea .big{font-size:19px;margin:.2em 0}
-  .bigidea b{color:var(--git)}
-
-  /* architecture map */
-  .map{display:grid;grid-template-columns:1fr;gap:10px;margin:18px 0}
-  .lane{background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:14px 16px;box-shadow:var(--shadow)}
-  .lane h4{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
-  .boxes{display:flex;flex-wrap:wrap;gap:8px}
-  .box{border-radius:12px;padding:8px 12px;font-size:14px;font-weight:600;border:1px solid var(--line);background:var(--bg)}
-  .box small{display:block;font-weight:500;color:var(--ink2);font-size:12px}
-  .box.git{border-color:color-mix(in srgb,var(--git) 55%,var(--line))}
-  .box.argo{border-color:color-mix(in srgb,var(--purple) 55%,var(--line))}
-  .box.k8s{border-color:color-mix(in srgb,var(--k8s) 55%,var(--line))}
-  .arrow{text-align:center;color:var(--faint);font-size:13px;font-weight:700}
-
-  /* reconcile demo */
-  .demo{background:var(--bg2);border:2px solid color-mix(in srgb,var(--good) 40%,var(--line));border-radius:20px;padding:18px 20px;box-shadow:var(--shadow);margin:16px 0}
-  .demo .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
-  .state{border:1px solid var(--line);border-radius:14px;padding:10px 12px;background:var(--bg)}
-  .state h5{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
-  .state .v{font-family:ui-monospace,Menlo,monospace;font-size:14px;transition:background .3s}
-  .state .v.flash{background:color-mix(in srgb,var(--warn) 35%,transparent)}
-  .pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:800;color:#fff}
-  .pill.ok{background:var(--good)} .pill.drift{background:var(--bad)} .pill.work{background:var(--warn)}
-  .demo button{font:inherit;font-weight:700;font-size:14px;border:1px solid var(--line);border-radius:12px;padding:8px 14px;cursor:pointer;background:var(--bg);color:var(--ink);margin:4px 6px 4px 0}
-  .demo button:hover{border-color:var(--git)}
-  .log{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:var(--ink2);min-height:60px;max-height:130px;overflow:auto;border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}
-
-  /* concept cards */
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
-  .card{background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:14px 16px;box-shadow:var(--shadow)}
-  .card h3{margin:0 0 4px;font-size:16px}
-  .card p{margin:.3em 0;font-size:14.5px;color:var(--ink2)}
-  .card .here{font-size:13.5px;margin-top:8px;border-top:1px dashed var(--line);padding-top:6px}
-
-  table{width:100%;border-collapse:collapse;font-size:14px;background:var(--bg2);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
-  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint)}
-  .tablewrap{overflow-x:auto}
-
-  .scar{background:var(--bg2);border-left:5px solid var(--bad);border-radius:12px;padding:12px 16px;margin:12px 0;box-shadow:var(--shadow)}
-  .scar h3{margin:0 0 4px;font-size:16px}
-  .scar p{margin:.35em 0;font-size:14.5px}
-
-  .try{counter-reset:t;list-style:none;padding:0}
-  .try li{counter-increment:t;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:12px 14px 12px 52px;margin:10px 0;position:relative}
-  .try li::before{content:counter(t);position:absolute;left:14px;top:12px;width:26px;height:26px;border-radius:50%;background:var(--git);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:13px}
-  .try .expect{color:var(--good);font-weight:700;font-size:14px}
-
-  details{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:10px 14px;margin:8px 0}
-  summary{cursor:pointer;font-weight:700}
-  details p{color:var(--ink2);font-size:14.5px;margin:.5em 0 .2em}
-
-  .next{background:linear-gradient(135deg,color-mix(in srgb,var(--purple) 12%,var(--bg2)),var(--bg2));border:1px solid var(--line);border-radius:18px;padding:16px 20px;margin-top:20px}
-  @media (max-width:560px){ .demo .cols{grid-template-columns:1fr} header.hero h1{font-size:26px} }
-</style>
+<link rel="stylesheet" href="platform.css"/>
 </head>
 <body>
 
@@ -293,6 +195,7 @@
   <div class="next">
     <h2 style="margin-top:0">Next — phase 2: versions you can roll back to</h2>
     <p>Right now every service runs tag <code>dev</code>, and every build overwrites it. So "roll back order-service" would pull <em>today's</em> image again — git history says one thing, the registry says another. Phase 2 gives each build a tag from its commit (<code>order-service:9f8e7d6</code>, or <code>…-dirty-1009-1432</code> for uncommitted work), adds <code>make devbox-ship</code> and <code>make devbox-deploy</code>, a registry browser, and a cleanup that never deletes a tag an env still points at.</p>
+    <p><a href="02-versions.html">Read phase 2 →</a></p>
   </div>
 </section>
 

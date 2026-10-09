@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Devbox 2 — Versions</title>
+<link rel="stylesheet" href="platform.css"/>
+<style>
+  .tagdemo .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+  .tagdemo .lbl{width:150px;font-size:13px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.05em}
+  .chip{font-family:ui-monospace,Menlo,monospace;font-size:13px;border:1px solid var(--line);border-radius:10px;padding:4px 9px;background:var(--bg)}
+  .chip.cur{border-color:var(--good);box-shadow:0 0 0 2px color-mix(in srgb,var(--good) 30%,transparent)}
+  .chip.gone{text-decoration:line-through;opacity:.45}
+  .verdict{font-weight:800;margin-top:6px}
+  .verdict.good{color:var(--good)} .verdict.bad{color:var(--bad)}
+  .pipe{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:14px 0}
+  .pipe .step{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:8px 11px;font-size:13.5px;box-shadow:var(--shadow)}
+  .pipe .step b{display:block;font-size:12px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em}
+  .pipe .arr{color:var(--faint);font-weight:800}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="icon">🏷️</div>
+  <h1>Versions you can roll back to</h1>
+  <p>Phase 2 of the devbox. Every build gets a name that means the same bytes forever. That's what makes "go back to yesterday's order-service" actually work.</p>
+  <div class="series">Devbox · platform engineering series · 2 / 6</div>
+</header>
+
+<nav class="toc">
+  <a href="#idea">Big idea</a><a href="#demo">Mutable vs immutable</a><a href="#rules">Tag rules</a><a href="#ship">ship &amp; deploy</a>
+  <a href="#gc">Cleanup</a><a href="#wiring">In this repo</a><a href="#scars">What broke</a><a href="#try">Try it</a><a href="#interview">Interview</a><a href="#next">Next</a>
+</nav>
+
+<main>
+
+<section id="idea">
+  <div class="bigidea">
+    <p class="big">Phase 1 put the <b>history</b> in git. But git only stores <em>names</em> — <code>image.tag: dev</code>. If the registry lets that name point at different bytes tomorrow, history is a lie: reverting the commit reverts the <em>name</em>, not the code.</p>
+    <p class="big">So: a tag is a <b>promise</b>. Once <code>order-service:ac48ad8</code> exists, it means those exact bytes, forever. Rollback = point the env at an older promise.</p>
+  </div>
+</section>
+
+<section id="demo">
+  <h2><span class="n">1</span>Mutable vs immutable tags — play with it</h2>
+  <p class="lead">Ship two versions, then roll back. Watch what the "old version" actually is.</p>
+  <div class="demo tagdemo">
+    <div class="row"><span class="lbl">Mode</span>
+      <button id="m-mut">:dev (today)</button><button id="m-imm">:&lt;commit&gt; (phase 2)</button></div>
+    <div class="row"><span class="lbl">Registry</span><span id="reg"></span></div>
+    <div class="row"><span class="lbl">Env repo log</span><span id="hist"></span></div>
+    <div class="row"><span class="lbl">Running</span><span id="run"></span></div>
+    <div style="margin-top:8px"><button id="b-ship">🚢 ship a new build</button><button id="b-back">⏪ roll back one</button><button id="b-reset">↺ reset</button></div>
+    <div class="verdict" id="verdict"></div>
+  </div>
+</section>
+
+<section id="rules">
+  <h2><span class="n">2</span>How a service's tag is chosen</h2>
+  <p class="lead">Tag = <b>the last commit that changed the files that go into that image</b> — not HEAD.</p>
+  <div class="tablewrap"><table>
+    <tr><th>You…</th><th>order-service</th><th>inventory-service</th><th>frontend</th><th>Why</th></tr>
+    <tr><td>commit a fix in <code>order-service/</code></td><td><b>new tag</b></td><td>same</td><td>same</td><td>Only order-service's inputs changed. The other nine aren't rebuilt and can't be rolled back by accident.</td></tr>
+    <tr><td>commit a change in <code>core/</code></td><td><b>new</b></td><td><b>new</b></td><td>same</td><td>Every JVM image contains the core JARs. The SPA doesn't.</td></tr>
+    <tr><td>edit <code>order-service/</code> without committing</td><td><code>ac48ad8-dirty-1010-0932</code></td><td>same</td><td>same</td><td>Unique per build, traceable to a base commit, and visibly not reproducible from git.</td></tr>
+    <tr><td>edit <code>README.md</code></td><td>same</td><td>same</td><td>same</td><td>Not an input of any image.</td></tr>
+  </table></div>
+  <p style="font-size:14.5px;color:var(--ink2)">The inputs come from the Dockerfiles' <code>COPY</code> lines: a JVM service = its folder + <code>core/</code> + <code>Dockerfile.jvm</code> + <code>Dockerfile.cores</code>. If you add a <code>COPY</code>, add the path to <code>version_inputs</code> in <code>deploy/devbox/lib/version.sh</code>, or a change there won't produce a new tag.</p>
+</section>
+
+<section id="ship">
+  <h2><span class="n">3</span>The two golden paths</h2>
+  <p class="lead"><code>make devbox-ship svc=order-service</code> — "run my code in prod-like":</p>
+  <div class="pipe">
+    <div class="step"><b>1 · version</b>tag from git</div><span class="arr">→</span>
+    <div class="step"><b>2 · build</b>skipped if the tag exists</div><span class="arr">→</span>
+    <div class="step"><b>3 · push</b>registry :5001</div><span class="arr">→</span>
+    <div class="step"><b>4 · chart</b>branch → Gitea</div><span class="arr">→</span>
+    <div class="step"><b>5 · commit</b>tag → env-config</div><span class="arr">→</span>
+    <div class="step"><b>6 · refresh</b>Argo CD, now</div><span class="arr">→</span>
+    <div class="step"><b>7 · wait</b>this commit, Synced, Healthy, rolled out</div>
+  </div>
+  <p class="lead"><code>make devbox-deploy svc=order-service tag=dev</code> — "put back that version": steps 5–7 only, after checking the tag is in the registry. That check matters: a commit naming a missing tag is a guaranteed <code>ImagePullBackOff</code>, and git would have recorded it as a "deploy".</p>
+  <p style="font-size:14.5px;color:var(--ink2)">Step 7 waits for <em>this env commit</em>, not just "Synced". "Synced" alone could be the previous commit that Argo CD hasn't noticed is old yet.</p>
+</section>
+
+<section id="gc">
+  <h2><span class="n">4</span>Cleanup without breaking rollback</h2>
+  <p class="lead">Every ship adds ~300 MB. <code>make devbox-gc</code> (dry run; <code>APPLY=1</code> to act) keeps, per service:</p>
+  <div class="cards">
+    <div class="card"><h3>Every tag an env pins</h3><p>Read from the env repo. Removing it would break the next sync or pod restart.</p></div>
+    <div class="card"><h3><code>dev</code></h3><p>The bootstrap tag — always a valid way back.</p></div>
+    <div class="card"><h3>The newest N (default 5)</h3><p>Your recent rollback window.</p></div>
+    <div class="card"><h3>Anything sharing a kept digest</h3><p>The registry removes by <em>digest</em>, not by tag. Two tags on the same bytes go together — so a doomed tag that shares a kept one's digest is kept.</p></div>
+  </div>
+  <p style="font-size:14.5px;color:var(--ink2)">Then the registry's own <code>garbage-collect</code> frees the layers. The one sharp edge: <code>git revert</code> past the window brings back a tag gc already removed. <code>devbox-deploy</code> refuses that; a hand-made revert doesn't — check <code>make devbox-tags</code> first.</p>
+</section>
+
+<section id="wiring">
+  <h2><span class="n">5</span>How it's wired in this repo</h2>
+  <div class="tablewrap"><table>
+    <tr><th>File</th><th>What</th></tr>
+    <tr><td><code>deploy/devbox/lib/version.sh</code></td><td><code>version_inputs</code>, <code>version_of</code>, <code>is_dirty_tag</code></td></tr>
+    <tr><td><code>deploy/devbox/tests/version-test.sh</code></td><td>The rules above, against a throwaway git repo — <code>make devbox-test</code>, no cluster</td></tr>
+    <tr><td><code>deploy/devbox/devbox.sh</code></td><td><code>version · ship · deploy · tags · gc · proof</code></td></tr>
+    <tr><td><code>deploy/devbox/registry-ui.yaml</code></td><td>Joxit UI, proxy mode, <b>read-only</b> — deletion only through gc's checks</td></tr>
+    <tr><td><code>deploy/images/build.sh</code></td><td>Unchanged: <code>TAG=</code> was already a parameter; ship just stops passing <code>dev</code></td></tr>
+  </table></div>
+</section>
+
+<section id="scars">
+  <h2><span class="n">6</span>What broke while building it</h2>
+  <div id="scar-list">
+    <div class="scar">
+      <h3>A proof that passed for the wrong reason</h3>
+      <p><b>Symptom:</b> the first <code>devbox-proof</code> went 6/6 PASS — ship <code>ac48ad8</code>, roll back to <code>dev</code>, roll forward. Then <code>devbox-tags</code> showed both tags with the <em>same build time</em>.</p>
+      <p><b>Cause:</b> same digest. The old <code>dev</code> image had been built from exactly the inputs of commit <code>ac48ad8</code>, and Docker's layer cache reproduced it bit for bit. The "rollback" switched between two names for the same bytes. Every check compared <em>tag strings</em>, so it couldn't notice.</p>
+      <p><b>Fix:</b> the proof now checks the running pods' <code>imageID</code> digest, asserts the rollback target is <em>different bytes</em>, and — when it isn't — builds one (same image + a label). Re-run: 7/7, at the byte level. Lesson: a test that checks the name of a thing, not the thing, will pass on a lie.</p>
+    </div>
+    <div class="scar">
+      <h3><code>[[ … ]] &amp;&amp; printf</code> as the last line of a function</h3>
+      <p><b>Symptom:</b> <code>make devbox-tags</code> printed only its header and exited 1, after working fine the first time.</p>
+      <p><b>Cause:</b> the helper that finds which envs use a tag ended with <code>[[ $tag == $t ]] &amp;&amp; printf …</code>. With two tags, the last comparison is a non-match, so the <em>function</em> returns 1, and <code>set -e</code> kills the script without a message. With one tag it happened to match — which is why it worked before the first ship.</p>
+      <p><b>Fix:</b> <code>if … then printf; fi</code>. Under <code>set -e</code>, never let a conditional be a function's last command.</p>
+    </div>
+    <div class="scar">
+      <h3>Same inputs, same bytes — a feature</h3>
+      <p>The flip side of the first scar: <code>ship</code> found <code>order-service:ac48ad8</code> already built and skipped the build. Content-derived tags plus a deterministic build make "rebuild" a cache hit. That only holds while the tag's inputs list matches the Dockerfile's <code>COPY</code> lines.</p>
+    </div>
+  </div>
+</section>
+
+<section id="try">
+  <h2><span class="n">7</span>Try it</h2>
+  <ol class="try">
+    <li><code>make devbox-version svc=order-service</code>, then edit any file in <code>order-service/</code> and run it again.
+      <div class="expect">A commit hash, then <code>&lt;hash&gt;-dirty-&lt;now&gt;</code>. Undo the edit.</div></li>
+    <li><code>make devbox-ship svc=order-service</code>. Watch Argo CD's <code>prod-like-order-service</code> tile while it runs.
+      <div class="expect">A new image in the registry UI (localhost:8181), a commit "ship order-service dev → …" in Gitea, the tile goes OutOfSync → Synced.</div></li>
+    <li><code>make devbox-tags svc=order-service</code>, then <code>make devbox-deploy svc=order-service tag=dev</code>.
+      <div class="expect">The "← prod-like" marker moves; the pod rolls back.</div></li>
+    <li><code>make devbox-deploy svc=order-service tag=doesnotexist</code>
+      <div class="expect">Refused before anything is committed, with the list of real tags.</div></li>
+    <li><code>make devbox-gc</code> (dry run).
+      <div class="expect">Nothing pinned or recent is listed.</div></li>
+    <li><code>make devbox-proof</code>
+      <div class="expect">Seven PASS lines — including "rollback target is different bytes".</div></li>
+  </ol>
+</section>
+
+<section id="interview">
+  <h2><span class="n">8</span>Interview questions</h2>
+  <details><summary>Why are <code>latest</code>/<code>dev</code> tags a problem in production?</summary>
+    <p>They're mutable: the same name points at different images over time. Rollback, audit ("what ran at 14:02?") and reproducibility all break, and different nodes can run different code under one tag depending on when each pulled.</p></details>
+  <details><summary>Tag by commit or by digest?</summary>
+    <p>A digest (<code>@sha256:…</code>) is the only truly immutable reference — even a commit tag <em>can</em> be re-pushed. Many teams deploy by digest and keep the commit tag for humans. Here, tags stay readable and the registry is local; pinning digests in the env repo would be the next hardening step.</p></details>
+  <details><summary>With immutable tags, what <code>imagePullPolicy</code> should you use?</summary>
+    <p><code>IfNotPresent</code> is enough — a node that has <code>:ac48ad8</code> has the right bytes. <code>Always</code> is only needed for mutable tags. The chart still says <code>Always</code> because the umbrella/AWS paths still use <code>dev</code>; with immutable tags it costs one manifest check per pod start and nothing more.</p></details>
+  <details><summary>Why tag by the last commit that touched the service instead of HEAD?</summary>
+    <p>Unchanged services keep their tag, so they aren't rebuilt or redeployed, and their history only shows real changes. The cost: the input list must match what the Dockerfile copies, or a change won't produce a new tag.</p></details>
+  <details><summary>How do you keep a registry from growing forever without breaking rollbacks?</summary>
+    <p>Retention that knows what's deployed: never remove anything an environment references, keep a recent window, remove by digest carefully (shared digests), then run the registry's blob GC. Harbor/ECR lifecycle policies do the same; the "what's deployed" part is the piece they can't know without you.</p></details>
+</section>
+
+<section id="next">
+  <div class="next">
+    <h2 style="margin-top:0">Next — phase 3: what "an env" really is</h2>
+    <p>Today every env deploys into the same namespace and talks to the same Kafka topics and databases, so only one env can run at a time. Phase 3 makes an env a full set of config — its own namespace, database names, topic prefixes, CDC connector and Vault path — so <code>prod-like</code> and a <code>preview-&lt;branch&gt;</code> can run side by side without stealing each other's events.</p>
+  </div>
+</section>
+
+</main>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var mode="mut", builds, reg, hist, cur;
+  function reset(){ builds=0; reg=[]; hist=[]; cur=null; ship(); }
+  function bytes(n){ return ["🟦 v1","🟩 v2","🟨 v3","🟪 v4","🟥 v5"][n%5]; }
+  function ship(){
+    builds++;
+    if(mode==="mut"){ reg=[{tag:"dev",bytes:bytes(builds-1)}]; hist.push("dev"); }
+    else { var t=["ac48ad8","9f8e7d6","1b2c3d4","5e6f7a8","0c1d2e3"][(builds-1)%5]; reg.push({tag:t,bytes:bytes(builds-1)}); hist.push(t); }
+    cur=hist[hist.length-1]; render("ship");
+  }
+  function back(){
+    if(hist.length<2){ $("verdict").textContent="Ship at least twice first."; $("verdict").className="verdict"; return; }
+    hist.push(hist[hist.length-2]); cur=hist[hist.length-1]; render("back");
+  }
+  function lookup(t){ for(var i=reg.length-1;i>=0;i--) if(reg[i].tag===t) return reg[i].bytes; return "∅"; }
+  function render(what){
+    $("reg").innerHTML=reg.map(function(r){return '<span class="chip">:'+r.tag+' = '+r.bytes+'</span>'}).join(" ");
+    $("hist").innerHTML=hist.map(function(h,i){return '<span class="chip'+(i===hist.length-1?' cur':'')+'">'+h+'</span>'}).join(" → ");
+    $("run").innerHTML='<span class="chip cur">:'+cur+' → '+lookup(cur)+'</span>';
+    var v=$("verdict");
+    if(what==="back"){
+      var wanted=bytes(builds-2), got=lookup(cur);
+      if(got===wanted){ v.textContent="✓ Rolled back: running "+got+", the build from before."; v.className="verdict good"; }
+      else { v.textContent="✗ Git says 'rolled back', but the pod still runs "+got+" — :dev was overwritten. History lied."; v.className="verdict bad"; }
+    } else { v.textContent=""; v.className="verdict"; }
+  }
+  $("b-ship").onclick=ship; $("b-back").onclick=back; $("b-reset").onclick=reset;
+  $("m-mut").onclick=function(){mode="mut";reset()}; $("m-imm").onclick=function(){mode="imm";reset()};
+  reset();
+})();
+</script>
+</body>
+</html>
