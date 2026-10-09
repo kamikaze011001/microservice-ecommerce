@@ -238,6 +238,13 @@ mongo-connector-ensure:
 ## kafka-capacity-check: fail if any consumer's max pods × listener concurrency
 ## exceeds the smallest partition count in topics.txt (extra consumers sit idle).
 ## kafka-topics-test: offline decision-table test for create-topics.sh.
+## kafka-chaos-proof: k6 payment-saga load on the local cluster with consumers scaled
+## out, pods killed/rolled mid-run, then invariants (no lost/duplicate/stuck work).
+## Needs a running `make k8s-bootstrap-helm` stack. Exit 1 if any invariant fails.
+.PHONY: kafka-chaos-proof
+kafka-chaos-proof:
+	@CONTEXT=$(or $(CONTEXT),$(K8S_CLUSTER)) bash scripts/kafka/chaos-proof.sh
+
 ## dlt-replay: put <topic>.DLT back onto <topic> via the owning service's internal
 ## actuator endpoint. Fix the cause first. ENV=k8s needs CONTEXT=<kube-context>.
 .PHONY: kafka-capacity-check kafka-topics-test dlt-replay
