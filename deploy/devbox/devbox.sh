@@ -12,6 +12,13 @@
 #   close      stop those port-forwards
 #   status     one line per Application: sync, health, image
 #
+#   version <svc>               the tag a build of <svc> would get right now
+#   ship    <svc> [env]         build → push image → commit tag to env → sync
+#   deploy  <svc> <tag> [env]   pin an existing tag (rollback / roll forward)
+#   tags    <svc>               registry tags, newest first, with env markers
+#   gc      [keep] [apply]      delete old tags; never one an env references
+#   proof                       ship → rollback → history → drift, PASS/FAIL
+#
 # CONTEXT is required and never taken from the ambient kubectl context — same
 # rule as secrets-seed / kafka-chaos-proof. `make devbox-*` passes microecom.
 set -euo pipefail
@@ -19,6 +26,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../scripts/lib/colors.sh
 . "$ROOT/deploy/scripts/lib/colors.sh"
+# shellcheck source=lib/version.sh
+. "$ROOT/deploy/devbox/lib/version.sh"
 DEVBOX="$ROOT/deploy/devbox"
 RUN_DIR="$ROOT/deploy/.run"
 mkdir -p "$RUN_DIR"
@@ -40,6 +49,14 @@ GITEA_LOCAL="http://$GITEA_USER:$GITEA_PASS@localhost:$GITEA_LOCAL_PORT"
 GITEA_IN_CLUSTER=http://gitea-http.devbox.svc.cluster.local:3000
 ARGOCD_LOCAL_PORT=8180
 GRAFANA_LOCAL_PORT=3301
+REGISTRY_UI_LOCAL_PORT=8181
+# The host side of the minikube registry addon (cluster.sh's forward). Pods
+# pull the same repositories as localhost:5000 through the node proxy.
+REGISTRY_HOST=localhost:5001
+DEFAULT_ENV=prod-like
+# Tags `gc` always keeps, whatever their age: the bootstrap tag every service
+# file starts on, so `deploy <svc> dev` is always a valid way back.
+GC_PROTECTED_TAGS="dev"
 
 # Your working copy of the env repo. Edit, commit, push here to change an env.
 ENV_CLONE="$RUN_DIR/env-config"
@@ -109,7 +126,10 @@ cmd_platform() {
     --dry-run=client -o yaml \
     | $K label --local -f - argocd.argoproj.io/secret-type=repo-creds -o yaml \
     | $K apply -f - >/dev/null
-  log_ok "platform ready (Gitea + Argo CD)"
+  log_info "installing the registry browser (namespace devbox)"
+  $K apply -f "$DEVBOX/registry-ui.yaml" >/dev/null
+  $K -n devbox rollout status deploy/registry-ui --timeout=3m >/dev/null
+  log_ok "platform ready (Gitea + Argo CD + registry UI)"
 }
 
 cmd_push() {
@@ -199,6 +219,7 @@ cmd_open() {
   gitea_forward
   start_forward argocd argocd argocd-server "$ARGOCD_LOCAL_PORT" 80 /healthz
   start_forward grafana monitoring grafana "$GRAFANA_LOCAL_PORT" 80 /api/health || log_warn "Grafana forward failed (is infra up?)"
+  start_forward registry-ui devbox registry-ui "$REGISTRY_UI_LOCAL_PORT" 80 / || log_warn "registry UI forward failed (run make devbox-platform)"
   local argo_pass
   argo_pass="$($K -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo '<secret missing>')"
   cat <<EOF
@@ -206,7 +227,9 @@ cmd_open() {
   Argo CD   http://localhost:$ARGOCD_LOCAL_PORT     admin / $argo_pass
   Gitea     http://localhost:$GITEA_LOCAL_PORT     $GITEA_USER / $GITEA_PASS   (repos: devbox/env-config, devbox/microecom)
   Grafana   http://localhost:$GRAFANA_LOCAL_PORT     admin / admin
+  Registry  http://localhost:$REGISTRY_UI_LOCAL_PORT     read-only; delete old tags with make devbox-gc
 
+  Ship your code: make devbox-ship svc=<svc>     Roll back: make devbox-deploy svc=<svc> tag=<tag>
   Change an env:  cd $ENV_CLONE && \$EDITOR envs/prod-like/services/<svc>.yaml && git commit -am '...' && git push
   Stop forwards:  make devbox-close
 
@@ -214,11 +237,300 @@ EOF
 }
 
 cmd_close() {
-  for n in gitea argocd grafana; do stop_forward "$n"; done
+  for n in gitea argocd grafana registry-ui registry; do stop_forward "$n"; done
   log_ok "devbox port-forwards stopped"
 }
 
+# ── versions: ship / deploy / tags / gc / proof ─────────────────────────────
+
+ensure_registry() {
+  curl -fsS --max-time 5 -o /dev/null "http://$REGISTRY_HOST/v2/" 2>/dev/null && return 0
+  log_info "registry not reachable on $REGISTRY_HOST — starting a forward"
+  start_forward registry kube-system registry "${REGISTRY_HOST##*:}" 80 /v2/
+}
+
+# Both manifest flavours: buildx pushes OCI indexes, plain docker v2 manifests.
+MANIFEST_ACCEPT='application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json'
+
+image_exists() {  # <svc> <tag>
+  curl -fsS --max-time 5 -o /dev/null -I -H "Accept: $MANIFEST_ACCEPT" \
+    "http://$REGISTRY_HOST/v2/$1/manifests/$2" 2>/dev/null
+}
+
+image_digest() {  # <svc> <tag>
+  curl -fsS --max-time 5 -I -H "Accept: $MANIFEST_ACCEPT" \
+    "http://$REGISTRY_HOST/v2/$1/manifests/$2" 2>/dev/null \
+    | tr -d '\r' | awk -F': ' 'tolower($1) == "docker-content-digest" { print $2 }'
+}
+
+# When the image was built: manifest → (first real platform, if an index) →
+# config blob → .created. Empty if anything along the way is missing.
+image_created() {  # <svc> <tag>
+  local m cfg sub
+  m="$(curl -fsS --max-time 5 -H "Accept: $MANIFEST_ACCEPT" "http://$REGISTRY_HOST/v2/$1/manifests/$2" 2>/dev/null)" || return 0
+  if jq -e '.manifests' >/dev/null 2>&1 <<<"$m"; then
+    sub="$(jq -r '[.manifests[] | select(.platform.architecture != "unknown")][0].digest' <<<"$m")"
+    m="$(curl -fsS --max-time 5 -H "Accept: $MANIFEST_ACCEPT" "http://$REGISTRY_HOST/v2/$1/manifests/$sub" 2>/dev/null)" || return 0
+  fi
+  cfg="$(jq -r '.config.digest // empty' <<<"$m")"
+  [[ -n "$cfg" ]] || return 0
+  curl -fsS --max-time 5 "http://$REGISTRY_HOST/v2/$1/blobs/$cfg" 2>/dev/null | jq -r '.created // empty' | cut -c1-19
+}
+
+registry_tags() {  # <svc> — one tag per line
+  curl -fsS --max-time 5 "http://$REGISTRY_HOST/v2/$1/tags/list" 2>/dev/null | jq -r '.tags // [] | .[]'
+}
+
+# <svc> — "created<TAB>tag" per line, newest first
+registry_tags_by_age() {
+  local t
+  for t in $(registry_tags "$1"); do printf '%s\t%s\n' "$(image_created "$1" "$t")" "$t"; done | sort -r
+}
+
+env_file() { echo "$ENV_CLONE/envs/$1/services/$2.yaml"; }
+
+# Envs whose service file currently pins <svc>:<tag>, space-separated.
+envs_using() {  # <svc> <tag>
+  local f e
+  for f in "$ENV_CLONE"/envs/*/services/"$1".yaml; do
+    [[ -f "$f" ]] || continue
+    e="${f#"$ENV_CLONE"/envs/}"; e="${e%%/*}"
+    [[ "$(current_tag "$e" "$1")" == "$2" ]] && printf '%s ' "$e"
+  done
+}
+
+env_sync_clone() {
+  gitea_forward
+  if [[ -d "$ENV_CLONE/.git" ]]; then
+    git -C "$ENV_CLONE" pull --quiet --ff-only
+  else
+    git clone --quiet "$GITEA_LOCAL/$GITEA_USER/env-config.git" "$ENV_CLONE"
+  fi
+}
+
+current_tag() {  # <env> <svc>
+  awk '/^    image:/ { img = 1; next } img && /^      tag:/ { print $2; exit } /^    [a-z]/ { img = 0 }' "$(env_file "$1" "$2")"
+}
+
+set_tag() {  # <env> <svc> <tag>
+  local f; f="$(env_file "$1" "$2")"
+  [[ -f "$f" ]] || { log_err "no service file $f (unknown env or service)"; return 1; }
+  perl -0pi -e "s/(\n    image:\n      tag:)[^\n]*/\$1 $3/" "$f"
+  [[ "$(current_tag "$1" "$2")" == "$3" ]] || { log_err "could not set image.tag in $f"; return 1; }
+}
+
+env_commit_push() {  # <subject> <body>
+  git -C "$ENV_CLONE" add -A
+  git -C "$ENV_CLONE" -c user.name="$(git -C "$ROOT" config user.name || echo devbox)" \
+    -c user.email="$(git -C "$ROOT" config user.email || echo devbox@microecom.local)" \
+    commit --quiet -m "$1" -m "$2"
+  git -C "$ENV_CLONE" push --quiet origin main
+}
+
+# Ask Argo CD to look now instead of on its 60s poll, then wait until the
+# Application reports THIS env commit Synced + Healthy and the Deployment has
+# finished rolling out the expected tag.
+sync_wait() {  # <env> <svc> <tag>
+  local app="$1-$2" want rev sync health img start=$SECONDS
+  want="$(git -C "$ENV_CLONE" rev-parse HEAD)"
+  $K -n argocd annotate application "$app" argocd.argoproj.io/refresh=normal --overwrite >/dev/null
+  log_info "waiting for $app to run $3 (env commit ${want:0:7})"
+  while :; do
+    IFS=$'\t' read -r rev sync health < <($K -n argocd get application "$app" -o json \
+      | jq -r '[.status.sync.revisions[1] // "-", .status.sync.status // "-", .status.health.status // "-"] | @tsv')
+    img="$($K -n apps get deploy "$2" -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
+    if [[ "$rev" == "$want" && "$sync" == Synced && "$health" == Healthy && "$img" == *":$3" ]] \
+       && $K -n apps rollout status deploy/"$2" --timeout=5s >/dev/null 2>&1; then
+      log_ok "$app → $3 (Synced, Healthy, $((SECONDS - start))s)"
+      return 0
+    fi
+    if (( SECONDS - start > ${DEVBOX_SYNC_TIMEOUT:-600} )); then
+      log_err "$app did not converge: rev=${rev:0:7} sync=$sync health=$health image=$img"
+      return 1
+    fi
+    sleep 5
+  done
+}
+
+cmd_version() {
+  local svc=${1:?usage: version <svc>}
+  (cd "$ROOT" && version_of "$svc")
+}
+
+cmd_ship() {
+  local svc=${1:?usage: ship <svc> [env]} env=${2:-$DEFAULT_ENV} tag prev
+  env_sync_clone
+  [[ -f "$(env_file "$env" "$svc")" ]] || { log_err "no $svc in env '$env' ($(env_file "$env" "$svc"))"; return 1; }
+  tag="$(cd "$ROOT" && version_of "$svc")"
+  ensure_registry
+  if ! is_dirty_tag "$tag" && image_exists "$svc" "$tag"; then
+    log_info "$svc:$tag is already in the registry — same inputs, no rebuild"
+  else
+    log_info "building $svc:$tag"
+    (cd "$ROOT" && REGISTRY="$REGISTRY_HOST" TAG="$tag" SVC="$svc" deploy/images/build.sh)
+  fi
+
+  # The chart travels with the code: this branch's chart renders the new image.
+  cmd_push >/dev/null
+  prev="$(current_tag "$env" "$svc")"
+  if [[ "$prev" == "$tag" ]]; then
+    log_info "$env already pins $svc:$tag — nothing to commit"
+  else
+    set_tag "$env" "$svc" "$tag"
+    env_commit_push "ship $svc $prev → $tag" \
+      "from $(git -C "$ROOT" branch --show-current)@$(git -C "$ROOT" rev-parse --short HEAD) by make devbox-ship"
+  fi
+  sync_wait "$env" "$svc" "$tag"
+}
+
+cmd_deploy() {
+  local svc=${1:?usage: deploy <svc> <tag> [env]} tag=${2:?usage: deploy <svc> <tag> [env]} env=${3:-$DEFAULT_ENV} prev
+  ensure_registry
+  env_sync_clone
+  if ! image_exists "$svc" "$tag"; then
+    # A tag the registry doesn't have is a guaranteed ImagePullBackOff —
+    # refuse before git records it.
+    log_err "$svc:$tag is not in the registry. Available:"
+    cmd_tags "$svc" >&2
+    return 1
+  fi
+  prev="$(current_tag "$env" "$svc")"
+  if [[ "$prev" == "$tag" ]]; then
+    log_info "$env already pins $svc:$tag"
+  else
+    set_tag "$env" "$svc" "$tag"
+    env_commit_push "deploy $svc $prev → $tag" "pinned by make devbox-deploy"
+  fi
+  sync_wait "$env" "$svc" "$tag"
+}
+
+cmd_tags() {
+  local svc=${1:?usage: tags <svc>} created t used
+  ensure_registry >/dev/null
+  printf '%-28s %-20s %s\n' TAG BUILT "USED BY"
+  while IFS=$'\t' read -r created t; do
+    [[ -n "$t" ]] || continue
+    used="$(envs_using "$svc" "$t")"
+    printf '%-28s %-20s %s\n' "$t" "${created:--}" "${used:+← $used}"
+  done < <(registry_tags_by_age "$svc")
+}
+
+# Retention, per service: keep (a) every tag an env file pins right now,
+# (b) GC_PROTECTED_TAGS, (c) the newest <keep> of the rest. Remove the others —
+# but never a manifest whose digest a kept tag shares: the registry removes by
+# digest, so that would take the kept tag with it. Dry run unless <apply> = 1.
+cmd_gc() {
+  local keep=${1:-5} apply=${2:-0} svc created t d pinned kept n planned=0 pod
+  local -a doomed=()
+  ensure_registry
+  env_sync_clone >/dev/null
+  for svc in $(curl -fsS --max-time 5 "http://$REGISTRY_HOST/v2/_catalog?n=1000" | jq -r '.repositories[]'); do
+    pinned=" $GC_PROTECTED_TAGS "
+    for f in "$ENV_CLONE"/envs/*/services/"$svc".yaml; do
+      [[ -f "$f" ]] || continue
+      e="${f#"$ENV_CLONE"/envs/}"; e="${e%%/*}"
+      pinned+="$(current_tag "$e" "$svc") "
+    done
+    kept=" "; n=0
+    local -a cand=()
+    while IFS=$'\t' read -r created t; do
+      [[ -n "$t" ]] || continue
+      d="$(image_digest "$svc" "$t")"
+      if [[ "$pinned" == *" $t "* ]]; then kept+="$d "; continue; fi
+      if (( n < keep )); then kept+="$d "; n=$((n + 1)); continue; fi
+      cand+=("$svc|$t|$d")
+    done < <(registry_tags_by_age "$svc")
+    for c in ${cand[@]+"${cand[@]}"}; do
+      if [[ "$kept" == *" ${c##*|} "* ]]; then
+        log_info "keeping ${c%%|*}:$(cut -d'|' -f2 <<<"$c") — same image as a kept tag"
+      else
+        doomed+=("$c")
+      fi
+    done
+  done
+
+  for c in ${doomed[@]+"${doomed[@]}"}; do
+    svc="${c%%|*}"; t="$(cut -d'|' -f2 <<<"$c")"; d="${c##*|}"
+    planned=$((planned + 1))
+    if [[ "$apply" == 1 ]]; then
+      if curl -fsS --max-time 10 -o /dev/null -X DELETE "http://$REGISTRY_HOST/v2/$svc/manifests/$d"; then
+        echo "  removed $svc:$t"
+      else
+        log_warn "could not remove $svc:$t"
+      fi
+    else
+      echo "  would remove $svc:$t"
+    fi
+  done
+  if (( planned == 0 )); then log_ok "nothing to remove (keep=$keep)"; return 0; fi
+  if [[ "$apply" != 1 ]]; then
+    log_info "$planned tag(s) would be removed. Re-run with APPLY=1 to remove them."
+    return 0
+  fi
+  # Removing a manifest only drops the reference; layers stay on disk until the
+  # registry's own collector sweeps blobs nothing points at. Don't run it while
+  # a build is pushing — a half-pushed image looks unreferenced.
+  pod="$($K -n kube-system get pods -o json \
+    | jq -r '.items[] | select(any(.spec.containers[]; .name == "registry")) | .metadata.name' | head -1)"
+  log_info "reclaiming disk: registry garbage-collect in $pod"
+  $K -n kube-system exec "$pod" -c registry -- \
+    registry garbage-collect --delete-untagged /etc/distribution/config.yml >/dev/null
+  log_ok "gc done"
+}
+
+# Phase 2's acceptance check — each step proves one promise. Prints a
+# PASS/FAIL table, exits non-zero on any FAIL, and leaves order-service on the
+# freshly shipped tag.
+cmd_proof() {
+  local svc=order-service env=$DEFAULT_ENV new prev back failed=0 healed=false
+  local -a results=()
+  check() { if eval "$2"; then results+=("PASS|$1"); else results+=("FAIL|$1"); failed=1; fi; }
+  running() {
+    [[ "$($K -n apps get deploy "$svc" -o jsonpath='{.spec.template.spec.containers[0].image}')" == *":$1" ]] \
+      && $K -n apps rollout status deploy/"$svc" --timeout=10s >/dev/null 2>&1
+  }
+
+  env_sync_clone
+  prev="$(current_tag "$env" "$svc")"
+  new="$(cd "$ROOT" && version_of "$svc")"
+  # The rollback target must differ from what we ship, or the rollback proves
+  # nothing. First run: dev → <sha>. Later runs: <sha> → dev → <sha>.
+  back="$prev"; [[ "$back" == "$new" ]] && back=dev
+  log_info "proof: ship $svc:$new · roll back to $back · roll forward · drift"
+
+  if cmd_ship "$svc" "$env"; then check "ship: $svc runs $new" "running $new"
+  else check "ship: $svc runs $new" false; fi
+  if cmd_deploy "$svc" "$back" "$env"; then check "rollback: $svc runs $back" "running $back"
+  else check "rollback: $svc runs $back" false; fi
+  check "history: env repo's last commit for $svc is the rollback" \
+    "git -C '$ENV_CLONE' log -1 --format=%s -- envs/$env/services/$svc.yaml | grep -q '→ $back\$'"
+  if cmd_deploy "$svc" "$new" "$env"; then check "roll forward: $svc runs $new again" "running $new"
+  else check "roll forward: $svc runs $new again" false; fi
+  check "history: Argo CD's revision == env repo HEAD" \
+    "[[ \"\$($K -n argocd get application $env-$svc -o jsonpath='{.status.sync.revisions[1]}')\" == \"\$(git -C '$ENV_CLONE' rev-parse HEAD)\" ]]"
+
+  log_info "drift: kubectl set image $svc → :$back behind git's back"
+  $K -n apps set image deploy/"$svc" "$svc=localhost:5000/$svc:$back" >/dev/null
+  for _ in $(seq 1 24); do
+    sleep 5
+    if [[ "$($K -n apps get deploy "$svc" -o jsonpath='{.spec.template.spec.containers[0].image}')" == *":$new" ]]; then
+      healed=true; break
+    fi
+  done
+  check "drift: self-heal puts $new back" "$healed"
+  $K -n apps rollout status deploy/"$svc" --timeout=5m >/dev/null 2>&1 || true
+
+  echo
+  for r in "${results[@]}"; do
+    if [[ "${r%%|*}" == PASS ]]; then printf '  \033[32mPASS\033[0m  %s\n' "${r#*|}"
+    else printf '  \033[31mFAIL\033[0m  %s\n' "${r#*|}"; fi
+  done
+  echo
+  return "$failed"
+}
+
 case "${1:-}" in
-  platform|push|apps|wait|open|close|status) "cmd_$1" ;;
-  *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  platform|push|apps|wait|open|close|status|version|ship|deploy|tags|gc|proof)
+    cmd="cmd_$1"; shift; "$cmd" "$@" ;;
+  *) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
