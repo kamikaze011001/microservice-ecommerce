@@ -12,6 +12,8 @@
 # Every invariant is scoped to rows written AFTER the run starts, using per-table
 # high-water marks read before the run (so JVM vs DB clock/timezone never matters).
 set -euo pipefail
+# Under set -e a failing command otherwise kills the run with no message at all.
+trap 'echo "chaos-proof: FAILED at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CTX="${CONTEXT:?set CONTEXT=<kube-context> (e.g. microecom) — never the ambient one}"
@@ -33,7 +35,7 @@ sql()   { kc -n infra exec mysql-0 -- mysql -uroot -proot -N -B ecommerce_dev -e
 mongo() { kc -n infra exec mongodb-0 -c mongodb -- mongosh --host 127.0.0.1 -u root -p root \
             --authenticationDatabase admin --quiet ecommerce_inventory --eval "$1"; }
 redis() { kc -n infra exec deploy/redis -- redis-cli "$@"; }
-kbin()  { kc -n infra exec kafka-0 -- "/opt/kafka/bin/$1" --bootstrap-server localhost:9092 "${@:2}"; }
+kbin()  { kc -n infra exec kafka-0 -c kafka -- "/opt/kafka/bin/$1" --bootstrap-server localhost:9092 "${@:2}"; }
 log()   { printf '%s  %s\n' "$(date +%H:%M:%S)" "$*"; }
 
 # ── restore HPAs no matter how we exit ──────────────────────────────────────────
@@ -53,7 +55,7 @@ total_lag() {
     awk '$1 != "GROUP" && $1 != "dlt-replay" && $6 ~ /^[0-9]+$/ {s += $6} END {print s + 0}'
 }
 dlt_records() {
-  kbin kafka-get-offsets.sh --topic-pattern '.*\.DLT' 2>/dev/null | awk -F: '{s += $3} END {print s + 0}'
+  kbin kafka-get-offsets.sh --topic '.*\.DLT' 2>/dev/null | awk -F: '{s += $3} END {print s + 0}'
 }
 mid_flight_sagas() {
   sql "SELECT COUNT(*) FROM saga_instance WHERE created_at > '$M_SAGA' AND state IN ('STARTED','CONFIRMING','COMPENSATING')"
