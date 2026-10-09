@@ -719,10 +719,14 @@ case "$ENV_NAME" in
     fi
     ;;
   k8s|aws)
-    if kubectl --context "$KUBE_CONTEXT" -n apps get deploy inventory-service >/dev/null 2>&1; then
-      log_info "reconcile: kubectl rollout restart deploy/inventory-service (context=$KUBE_CONTEXT)"
-      if kubectl --context "$KUBE_CONTEXT" -n apps rollout restart deploy/inventory-service \
-         && kubectl --context "$KUBE_CONTEXT" -n apps rollout status deploy/inventory-service --timeout=300s; then
+    # APPS_NAMESPACE: a devbox preview env runs its own inventory-service in
+    # its own namespace (and its own Redis), so the reconcile must restart
+    # THAT one. Default `apps` = prod-like / the helm path / AWS.
+    APPS_NS="${APPS_NAMESPACE:-apps}"
+    if kubectl --context "$KUBE_CONTEXT" -n "$APPS_NS" get deploy inventory-service >/dev/null 2>&1; then
+      log_info "reconcile: kubectl rollout restart deploy/inventory-service (context=$KUBE_CONTEXT, namespace=$APPS_NS)"
+      if kubectl --context "$KUBE_CONTEXT" -n "$APPS_NS" rollout restart deploy/inventory-service \
+         && kubectl --context "$KUBE_CONTEXT" -n "$APPS_NS" rollout status deploy/inventory-service --timeout=300s; then
         log_ok "reconcile: inventory-service rollout restarted"
       else
         log_err "reconcile: inventory-service rollout restart/status failed — Redis productAvailable:* counters were NOT rebuilt; every order will fail \"Insufficient available stock\" until this is fixed and the seed is re-run"

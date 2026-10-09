@@ -19,6 +19,12 @@
 #   gc      [keep] [apply]      delete old tags; never one an env references
 #   proof                       ship → rollback → history → drift, PASS/FAIL
 #
+#   env-list                    envs in the env repo, with namespace + health
+#   env-create <name>           preview-<name>: namespace, DBs, topics, CDC
+#                               connector, Redis, seed, apps (small by default)
+#   env-delete <name> [apply]   remove all of it; dry run unless apply = 1
+#   env-proof  [name]           two envs, one order stream each — PASS/FAIL
+#
 # CONTEXT is required and never taken from the ambient kubectl context — same
 # rule as secrets-seed / kafka-chaos-proof. `make devbox-*` passes microecom.
 set -euo pipefail
@@ -198,11 +204,11 @@ cmd_status() {
 }
 
 cmd_wait() {
-  local timeout="${DEVBOX_WAIT_TIMEOUT:-1500}" start=$SECONDS total ready
-  log_info "waiting for every prod-like Application to be Synced + Healthy (up to ${timeout}s)"
+  local env=${1:-$DEFAULT_ENV} timeout="${DEVBOX_WAIT_TIMEOUT:-1500}" start=$SECONDS total ready
+  log_info "waiting for every $env Application to be Synced + Healthy (up to ${timeout}s)"
   while :; do
-    total="$($K -n argocd get applications -l devbox.env=prod-like --no-headers 2>/dev/null | wc -l | tr -d ' ')"
-    ready="$($K -n argocd get applications -l devbox.env=prod-like -o json 2>/dev/null \
+    total="$($K -n argocd get applications -l devbox.env="$env" --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+    ready="$($K -n argocd get applications -l devbox.env="$env" -o json 2>/dev/null \
       | jq '[.items[] | select(.status.sync.status == "Synced" and .status.health.status == "Healthy")] | length')"
     if [[ "$total" -gt 0 && "$ready" == "$total" ]]; then
       log_ok "$ready/$total Applications Synced + Healthy"; return 0
@@ -554,8 +560,250 @@ cmd_proof() {
   return "$failed"
 }
 
+# ── envs: create / delete / list / proof ────────────────────────────────────
+#
+# What an env OWNS is decided by lib/env_gen.py alone (names, topics, files),
+# so create, delete and the proof can never disagree about it.
+
+ENV_GEN="$DEVBOX/lib/env_gen.py"
+TOPICS_FILE="$ROOT/deploy/k8s-jobs/04-kafka-connect-register/topics.txt"
+MAX_PREVIEWS="${MAX_PREVIEWS:-1}"
+
+env_names() {  # <env> → shell assignments (NS MYSQL_DB MONGO_DB PREFIX CONNECTOR CDC_PREFIX CDC_TOPIC)
+  python3 "$ENV_GEN" names --env "$1" | jq -r '
+    "NS=\(.namespace|@sh) MYSQL_DB=\(.mysqlDb|@sh) MONGO_DB=\(.mongoDb|@sh) PREFIX=\(.prefix|@sh) CONNECTOR=\(.connector|@sh) CDC_PREFIX=\(.connectorTopicPrefix|@sh) CDC_TOPIC=\(.cdcTopic|@sh)"'
+}
+
+preview_name() {  # <name> → preview-<name> (accepts either form)
+  local n=${1:?env name required (e.g. cart → preview-cart)}
+  [[ "$n" == preview-* ]] && echo "$n" || echo "preview-$n"
+}
+
+# Root credentials are read INSIDE the infra pods from their own env/config —
+# never put on this host's argv.
+mysql_root() {  # <sql>
+  $K -n infra exec -i mysql-0 -c mysql -- sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -B 2>/dev/null' <<<"$1"
+}
+mongo_root() {  # <js>  (root/root is the infra chart's local-only admin user)
+  $K -n infra exec -i mongodb-0 -c mongodb -- mongosh --quiet -u root -p root --authenticationDatabase admin <<<"$1"
+}
+kafka_sh() {  # <script> — runs in kafka-0 with the Kafka CLI on PATH
+  $K -n infra exec -i kafka-0 -c kafka -- sh -c 'PATH=/opt/kafka/bin:$PATH; sh -s' <<<"$1"
+}
+connect_curl() {  # <args...> — curl from the Kafka Connect pod (it has curl)
+  $K -n infra exec -i deploy/kafka-connect -c connect -- curl -fsS "$@"
+}
+
+cmd_env_list() {
+  env_sync_clone >/dev/null
+  printf '%-22s %-24s %s\n' ENV NAMESPACE "APPS (synced+healthy / total)"
+  local d e total ready
+  for d in "$ENV_CLONE"/envs/*/; do
+    e="$(basename "$d")"
+    total="$($K -n argocd get applications -l devbox.env="$e" --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+    ready="$($K -n argocd get applications -l devbox.env="$e" -o json 2>/dev/null \
+      | jq '[.items[] | select(.status.sync.status == "Synced" and .status.health.status == "Healthy")] | length')"
+    printf '%-22s %-24s %s/%s\n' "$e" "$(awk '/^    apps:/ { print $2; exit }' "$d/env.yaml")" "$ready" "$total"
+  done
+}
+
+cmd_env_create() {
+  local env; env="$(preview_name "${1:-}")"
+  local NS MYSQL_DB MONGO_DB PREFIX CONNECTOR CDC_PREFIX CDC_TOPIC
+  eval "$(env_names "$env")"
+  env_sync_clone
+
+  local existing
+  existing="$(find "$ENV_CLONE/envs" -mindepth 1 -maxdepth 1 -type d -name 'preview-*' ! -name "$env" | wc -l | tr -d ' ')"
+  if (( existing >= MAX_PREVIEWS )); then
+    # Each preview is a full copy (~3 GB of requests even when small). The
+    # cap protects the laptop, not a rule: raise it on purpose.
+    log_err "already $existing preview env(s), cap is MAX_PREVIEWS=$MAX_PREVIEWS — delete one, or re-run with MAX_PREVIEWS=$((existing + 1))"
+    return 1
+  fi
+
+  log_info "creating $env → namespace $NS, databases $MYSQL_DB, topics $PREFIX*"
+
+  # 1. Namespace first, with app-secrets copied in: pods read mail/PayPal
+  #    settings from it at start, and the optional secretRef would otherwise
+  #    start them silently without.
+  $K create namespace "$NS" --dry-run=client -o yaml | $K apply -f - >/dev/null
+  $K label namespace "$NS" devbox.env="$env" --overwrite >/dev/null
+  $K -n apps get secret app-secrets -o json 2>/dev/null \
+    | jq --arg ns "$NS" '{apiVersion, kind, type, data, metadata: {name: .metadata.name, namespace: $ns}}' \
+    | $K apply -f - >/dev/null || log_warn "no app-secrets in apps to copy (mail/PayPal settings will be empty)"
+
+  # 2. MySQL: an empty database the app user owns; Hibernate creates tables at
+  #    boot, replication carries it to the replicas like any other database.
+  mysql_root "CREATE DATABASE IF NOT EXISTS \`$MYSQL_DB\`; GRANT ALL PRIVILEGES ON \`$MYSQL_DB\`.* TO 'ecommerce'@'%';"
+
+  # 3. Kafka: the env's topics (auto-create is off cluster-wide).
+  log_info "creating $(python3 "$ENV_GEN" topics --env "$env" --topics-file "$TOPICS_FILE" | wc -l | tr -d ' ') topics"
+  kafka_sh "$(python3 "$ENV_GEN" topics --env "$env" --topics-file "$TOPICS_FILE" | while read -r t p c; do
+    echo "kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic '$t' --partitions $p --config cleanup.policy=$c >/dev/null"
+  done)"
+
+  # 4. Mongo: seed this env's database (api_role, catalog) BEFORE apps start —
+  #    the gateway reads routes' roles from it at boot.
+  MONGO_DB_NAME="$MONGO_DB" "$ROOT/deploy/scripts/seed.sh" --env k8s --stage pre-apps --context "$CONTEXT" >/dev/null \
+    && log_ok "seeded Mongo $MONGO_DB"
+
+  # 5. CDC: prod-like's connector config, re-pointed at this env's database
+  #    and topic prefix. Copying it (not re-typing it) keeps the two in step.
+  connect_curl "http://localhost:8083/connectors/$BASE_CONNECTOR_NAME/config" \
+    | jq --arg db "$MONGO_DB" --arg p "$CDC_PREFIX" --arg n "$CONNECTOR" \
+        '.name = $n | .database = $db | ."topic.prefix" = $p' \
+    | connect_curl -X PUT -H 'Content-Type: application/json' --data @- \
+        "http://localhost:8083/connectors/$CONNECTOR/config" >/dev/null \
+    && log_ok "connector $CONNECTOR → $CDC_TOPIC"
+
+  # 6. The env's files, committed: this is what makes it exist for Argo CD.
+  if [[ ! -d "$ENV_CLONE/envs/$env" ]]; then
+    local resolved; resolved="$(mktemp)"
+    python3 "$ROOT/deploy/scripts/lib/secrets_resolve.py" --secrets-dir "$ROOT/deploy/secrets" --env k8s >"$resolved"
+    python3 "$ENV_GEN" files --env "$env" --template-dir "$ENV_CLONE/envs/$DEFAULT_ENV" \
+      --resolved "$resolved" --out "$ENV_CLONE/envs/$env"
+    rm -f "$resolved"
+    env_commit_push "create env $env" "from envs/$DEFAULT_ENV by make devbox-env-create (namespace $NS)"
+  fi
+  $K -n argocd annotate applicationset microecom-envs argocd.argoproj.io/application-set-refresh=true --overwrite >/dev/null
+  cmd_wait "$env"
+
+  # 7. MySQL data needs the tables Hibernate just created; the reconcile then
+  #    rebuilds the stock counters in THIS env's Redis.
+  MYSQL_DB_NAME="$MYSQL_DB" APPS_NAMESPACE="$NS" \
+    "$ROOT/deploy/scripts/seed.sh" --env k8s --stage post-apps --context "$CONTEXT" >/dev/null \
+    && log_ok "seeded MySQL $MYSQL_DB (+ stock counters in $env's Redis)"
+  $K -n infra exec -i mysql-0 -c mysql -- sh -c "mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" $MYSQL_DB 2>/dev/null" \
+    <"$ROOT/deploy/k8s-jobs/06-perftest-seed/perftest-users.sql" && log_ok "seeded perftest users"
+
+  log_ok "$env is up. In-cluster gateway: http://gateway.$NS:6868  (browser access is phase 3c)"
+}
+
+BASE_CONNECTOR_NAME=mongodb-source-connector
+
+cmd_env_delete() {
+  local env apply=${2:-0}; env="$(preview_name "${1:-}")"
+  [[ "$env" != "$DEFAULT_ENV" ]] || { log_err "refusing to delete $DEFAULT_ENV"; return 1; }
+  local NS MYSQL_DB MONGO_DB PREFIX CONNECTOR CDC_PREFIX CDC_TOPIC
+  eval "$(env_names "$env")"
+  env_sync_clone >/dev/null
+
+  cat <<EOF
+  $env owns:
+    env repo     envs/$env/  ($(ls "$ENV_CLONE/envs/$env/services" 2>/dev/null | wc -l | tr -d ' ') service files)
+    namespace    $NS
+    MySQL        $MYSQL_DB      Mongo  $MONGO_DB
+    Kafka        $(python3 "$ENV_GEN" topics --env "$env" --topics-file "$TOPICS_FILE" | wc -l | tr -d ' ') topics + consumer groups + schema subjects prefixed $PREFIX
+    connector    $CONNECTOR
+EOF
+  if [[ "$apply" != 1 ]]; then
+    log_info "dry run — re-run with APPLY=1 to delete all of the above"
+    return 0
+  fi
+
+  # Apps first (so nothing is still writing), then the data they used.
+  if [[ -d "$ENV_CLONE/envs/$env" ]]; then
+    git -C "$ENV_CLONE" rm -rq "envs/$env"
+    env_commit_push "delete env $env" "by make devbox-env-delete"
+  fi
+  $K -n argocd annotate applicationset microecom-envs argocd.argoproj.io/application-set-refresh=true --overwrite >/dev/null
+  local start=$SECONDS
+  while [[ -n "$($K -n argocd get applications -l devbox.env="$env" -o name 2>/dev/null)" ]]; do
+    (( SECONDS - start < 300 )) || { log_err "Applications for $env still present after 300s"; return 1; }
+    sleep 5
+  done
+  log_ok "Applications and their resources removed"
+
+  connect_curl -X DELETE "http://localhost:8083/connectors/$CONNECTOR" >/dev/null 2>&1 || true
+  kafka_sh "
+    for t in $(python3 "$ENV_GEN" topics --env "$env" --topics-file "$TOPICS_FILE" | awk '{print $1}' | tr '\n' ' '); do
+      kafka-topics.sh --bootstrap-server localhost:9092 --delete --if-exists --topic \"\$t\" >/dev/null 2>&1
+    done
+    for g in \$(kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list 2>/dev/null | grep '^$PREFIX'); do
+      kafka-consumer-groups.sh --bootstrap-server localhost:9092 --delete --group \"\$g\" >/dev/null 2>&1
+    done"
+  # Subject names follow topic names; delete soft, then permanently.
+  for s in $(connect_curl http://schema-registry.infra.svc.cluster.local:8081/subjects | jq -r --arg p "$PREFIX" '.[] | select(startswith($p))'); do
+    connect_curl -X DELETE "http://schema-registry.infra.svc.cluster.local:8081/subjects/$s" >/dev/null 2>&1 || true
+    connect_curl -X DELETE "http://schema-registry.infra.svc.cluster.local:8081/subjects/$s?permanent=true" >/dev/null 2>&1 || true
+  done
+  log_ok "Kafka: connector, topics, consumer groups, schema subjects removed"
+
+  mysql_root "DROP DATABASE IF EXISTS \`$MYSQL_DB\`;"
+  mongo_root "db.getSiblingDB('$MONGO_DB').dropDatabase()" >/dev/null
+  $K delete namespace "$NS" --ignore-not-found --wait=true >/dev/null
+  log_ok "$env deleted (databases dropped, namespace $NS gone)"
+}
+
+# Two envs, one order stream each. Orders sent to the preview's gateway must
+# complete inside the preview — saga, topics, databases, Redis — and leave
+# prod-like's data and topics untouched. Then deleting the env must remove
+# everything it owned. Exits non-zero on any FAIL; KEEP=1 skips the delete.
+cmd_env_proof() {
+  local env; env="$(preview_name "${1:-proof}")"
+  local NS MYSQL_DB MONGO_DB PREFIX CONNECTOR CDC_PREFIX CDC_TOPIC failed=0
+  local -a results=()
+  eval "$(env_names "$env")"
+  check() { if eval "$2"; then results+=("PASS|$1"); else results+=("FAIL|$1"); failed=1; fi; }
+  end_offsets() {  # <topic> → sum of end offsets (0 if missing)
+    kafka_sh "kafka-get-offsets.sh --bootstrap-server localhost:9092 --topic '$1' 2>/dev/null" \
+      | awk -F: '{ s += $3 } END { print s + 0 }'
+  }
+  orders() { mysql_root "SELECT COUNT(*) FROM \`$1\`.\`order\`${2:+ WHERE status = '$2'};"; }
+
+  [[ -n "$($K -n argocd get applications -l devbox.env="$env" -o name 2>/dev/null)" ]] || cmd_env_create "$env"
+
+  local prod_orders prod_success prod_cdc
+  prod_orders="$(orders ecommerce_dev)"
+  prod_success="$(end_offsets order-service.order.success-status)"
+  prod_cdc="$(end_offsets ecommerce_db.ecommerce_inventory.event)"
+  log_info "prod-like before: $prod_orders orders, success-topic end offset $prod_success"
+
+  log_info "k6: 3 users × 40s of checkout against $env's gateway"
+  $K -n "$NS" run devbox-env-proof-k6 --rm -i --restart=Never --image=grafana/k6:0.54.0 --quiet -- \
+    run --quiet --vus 3 --duration 40s -e BASE_URL="http://gateway:6868" -e INGRESS_ORIGIN=http://api.microecom.local \
+    -e PRODUCT_IDS=67c000000000000000000001,67c000000000000000000002,67c000000000000000000003 - \
+    <"$ROOT/deploy/k6-stress/payment-flow.js" >"$RUN_DIR/env-proof-k6.log" 2>&1 || true
+  grep -E 'checks\.|iterations\.' "$RUN_DIR/env-proof-k6.log" | sed 's/^/    /'
+
+  # Let the saga settle: no PROCESSING orders left in the preview.
+  local start=$SECONDS
+  while [[ "$(orders "$MYSQL_DB" PROCESSING)" != 0 ]] && (( SECONDS - start < 180 )); do sleep 5; done
+
+  local pv_orders pv_done
+  pv_orders="$(orders "$MYSQL_DB")"; pv_done="$(orders "$MYSQL_DB" COMPLETED)"
+  check "preview took orders ($pv_orders)" "(( pv_orders > 0 ))"
+  check "every preview order completed inside the preview ($pv_done/$pv_orders)" "(( pv_done == pv_orders ))"
+  check "preview's own success topic carried them" "(( \$(end_offsets ${PREFIX}order-service.order.success-status) >= pv_done ))"
+  check "preview's own CDC topic carried the saga trigger" "(( \$(end_offsets $CDC_TOPIC) > 0 ))"
+  check "prod-like orders unchanged ($prod_orders)" "[[ \$(orders ecommerce_dev) == $prod_orders ]]"
+  check "prod-like success topic unchanged" "[[ \$(end_offsets order-service.order.success-status) == $prod_success ]]"
+  check "prod-like CDC topic unchanged" "[[ \$(end_offsets ecommerce_db.ecommerce_inventory.event) == $prod_cdc ]]"
+
+  if [[ "${KEEP:-0}" != 1 ]]; then
+    cmd_env_delete "$env" 1
+    check "delete: namespace $NS gone" "! $K get namespace $NS >/dev/null 2>&1"
+    check "delete: MySQL $MYSQL_DB dropped" "[[ -z \$(mysql_root \"SHOW DATABASES LIKE '$MYSQL_DB'\") ]]"
+    check "delete: Mongo $MONGO_DB dropped" "! mongo_root \"db.adminCommand('listDatabases').databases.map(d => d.name).join(' ')\" | grep -qw $MONGO_DB"
+    check "delete: no ${PREFIX}* topics left" "[[ -z \$(kafka_sh 'kafka-topics.sh --bootstrap-server localhost:9092 --list' | grep '^${PREFIX}\|^${CDC_PREFIX}') ]]"
+    check "delete: connector $CONNECTOR gone" "! connect_curl http://localhost:8083/connectors | grep -q '\"$CONNECTOR\"'"
+    check "delete: prod-like still Synced + Healthy" "DEVBOX_WAIT_TIMEOUT=60 cmd_wait $DEFAULT_ENV >/dev/null"
+  fi
+
+  echo
+  for r in "${results[@]}"; do
+    if [[ "${r%%|*}" == PASS ]]; then printf '  \033[32mPASS\033[0m  %s\n' "${r#*|}"
+    else printf '  \033[31mFAIL\033[0m  %s\n' "${r#*|}"; fi
+  done
+  echo
+  return "$failed"
+}
+
 case "${1:-}" in
+  env-list|env-create|env-delete|env-proof)
+    cmd="cmd_${1//-/_}"; shift; "$cmd" "$@" ;;
   platform|push|apps|wait|open|close|status|version|ship|deploy|tags|gc|proof)
     cmd="cmd_$1"; shift; "$cmd" "$@" ;;
-  *) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

@@ -28,6 +28,11 @@ spec:
       labels:
         devbox.env: '{{ index .path.segments 1 }}'
         devbox.service: '{{ trimSuffix ".yaml" .path.filename }}'
+      # Deleting the Application deletes what it deployed. Without this, removing
+      # an env's folder (make devbox-env-delete) would delete the Applications
+      # and ORPHAN every Deployment/Service they owned.
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
     spec:
       project: default
       sources:
@@ -50,11 +55,13 @@ spec:
         - repoURL: http://gitea-http.devbox.svc.cluster.local:3000/devbox/env-config.git
           targetRevision: main
           ref: env
-      # Phase 1: every env deploys into `apps` (one env active at a time).
-      # Per-env namespaces and data isolation are phase 3.
+      # One namespace per env: prod-like keeps `apps`; preview-x → apps-preview-x.
+      # Must match the env's global.namespaces.apps (env_gen.py writes both from
+      # the same rule). devbox-env-create makes the namespace first, so it can
+      # copy app-secrets in before any pod starts.
       destination:
         server: https://kubernetes.default.svc
-        namespace: apps
+        namespace: '{{ if eq (index .path.segments 1) "prod-like" }}apps{{ else }}apps-{{ index .path.segments 1 }}{{ end }}'
       syncPolicy:
         automated:
           prune: true     # a service file deleted from git → its objects deleted
