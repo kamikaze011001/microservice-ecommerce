@@ -295,8 +295,10 @@ envs_using() {  # <svc> <tag>
   for f in "$ENV_CLONE"/envs/*/services/"$1".yaml; do
     [[ -f "$f" ]] || continue
     e="${f#"$ENV_CLONE"/envs/}"; e="${e%%/*}"
-    [[ "$(current_tag "$e" "$1")" == "$2" ]] && printf '%s ' "$e"
+    if [[ "$(current_tag "$e" "$1")" == "$2" ]]; then printf '%s ' "$e"; fi
   done
+  # An `[[ ]] && printf` as the last command would make a non-match the
+  # function's exit status, and `set -e` kills the caller silently.
 }
 
 env_sync_clone() {
@@ -473,9 +475,10 @@ cmd_gc() {
   pod="$($K -n kube-system get pods -o json \
     | jq -r '.items[] | select(any(.spec.containers[]; .name == "registry")) | .metadata.name' | head -1)"
   log_info "reclaiming disk: registry garbage-collect in $pod"
-  $K -n kube-system exec "$pod" -c registry -- \
-    registry garbage-collect --delete-untagged /etc/distribution/config.yml >/dev/null
-  log_ok "gc done"
+  # The collector logs at debug level on stderr — hundreds of lines; keep the count.
+  n="$($K -n kube-system exec "$pod" -c registry -- \
+    registry garbage-collect --delete-untagged /etc/distribution/config.yml 2>&1 | grep -c 'Deleting blob' || true)"
+  log_ok "gc done — $n blob(s) freed"
 }
 
 # Phase 2's acceptance check — each step proves one promise. Prints a
@@ -485,21 +488,43 @@ cmd_proof() {
   local svc=order-service env=$DEFAULT_ENV new prev back failed=0 healed=false
   local -a results=()
   check() { if eval "$2"; then results+=("PASS|$1"); else results+=("FAIL|$1"); failed=1; fi; }
+  # Running = the Deployment names the tag, the rollout is done, AND every pod's
+  # imageID carries that tag's registry digest. The tag alone isn't enough: two
+  # tags can name the same bytes, and then a "rollback" changes nothing.
   running() {
+    local want_digest ids
+    want_digest="$(image_digest "$svc" "$1")"
     [[ "$($K -n apps get deploy "$svc" -o jsonpath='{.spec.template.spec.containers[0].image}')" == *":$1" ]] \
-      && $K -n apps rollout status deploy/"$svc" --timeout=10s >/dev/null 2>&1
+      && $K -n apps rollout status deploy/"$svc" --timeout=10s >/dev/null 2>&1 || return 1
+    ids="$($K -n apps get pods -l app.kubernetes.io/name="$svc" -o json \
+      | jq -r '.items[] | select(.metadata.deletionTimestamp == null) | .status.containerStatuses[0].imageID')"
+    [[ -n "$ids" && -n "$want_digest" ]] && ! grep -qv "@$want_digest\$" <<<"$ids"
   }
 
   env_sync_clone
+  ensure_registry
   prev="$(current_tag "$env" "$svc")"
   new="$(cd "$ROOT" && version_of "$svc")"
-  # The rollback target must differ from what we ship, or the rollback proves
-  # nothing. First run: dev → <sha>. Later runs: <sha> → dev → <sha>.
   back="$prev"; [[ "$back" == "$new" ]] && back=dev
-  log_info "proof: ship $svc:$new · roll back to $back · roll forward · drift"
 
   if cmd_ship "$svc" "$env"; then check "ship: $svc runs $new" "running $new"
   else check "ship: $svc runs $new" false; fi
+
+  # The rollback target must be DIFFERENT BYTES, or the rollback proves nothing.
+  # Same build inputs reproduce the same image (dev and a fresh build often
+  # share a digest), so derive a distinct "previous version": the new image plus
+  # a label — a new digest, nothing else changed.
+  if [[ "$(image_digest "$svc" "$back")" == "$(image_digest "$svc" "$new")" ]]; then
+    back=proof-previous
+    log_info "rollback target has the same digest as $new — building $svc:$back (same image + a label)"
+    printf 'FROM %s/%s:%s\nLABEL devbox.proof="%s"\n' "$REGISTRY_HOST" "$svc" "$new" "$(date +%s)" \
+      | docker build -q -t "$REGISTRY_HOST/$svc:$back" - >/dev/null
+    docker push -q "$REGISTRY_HOST/$svc:$back" >/dev/null
+  fi
+  log_info "proof: shipped $svc:$new · roll back to $back · roll forward · drift"
+  check "rollback target $back is different bytes from $new" \
+    "[[ \"\$(image_digest $svc $back)\" != \"\$(image_digest $svc $new)\" ]]"
+
   if cmd_deploy "$svc" "$back" "$env"; then check "rollback: $svc runs $back" "running $back"
   else check "rollback: $svc runs $back" false; fi
   check "history: env repo's last commit for $svc is the rollback" \
