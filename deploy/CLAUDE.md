@@ -397,6 +397,26 @@ output — is the most expensive mistake here.
 - **Verify file writes structurally:** if a later `Edit`/`Read` says
   `File does not exist`, the earlier `Write` did not happen — don't rationalize.
 
+### RULE (2026-10-10): per-env config goes through `springConfig`; app hosts are bare names
+
+The devbox runs several copies of the app (one namespace per env) on shared
+infra and one shared Vault. Two rules keep that working:
+
+- **App → app hosts are bare Service names** (`order-service`, not
+  `order-service.apps.svc.cluster.local`) — in `deploy/secrets/contexts/k8s.yaml`
+  and in chart values. A bare name resolves in the caller's namespace; an FQDN
+  sends a preview env's traffic to prod-like. Infra hosts stay FQDNs (shared).
+- **An env-specific Spring property is set via `springConfig:`** (chart values /
+  env repo), which renders `SPRING_APPLICATION_JSON` — never via a plain env var.
+  Topics and group ids bind into Maps whose keys contain dots and dashes;
+  `APPLICATION_KAFKA_TOPICS_ORDER_SERVICE_...` binds a *look-alike* key and
+  Vault's value silently keeps winning. `springConfig` and
+  `env.SPRING_APPLICATION_JSON` together fail the render.
+  `orchestrator-service`'s `EnvOverridePrecedenceTest` pins the precedence.
+
+Deliberate changes to resolved secrets are recorded in
+`deploy/secrets/tests/deviations/<env>.jq`, never by regenerating the golden.
+
 ### Harness notes (local quirks that bit me)
 
 - **Background jobs:** `nohup cmd &` from a tool call gets **reaped** when the
