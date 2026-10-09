@@ -1,0 +1,15 @@
+# Stands in for Vault in EnvOverridePrecedenceTest. Vault reaches Spring as a
+# config-data import, the same precedence tier as this file; the keys mirror
+# deploy/secrets/orchestrator-service.yaml (dotted AND dashed map keys).
+spring:
+  cloud:
+    vault:
+      enabled: false
+application:
+  kafka:
+    topics:
+      mongo.event: ecommerce_db.ecommerce_inventory.event
+      order-service.order.failed-status: order-service.order.failed-status
+      order-service.order.canceled-status: order-service.order.canceled-status
+    group-id:
+      mongo.event: mongo-event-group

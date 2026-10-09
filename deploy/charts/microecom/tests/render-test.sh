@@ -1002,7 +1002,7 @@ pay="$(doc_named Deployment payment-service "$local_out")"
 # talks to mock-paypal instead of real PayPal. Missing them, local checkout
 # silently calls api-m.paypal.com and fails.
 assert_has   "local: payment-service points at mock-paypal" \
-             'mock-paypal-service\.apps\.svc\.cluster\.local:8585' "$pay"
+             'mock-paypal-service:8585/mock-paypal-service' "$pay"
 # Assert the key AND its value together. A bare 'PAYPAL_TUNNEL_URL' match proves
 # only that the key exists — the value carries all the meaning, and a blank or
 # wrong host stays green. This is the same value-blind shape that Task 5's review
@@ -1016,7 +1016,7 @@ assert_has   "local: PAYPAL_TUNNEL_URL points at the local ingress host" \
              'name: PAYPAL_TUNNEL_URL +value: "http://api\.microecom\.local"' "$ptu_pair"
 # Not on AWS, where real PayPal is used.
 assert_lacks "aws: payment-service does NOT point at mock-paypal" \
-             'mock-paypal-service\.apps\.svc\.cluster\.local:8585' \
+             'mock-paypal-service:8585/mock-paypal-service' \
              "$(doc_named Deployment payment-service "$aws_out")"
 
 # ── devbox: one Argo CD Application per service ─────────────────────────────
@@ -1077,6 +1077,33 @@ assert_has   "a service without its own tag falls back to the global tag" \
              'image: localhost:5000/gateway:dev' \
              "$(helm template microecom "$CHART_DIR/charts/apps" -f "$DEVBOX_ENV/env.yaml" \
                   --set onlyService=gateway 2>&1)"
+
+# ── springConfig → SPRING_APPLICATION_JSON ──────────────────────────────────
+section "apps subchart — springConfig"
+
+# env_value <deployment-doc> <NAME> — the rendered value of one env var.
+env_value() {
+  awk -v n="$2" '$0 ~ "- name: " n "$" { getline; sub(/^ *value: /, ""); print; exit }' <<<"$1"
+}
+
+assert_has "payment-service: springConfig renders as exact SPRING_APPLICATION_JSON" \
+  '^"\{\\"application\\":\{\\"paypal\\":\{\\"base-url\\":\\"http://mock-paypal-service:8585/mock-paypal-service\\"\}\}\}"$' \
+  "$(env_value "$pay" SPRING_APPLICATION_JSON)"
+
+# An env's defaults.springConfig and a service's own block DEEP-merge: this is
+# how a preview sets topics env-wide while payment keeps its paypal URL.
+merged="$(devbox_render payment-service \
+  --set 'defaults.springConfig.application.kafka.group-id.payment\.success=preview-x.payment-success-group')"
+merged_json="$(env_value "$(doc_named Deployment payment-service "$merged")" SPRING_APPLICATION_JSON)"
+assert_has "env-wide springConfig reaches the service" 'preview-x\.payment-success-group' "$merged_json"
+assert_has "...and merges with the service's own block instead of replacing it" \
+  'mock-paypal-service:8585' "$merged_json"
+assert_has "dotted map keys survive as one key" '\\"payment\.success\\":' "$merged_json"
+
+# One container, one SPRING_APPLICATION_JSON: both ways at once is refused.
+both="$(devbox_render payment-service --set 'apps.payment-service.env.SPRING_APPLICATION_JSON={}')"
+assert_has "springConfig + env.SPRING_APPLICATION_JSON fails the render" \
+  'set either springConfig or env.SPRING_APPLICATION_JSON' "$both"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
