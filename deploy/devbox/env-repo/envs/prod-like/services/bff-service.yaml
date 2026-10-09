@@ -1,0 +1,6 @@
+# bff-service in prod-like. One file = one Argo CD Application (prod-like-bff-service).
+# Deploy another version: change image.tag and commit.
+apps:
+  bff-service:
+    image:
+      tag: dev

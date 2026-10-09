@@ -1,0 +1,6 @@
+# authorization-server in prod-like. One file = one Argo CD Application (prod-like-authorization-server).
+# Deploy another version: change image.tag and commit.
+apps:
+  authorization-server:
+    image:
+      tag: dev

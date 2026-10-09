@@ -7,7 +7,7 @@
   deployments.yaml here at the same time, or the Service's targetPort and the
   container's containerPort will silently disagree.
 */}}
-{{- if $svc.enabled }}
+{{- if include "apps.selected" (dict "name" $name "svc" $svc "root" $) }}
 {{- $s := $svc }}
 ---
 apiVersion: v1

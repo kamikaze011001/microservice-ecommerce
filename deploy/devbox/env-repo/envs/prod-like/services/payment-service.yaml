@@ -1,0 +1,11 @@
+# payment-service in prod-like. One file = one Argo CD Application (prod-like-payment-service).
+# Deploy another version: change image.tag and commit.
+apps:
+  payment-service:
+    image:
+      tag: dev
+    env:
+      # Local checkout goes through mock-paypal-service, not api-m.paypal.com.
+      # Without these, checkout silently calls the real PayPal sandbox and fails.
+      SPRING_APPLICATION_JSON: '{"application":{"paypal":{"base-url":"http://mock-paypal-service.apps.svc.cluster.local:8585/mock-paypal-service"}}}'
+      PAYPAL_TUNNEL_URL: "http://api.microecom.local"

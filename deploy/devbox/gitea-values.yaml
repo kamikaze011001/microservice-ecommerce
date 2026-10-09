@@ -1,0 +1,68 @@
+# Gitea — the devbox's in-cluster git server (chart gitea-charts/gitea 12.7.0).
+#
+# It holds two repos, both created on first push by deploy/devbox/devbox.sh:
+#   devbox/microecom   — a copy of THIS repo; branch `devbox` is whatever you
+#                        last pushed. Argo CD reads the Helm chart from it.
+#   devbox/env-config  — the desired state of your envs (image tags + config).
+#                        Its `git log` is the env's change history.
+#
+# Local, not GitHub: every "deploy version X" is a commit, and those commits
+# are experiments — they don't belong on the real remote.
+#
+# LOCAL-DEV ONLY credentials (devbox / devbox-local). Nothing outside your
+# laptop can reach this; don't reuse the pattern anywhere that can.
+
+# One SQLite file instead of the chart's default Postgres-HA + Valkey cluster:
+# ~150 MB instead of ~1.5 GB, and a single-user git server needs none of it.
+postgresql:
+  enabled: false
+postgresql-ha:
+  enabled: false
+valkey:
+  enabled: false
+valkey-cluster:
+  enabled: false
+
+# Recreate, not the chart's RollingUpdate: the SQLite volume is ReadWriteOnce,
+# so a surge pod scheduled onto another node could never mount it and the
+# rollout would hang.
+strategy:
+  type: Recreate
+
+persistence:
+  enabled: true
+  size: 2Gi
+
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits:   { cpu: 1000m, memory: 512Mi }
+
+gitea:
+  admin:
+    username: devbox
+    password: devbox-local
+    email: devbox@microecom.local
+    passwordMode: keepUpdated
+  config:
+    database:
+      DB_TYPE: sqlite3
+    session:
+      PROVIDER: memory
+    cache:
+      ADAPTER: memory
+    queue:
+      TYPE: level
+    server:
+      # What the web UI shows in clone URLs — the `make devbox-open` forward.
+      # Argo CD uses the in-cluster Service DNS instead (see applicationset.yaml).
+      ROOT_URL: http://localhost:3300/
+      DOMAIN: localhost
+    repository:
+      # `git push` to a repo that doesn't exist yet creates it — devbox.sh
+      # relies on this, so there's no API call to create repos.
+      ENABLE_PUSH_CREATE_USER: true
+      DEFAULT_PUSH_CREATE_PRIVATE: false
+    service:
+      DISABLE_REGISTRATION: true
+    actions:
+      ENABLED: false

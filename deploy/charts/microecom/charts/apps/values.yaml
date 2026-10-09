@@ -140,8 +140,14 @@ apps:
       MOCK_PUBLIC_BASE_URL: http://api.microecom.local/mock-paypal-service
       JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"
       # Not a Spring Cloud Vault client — unset both inherited Vault vars.
-      VAULT_TOKEN: null
-      SPRING_CLOUD_VAULT_URI: null
+      # "" not null: apps.container drops any falsy value, and "" survives every
+      # render path. A null here is a chart DEFAULT, and Helm only keeps a
+      # default null when this chart renders as the umbrella's subchart —
+      # rendered on its own (the devbox's Argo CD Applications) Helm deletes the
+      # key before the template sees it, so the defaults' Vault vars leaked back
+      # in. render-test.sh's devbox section caught it.
+      VAULT_TOKEN: ""
+      SPRING_CLOUD_VAULT_URI: ""
 
   orchestrator-service:
     enabled: true

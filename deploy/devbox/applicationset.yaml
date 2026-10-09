@@ -1,0 +1,64 @@
+# One Argo CD Application per (env, service): every file
+#   envs/<env>/services/<service>.yaml
+# in the env-config repo becomes an Application named <env>-<service>.
+# Add a service = add a file. Add an env = add a folder.
+#
+# Each Application renders the apps subchart from the code repo (the `devbox`
+# branch you pushed) with two values files from the env repo, narrowed to one
+# service by onlyService. Per-service Applications are what give each service
+# its own tile, health, sync status and history in the UI — and what let you
+# roll back order-service without touching inventory-service.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: microecom-envs
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: http://gitea-http.devbox.svc.cluster.local:3000/devbox/env-config.git
+        revision: main
+        files:
+          - path: "envs/*/services/*.yaml"
+  template:
+    metadata:
+      name: '{{ index .path.segments 1 }}-{{ trimSuffix ".yaml" .path.filename }}'
+      labels:
+        devbox.env: '{{ index .path.segments 1 }}'
+        devbox.service: '{{ trimSuffix ".yaml" .path.filename }}'
+    spec:
+      project: default
+      sources:
+        # The HOW: the chart, from your last `make devbox-push`.
+        - repoURL: http://gitea-http.devbox.svc.cluster.local:3000/devbox/microecom.git
+          targetRevision: devbox
+          path: deploy/charts/microecom/charts/apps
+          helm:
+            # Same release name as `make k8s-apps-helm`, so the rendered labels
+            # (and immutable Deployment selectors) are identical on both paths.
+            releaseName: microecom
+            valueFiles:
+              - '$env/envs/{{ index .path.segments 1 }}/env.yaml'
+              - '$env/{{ .path.path }}/{{ .path.filename }}'
+            parameters:
+              - name: onlyService
+                value: '{{ trimSuffix ".yaml" .path.filename }}'
+        # The WHAT: versions and config. `ref: env` makes it addressable as
+        # $env above; it deploys nothing by itself.
+        - repoURL: http://gitea-http.devbox.svc.cluster.local:3000/devbox/env-config.git
+          targetRevision: main
+          ref: env
+      # Phase 1: every env deploys into `apps` (one env active at a time).
+      # Per-env namespaces and data isolation are phase 3.
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: apps
+      syncPolicy:
+        automated:
+          prune: true     # a service file deleted from git → its objects deleted
+          selfHeal: true  # a kubectl edit → reverted to what git says
+        retry:
+          limit: 5
+          backoff: { duration: 10s, factor: 2, maxDuration: 3m }
