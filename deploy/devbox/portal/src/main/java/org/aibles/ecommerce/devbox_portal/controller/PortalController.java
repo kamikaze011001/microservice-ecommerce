@@ -13,16 +13,24 @@ import org.aibles.ecommerce.devbox_portal.dto.PortalViews.EnvView;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.Info;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.JobRequest;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.JobView;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.RevertRequest;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.SettingsRequest;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.SettingsResult;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.SettingsView;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.ToolView;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.Links;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.TagView;
 import org.aibles.ecommerce.devbox_portal.service.EnvService;
 import org.aibles.ecommerce.devbox_portal.service.JobService;
+import org.aibles.ecommerce.devbox_portal.service.SettingsService;
+import org.aibles.ecommerce.devbox_portal.service.ToolService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -47,11 +55,16 @@ public class PortalController {
 
     private final EnvService envService;
     private final JobService jobService;
+    private final ToolService toolService;
+    private final SettingsService settingsService;
     private final PortalProperties properties;
 
-    public PortalController(EnvService envService, JobService jobService, PortalProperties properties) {
+    public PortalController(EnvService envService, JobService jobService, ToolService toolService,
+                            SettingsService settingsService, PortalProperties properties) {
         this.envService = envService;
         this.jobService = jobService;
+        this.toolService = toolService;
+        this.settingsService = settingsService;
         this.properties = properties;
     }
 
@@ -114,5 +127,33 @@ public class PortalController {
     @GetMapping(value = "/api/jobs/{name}/log", produces = MediaType.TEXT_PLAIN_VALUE)
     public String jobLog(@PathVariable @Pattern(regexp = JOB_NAME) String name) {
         return jobService.log(name);
+    }
+
+    @GetMapping("/api/tools")
+    public List<ToolView> tools() {
+        return toolService.tools();
+    }
+
+    @GetMapping("/api/envs/{env}/services/{service}/settings")
+    public SettingsView settings(@PathVariable @Pattern(regexp = NAME) String env,
+                                 @PathVariable @Pattern(regexp = NAME) String service) {
+        return settingsService.get(env, service);
+    }
+
+    @PutMapping("/api/envs/{env}/services/{service}/settings")
+    public SettingsResult saveSettings(@PathVariable @Pattern(regexp = NAME) String env,
+                                       @PathVariable @Pattern(regexp = NAME) String service,
+                                       @RequestBody SettingsRequest request) {
+        return settingsService.save(env, service, request.spring(), request.envVars(), request.baseSha());
+    }
+
+    @PostMapping("/api/envs/{env}/services/{service}/settings:revert")
+    public SettingsResult revertSettings(@PathVariable @Pattern(regexp = NAME) String env,
+                                         @PathVariable @Pattern(regexp = NAME) String service,
+                                         @RequestBody @Valid RevertRequest request) {
+        if (!request.commit().matches("[0-9a-f]{7,40}")) {
+            throw new IllegalArgumentException("not a commit sha: " + request.commit());
+        }
+        return settingsService.revert(env, service, request.commit());
     }
 }

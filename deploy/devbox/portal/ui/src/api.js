@@ -15,10 +15,16 @@ const post = (path, data) => call(path, {
 
 export const api = {
   info: () => call('/api/info'),
+  tools: () => call('/api/tools'),
   envs: () => call('/api/envs'),
   history: (env, limit = 15) => call(`/api/envs/${env}/history?limit=${limit}`),
   tags: (service) => call(`/api/services/${service}/tags`),
   deploy: (env, service, tag) => post(`/api/envs/${env}/services/${service}:deploy`, { tag }),
+  settings: (env, service) => call(`/api/envs/${env}/services/${service}/settings`),
+  saveSettings: (env, service, body) => call(`/api/envs/${env}/services/${service}/settings`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }),
+  revertSettings: (env, service, commit) => post(`/api/envs/${env}/services/${service}/settings:revert`, { commit }),
   perfRuns: () => call('/api/perf-runs'),
   jobs: () => call('/api/jobs'),
   job: (name) => call(`/api/jobs/${name}`),

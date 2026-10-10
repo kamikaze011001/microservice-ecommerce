@@ -8,8 +8,12 @@ import org.aibles.ecommerce.devbox_portal.client.MetricsClient;
 import org.aibles.ecommerce.devbox_portal.client.RegistryClient;
 import org.aibles.ecommerce.devbox_portal.service.EnvService;
 import org.aibles.ecommerce.devbox_portal.service.JobService;
+import org.aibles.ecommerce.devbox_portal.service.SettingsService;
+import org.aibles.ecommerce.devbox_portal.service.ToolService;
 import org.aibles.ecommerce.devbox_portal.service.impl.EnvServiceImpl;
 import org.aibles.ecommerce.devbox_portal.service.impl.JobServiceImpl;
+import org.aibles.ecommerce.devbox_portal.service.impl.SettingsServiceImpl;
+import org.aibles.ecommerce.devbox_portal.service.impl.ToolServiceImpl;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
@@ -58,5 +62,15 @@ public class PortalConfiguration {
     @Bean
     public JobService jobService(KubernetesClient kubernetes, PortalProperties properties) {
         return new JobServiceImpl(kubernetes, properties.runner(), Clock.systemUTC());
+    }
+
+    @Bean
+    public ToolService toolService(KubernetesClient kubernetes, PortalProperties properties) {
+        return new ToolServiceImpl(kubernetes, properties);
+    }
+
+    @Bean
+    public SettingsService settingsService(GiteaClient gitea, ArgoClient argo) {
+        return new SettingsServiceImpl(gitea, argo);
     }
 }

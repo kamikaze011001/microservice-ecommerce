@@ -71,9 +71,14 @@ public class GiteaClient {
     }
 
     public RepoFile read(String path) {
+        return readAt(path, cfg.branch());
+    }
+
+    /** {@code path} as it was at {@code ref} (a branch or a commit sha). */
+    public RepoFile readAt(String path, String ref) {
         try {
             JsonNode f = http.get()
-                    .uri(contents(path) + "?ref={b}", cfg.owner(), cfg.envRepo(), cfg.branch())
+                    .uri(contents(path) + "?ref={b}", cfg.owner(), cfg.envRepo(), ref)
                     .retrieve().body(JsonNode.class);
             // Gitea wraps base64 at 60 columns; the MIME decoder ignores the newlines.
             String content = new String(Base64.getMimeDecoder().decode(f.path("content").asText()), StandardCharsets.UTF_8);
@@ -91,7 +96,9 @@ public class GiteaClient {
                 "content", Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8)),
                 "sha", file.sha(),
                 "branch", cfg.branch(),
-                "message", subject + "\n\n" + body);
+                "message", subject + "\n\n" + body,
+                // Same author as the runner's commits: history says the portal made it.
+                "author", Map.of("name", "devbox-portal", "email", "devbox-portal@microecom.local"));
         try {
             JsonNode res = http.put()
                     .uri(contents(file.path()), cfg.owner(), cfg.envRepo())
@@ -106,6 +113,23 @@ public class GiteaClient {
                 throw PortalException.conflict(file.path() + " changed since it was read — reload and try again");
             }
             throw PortalException.upstream("Gitea", e);
+        } catch (RestClientException e) {
+            throw PortalException.upstream("Gitea", e);
+        }
+    }
+
+    /** The first parent of {@code sha} (the state a change was made on top of). */
+    public String parent(String sha) {
+        try {
+            JsonNode c = http.get().uri("/api/v1/repos/{o}/{r}/git/commits/{s}?stat=false&files=false",
+                    cfg.owner(), cfg.envRepo(), sha).retrieve().body(JsonNode.class);
+            JsonNode parents = c == null ? null : c.path("parents");
+            if (parents == null || parents.isEmpty()) {
+                throw PortalException.unprocessable("commit " + sha + " has no parent to go back to");
+            }
+            return parents.get(0).path("sha").asText();
+        } catch (HttpClientErrorException.NotFound e) {
+            throw PortalException.notFound("no commit " + sha + " in the env repo");
         } catch (RestClientException e) {
             throw PortalException.upstream("Gitea", e);
         }

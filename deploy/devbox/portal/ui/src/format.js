@@ -51,3 +51,22 @@ export function envUrls(env) {
     ? { web: 'http://microecom.local', api: 'http://api.microecom.local' }
     : { web: `http://${env}.microecom.local`, api: `http://api.${env}.microecom.local` }
 }
+
+/** Copy text; navigator.clipboard only exists in a secure context (https / localhost). */
+export async function copyText(text, inputEl) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch { /* fall through */ }
+  if (inputEl) {
+    const type = inputEl.type
+    inputEl.type = 'text'
+    inputEl.select()
+    const ok = document.execCommand('copy')
+    inputEl.type = type
+    return ok
+  }
+  return false
+}

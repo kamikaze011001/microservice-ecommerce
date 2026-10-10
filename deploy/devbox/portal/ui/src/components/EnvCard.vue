@@ -44,7 +44,7 @@ const drifted = (s) => s.desired_tag && s.running_images.length && !s.running_im
       <div class="tablewrap">
         <table>
           <thead>
-            <tr><th>Service</th><th>Version (git)</th><th>Running</th><th>Sync</th><th>Health</th><th>Deploy another version</th></tr>
+            <tr><th>Service</th><th>Version (git)</th><th>Running</th><th>Sync</th><th>Health</th><th>Deploy another version</th><th></th></tr>
           </thead>
           <tbody>
             <tr v-for="s in env.services" :key="s.name">
@@ -61,6 +61,7 @@ const drifted = (s) => s.desired_tag && s.running_images.length && !s.running_im
                                :tags="tags[s.name] || []" :busy="busy" @deploy="(d) => emit('deploy', d)" />
                 <span v-else class="muted">static build</span>
               </td>
+              <td><RouterLink class="btn" :to="`/envs/${env.name}/services/${s.name}/settings`">Settings</RouterLink></td>
             </tr>
           </tbody>
         </table>
