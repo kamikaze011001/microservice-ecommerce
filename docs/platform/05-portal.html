@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Devbox 5 — Portal</title>
+<link rel="stylesheet" href="platform.css"/>
+<style>
+  .loop{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:12px 0}
+  .loop .step{background:var(--bg2);border:1px solid color-mix(in srgb,var(--bad) 45%,var(--line));border-radius:12px;padding:8px 11px;font-size:13.5px}
+  .loop .arr{color:var(--bad);font-weight:800}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="icon">🧭</div>
+  <h1>A portal is just a client</h1>
+  <p>Phase 5 of the devbox. One page shows every env and service, what git says vs what's running, the change history and recent perf runs — and changes a version with one click, as a commit.</p>
+  <div class="series">Devbox · platform engineering series · 5 / 6</div>
+</header>
+
+<nav class="toc">
+  <a href="#idea">Big idea</a><a href="#what">What it does</a><a href="#arch">Architecture</a><a href="#write">The one write</a>
+  <a href="#scars">What broke</a><a href="#try">Try it</a><a href="#interview">Interview</a><a href="#next">Next</a>
+</nav>
+
+<main>
+
+<section id="idea">
+  <div class="bigidea">
+    <p class="big">The portal owns <b>no state</b>. Everything it shows lives somewhere else: versions in git, health in Argo CD, images in the registry, perf runs in VictoriaMetrics. It is a <b>client</b> of the platform — the same thing a Backstage plugin is.</p>
+    <p class="big">That's why it can be small, why it can't drift from the truth, and why deleting it loses nothing.</p>
+  </div>
+</section>
+
+<section id="what">
+  <h2><span class="n">1</span>What it does</h2>
+  <div class="cards">
+    <div class="card"><h3>Per env, per service</h3><p>Git's pinned tag, the running image(s), Argo CD sync + health, and a "≠ git" flag while a rollout is still catching up.</p></div>
+    <div class="card"><h3>Deploy a version</h3><p>A tag picker (pinned tags first, marked "← prod-like"), one button, a confirm — and a commit in the env repo. Same rules as <code>make devbox-deploy</code>.</p></div>
+    <div class="card"><h3>History</h3><p>The env repo's commits for that env: every ship, deploy, rollback, create — who, what, when.</p></div>
+    <div class="card"><h3>Perf runs</h3><p>The runs <code>make devbox-perf</code> recorded, with PASS/FAIL.</p></div>
+  </div>
+  <p style="font-size:14.5px;color:var(--ink2)"><code>make devbox-portal</code> builds and deploys it; <code>make devbox-open</code> → <code>http://localhost:8282</code>.</p>
+</section>
+
+<section id="arch">
+  <h2><span class="n">2</span>Architecture</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Reads / writes</th><th>Through</th><th>Why that way</th></tr>
+    <tr><td>Argo CD Applications</td><td>Kubernetes API (fabric8), the pod's ServiceAccount</td><td>Applications are CRDs; a Role with get/list/patch on <code>applications</code> in <code>argocd</code> is all it needs — no Argo CD token to create, store or rotate</td></tr>
+    <tr><td>Env repo files + history</td><td>Gitea REST (contents + commits API)</td><td>No clone, no working copy to get stale; one file read and written per deploy</td></tr>
+    <tr><td>Image tags</td><td>Registry HTTP API v2</td><td>Same check as the CLI: a tag that doesn't exist is refused before git records it</td></tr>
+    <tr><td>Perf runs</td><td>VictoriaMetrics query API</td><td>The <code>devbox_perf_run</code> series phase 4 writes</td></tr>
+    <tr><td>Page</td><td>One <code>index.html</code>, Vue 3 from a CDN</td><td>No frontend build for a platform tool; polls every 30 s</td></tr>
+  </table></div>
+  <p style="font-size:14.5px;color:var(--ink2)">Deployed by <code>devbox.sh portal</code> into <code>devbox</code> — not by the ApplicationSet: the thing that changes envs shouldn't itself be an app inside one.</p>
+</section>
+
+<section id="write">
+  <h2><span class="n">3</span>The one write — and its guards</h2>
+  <div class="pipe">
+    <div class="step"><b>1 · validate</b>env/service names, tag grammar</div><span class="arr">→</span>
+    <div class="step"><b>2 · read</b>the service file + its blob sha</div><span class="arr">→</span>
+    <div class="step"><b>3 · same tag?</b>no-op, nothing committed</div><span class="arr">→</span>
+    <div class="step"><b>4 · registry</b>tag must exist (422 otherwise)</div><span class="arr">→</span>
+    <div class="step"><b>5 · commit</b>with the sha read in 2 (409 if it changed)</div><span class="arr">→</span>
+    <div class="step"><b>6 · nudge</b>Argo CD refresh — best effort</div>
+  </div>
+  <div class="cards">
+    <div class="card"><h3>Optimistic concurrency</h3><p>The write carries the blob sha it read. If a CLI ship or another tab changed the file in between, Gitea refuses and the portal says "reload and try again" — it never overwrites someone else's change.</p></div>
+    <div class="card"><h3>A text edit, not YAML</h3><p>Parse → serialize would drop every comment in the env repo. The tag line is rewritten in place — the live commit was a one-line diff, comments intact.</p></div>
+    <div class="card"><h3>The commit is the deploy</h3><p>If the refresh nudge fails, the deploy still succeeded: Argo CD picks the commit up on its 60 s poll. The response says <code>refreshed: false</code> instead of pretending it failed.</p></div>
+    <div class="card"><h3>Names can't become paths</h3><p>Env and service names are validated to <code>[a-z0-9-]</code> before they touch a Gitea path — <code>..</code>, <code>/</code>, uppercase: 400.</p></div>
+  </div>
+</section>
+
+<section id="scars">
+  <h2><span class="n">4</span>What broke while building it</h2>
+  <div class="scar">
+    <h3>A rollout that fed on itself — and the platform's own rollback</h3>
+    <p><b>Symptom:</b> the first live deploy through the portal (<code>order-service ac48ad8 → dev</code> — byte-identical images!) never finished. The API server timed out, nodes ran at 1–2.25 of their 4 CPUs, and <code>ps</code> inside the nodes showed <code>order-service</code> JVMs that were 6–13 seconds old, on two nodes at once.</p>
+    <div class="loop">
+      <div class="step">new pod: JVM start ≈ 1.5 CPU</div><span class="arr">→</span>
+      <div class="step">HPA reads startup CPU as load → 3 replicas</div><span class="arr">→</span>
+      <div class="step">more JVM starts on starved nodes</div><span class="arr">→</span>
+      <div class="step">startup outlasts the liveness window → restart</div><span class="arr">↺</span>
+    </div>
+    <p><b>Evidence vs inference:</b> the young JVMs and the HPA left at 3 replicas while reporting 6% CPU are measured; the liveness kills are inferred — the API was down, so no events were captured.</p>
+    <p><b>Recovery:</b> the platform's own golden path — pin the old tag from the portal. Back on the healthy ReplicaSet in ~135 s; the env repo records deploy and rollback. <b>Follow-up</b> (chart, separate PR): a <code>startupProbe</code> so a slow JVM start isn't a liveness failure, and an HPA scale-up stabilization window so startup CPU can't trigger it.</p>
+  </div>
+  <div class="scar">
+    <h3>Every file read would have been a 404</h3>
+    <p>Gitea paths went into a <code>{path}</code> URI-template variable, and Spring encodes a variable's <code>/</code> as <code>%2F</code>. The mock-server test caught it before anything ran live. Fix: the (pre-validated) path joins the template as literal segments.</p>
+  </div>
+  <div class="scar">
+    <h3>An API parameter that's silently ignored</h3>
+    <p>Gitea's commits endpoint ignores <code>limit</code> when the query is filtered by <code>path</code> — <code>limit=3</code> returned 12. The cap is enforced client-side now, with a test. Read what an API <em>does</em>, not what its docs list.</p>
+  </div>
+  <div class="scar">
+    <h3>A port-forward pinned to a pod that no longer exists</h3>
+    <p><code>kubectl port-forward service/x</code> resolves to <em>one pod</em> when it starts. After redeploying the portal, the forward pointed at the deleted pod ("lost connection to pod") while its PID file still looked alive — and a wait-until-reachable loop spun forever. <code>make devbox-portal</code> now re-opens the forward after every rollout.</p>
+  </div>
+</section>
+
+<section id="try">
+  <h2><span class="n">5</span>Try it</h2>
+  <ol class="try">
+    <li><code>make devbox-portal</code>, then open <code>http://localhost:8282</code>.
+      <div class="expect">One section per env; every service Synced/Healthy; history on the right.</div></li>
+    <li>Pick a tag for a service and Deploy. Watch the row.
+      <div class="expect">"≠ git" while it rolls, then the running tag matches; a new history entry "deploy … (pinned from devbox-portal)".</div></li>
+    <li>Open the same page in two tabs, deploy from one, then deploy from the other without reloading.
+      <div class="expect">The second one answers 409 — "changed since it was read". No lost update.</div></li>
+    <li><code>curl -XPOST localhost:8282/api/envs/prod-like/services/order-service:deploy -H 'content-type: application/json' -d '{"tag":"nope"}'</code>
+      <div class="expect">422, and nothing in the env repo.</div></li>
+  </ol>
+</section>
+
+<section id="interview">
+  <h2><span class="n">6</span>Interview questions</h2>
+  <details><summary>What is an internal developer portal, and what should it own?</summary>
+    <p>A UI over the platform's sources of truth (catalog, deploy state, docs, metrics). It should own as little as possible — ideally nothing — so it can't disagree with the systems it shows. Backstage is the common open-source one; its plugins are exactly "clients" like this.</p></details>
+  <details><summary>Why do a deploy as a git commit from a UI, instead of calling the cluster?</summary>
+    <p>One path for every change (CLI, UI, CI): audited, reviewable, revertible, and the GitOps controller stays the only writer to the cluster. A UI that calls kubectl creates drift the controller then reverts.</p></details>
+  <details><summary>How do you prevent lost updates when two people edit the same config?</summary>
+    <p>Optimistic concurrency: read a version (here the git blob sha), write conditionally on it, and on conflict re-read and retry or ask the user. Same idea as ETags/If-Match or a version column.</p></details>
+  <details><summary>Why can an autoscaler make a rollout worse?</summary>
+    <p>Startup work (JIT, class loading, connection pools) looks like load. On constrained nodes that triggers scale-up, which adds more startup work. Use startup probes, scale-up stabilization windows, CPU-based HPA with realistic requests — or scale on a business metric.</p></details>
+</section>
+
+<section id="next">
+  <div class="next">
+    <h2 style="margin-top:0">Next — phase 6: API tests</h2>
+    <p>Bruno collections in the repo — click through the API like Postman, but as diffable text files — and the same collection run as a k8s Job against any env after every ship.</p>
+  </div>
+</section>
+
+</main>
+</body>
+</html>

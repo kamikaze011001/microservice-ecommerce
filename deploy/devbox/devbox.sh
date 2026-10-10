@@ -274,7 +274,13 @@ cmd_portal() {
   image="localhost:5000/devbox-portal:$tag"
   sed "s#PORTAL_IMAGE#$image#" "$DEVBOX/portal/k8s.yaml" | $K apply -f - >/dev/null
   $K -n devbox rollout status deploy/devbox-portal --timeout=5m >/dev/null
-  log_ok "devbox-portal $tag running — make devbox-open, then http://localhost:$PORTAL_LOCAL_PORT"
+  # kubectl port-forward binds to ONE pod: after a rollout an existing forward
+  # points at the deleted pod ("lost connection to pod") while its PID file
+  # still exists. Re-open it against the new pod.
+  stop_forward portal
+  start_forward portal devbox devbox-portal "$PORTAL_LOCAL_PORT" 80 /api/links \
+    || log_warn "portal forward failed — make devbox-open"
+  log_ok "devbox-portal $tag running — http://localhost:$PORTAL_LOCAL_PORT"
 }
 
 # ── versions: ship / deploy / tags / gc / proof ─────────────────────────────
