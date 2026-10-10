@@ -1,0 +1,22 @@
+meta {
+  name: admin route as a plain user → 403
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/authorization-server/v1/admin/users?page=1&size=1
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+tests {
+  test("403 auth.forbidden — authenticated, not authorized", function () {
+    expect(res.getStatus()).to.equal(403);
+    expect(res.getBody().data.code).to.equal("auth.forbidden");
+  });
+}

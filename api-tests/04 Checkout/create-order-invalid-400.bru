@@ -1,0 +1,30 @@
+meta {
+  name: create order with no items → 400
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/order-service/v1/orders
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "items": []
+  }
+}
+
+tests {
+  test("400 validation.failed, naming each bad field", function () {
+    expect(res.getStatus()).to.equal(400);
+    const d = res.getBody().data;
+    expect(d.code).to.equal("validation.failed");
+    expect(d.errors).to.include.keys("address", "items");
+  });
+}

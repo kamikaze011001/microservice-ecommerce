@@ -881,7 +881,7 @@ devbox-portal:
 devbox-version:
 	@$(DEVBOX) version $(or $(svc),$(error svc= is required))
 
-## devbox-ship svc=X [env=]: build X from your tree → registry → env repo → Argo CD sync
+## devbox-ship svc=X [env=] [SMOKE=0]: build X → registry → env repo → Argo CD sync → API smoke
 devbox-ship:
 	@$(DEVBOX) ship $(or $(svc),$(error svc= is required)) $(env)
 
@@ -918,6 +918,12 @@ devbox-env-delete:
 ## devbox-env-proof [name=proof] [KEEP=1]: orders in a preview stay in it; delete removes it all
 devbox-env-proof:
 	@KEEP=$(KEEP) $(DEVBOX) env-proof $(or $(name),proof)
+
+.PHONY: devbox-api-test
+
+## devbox-api-test [env=prod-like]: Bruno API contract suite (api-tests/) run inside the env
+devbox-api-test:
+	@$(DEVBOX) api-test $(or $(env),prod-like)
 
 .PHONY: devbox-perf devbox-perf-runs devbox-perf-compare
 

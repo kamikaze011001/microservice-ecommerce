@@ -1,0 +1,27 @@
+meta {
+  name: add item
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/bff-service/v1/cart:add-item
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "product_id": "{{productId2}}",
+    "quantity": 1,
+    "price": 58.0
+  }
+}
+
+assert {
+  res.status: eq 200
+}

@@ -1,0 +1,37 @@
+meta {
+  name: create order
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/order-service/v1/orders
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "address": "bruno api test",
+    "phone_number": "0912345678",
+    "items": [{ "product_id": "{{productId}}", "quantity": 1 }]
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+script:post-response {
+  bru.setVar("orderId", res.getBody().data.order_id);
+}
+
+tests {
+  test("201 with an order_id (UUID)", function () {
+    expect(res.getBody().data.order_id).to.match(/^[0-9a-f-]{36}$/);
+  });
+}

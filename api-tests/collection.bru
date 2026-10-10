@@ -1,0 +1,16 @@
+docs {
+  # microecom API contract tests
+
+  The contract each endpoint offers its clients: status codes, response shape,
+  and the error cases the storefront relies on. End-to-end checkout (PayPal
+  approve/cancel redirects) is k6's job — see deploy/k6-stress/payment-flow.js.
+
+  - GUI: open this folder in Bruno, pick the `local` environment (needs the
+    minikube tunnel) and click through.
+  - CLI / any devbox env: `make devbox-api-test [env=preview-x]` runs the same
+    files as a k8s Job against that env's gateway (`devbox` environment).
+
+  Runs in folder order: Catalog → Auth (sets accessToken) → Cart → Checkout.
+  Uses perftest_user_100 (seeded by k8s-seed-perftest / devbox-env-create),
+  which the k6 flows don't use at low VU counts.
+}

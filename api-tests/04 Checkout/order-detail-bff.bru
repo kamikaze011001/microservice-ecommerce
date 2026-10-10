@@ -1,0 +1,27 @@
+meta {
+  name: order detail via bff
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/bff-service/v1/orders/{{orderId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+}
+
+tests {
+  test("bff wraps the order with its payment", function () {
+    const d = res.getBody().data;
+    expect(d.order.id).to.equal(bru.getVar("orderId"));
+    expect(d).to.have.property("payment");
+  });
+}

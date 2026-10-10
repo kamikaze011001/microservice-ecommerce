@@ -1,0 +1,31 @@
+meta {
+  name: create payment
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/payment-service/v1/payments?orderId={{orderId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+}
+
+tests {
+  test("PayPal order waiting for the payer", function () {
+    expect(res.getBody().data.status).to.equal("PAYER_ACTION_REQUIRED");
+  });
+  test("an approve link the browser can follow — on THIS env's API host", function () {
+    const links = res.getBody().data.links;
+    const approve = links.find(l => l.rel === "approve" || l.rel === "payer-action");
+    expect(approve, "approve link").to.exist;
+    expect(approve.href.startsWith(bru.getEnvVar("apiOrigin") + "/mock-paypal-service/")).to.equal(true);
+  });
+}
