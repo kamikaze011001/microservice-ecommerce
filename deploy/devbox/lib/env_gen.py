@@ -60,7 +60,48 @@ def names(env: str) -> dict:
         "connector": f"{BASE_CONNECTOR}-{env}",
         "connectorTopicPrefix": cdc_prefix,
         "cdcTopic": f"{cdc_prefix}.{db}.event",
+        # Browser-facing hosts (phase 3c). Need /etc/hosts → 127.0.0.1 and the
+        # minikube tunnel, like prod-like's microecom.local / api.microecom.local.
+        "storefrontHost": f"{env}.microecom.local",
+        "apiHost": f"api.{env}.microecom.local",
     }
+
+
+def browser_overrides(n: dict) -> dict:
+    """Per-service values a BROWSER sees — the ones an internal service name
+    can't replace. Keyed by service; merged into the generated service files."""
+    shop, api = f"http://{n['storefrontHost']}", f"http://{n['apiHost']}"
+    mock_public = f"{api}/mock-paypal-service"
+    return {
+        # One frontend image everywhere: Caddy serves this as /config.js.
+        "frontend": {"ingress": {"host": n["storefrontHost"]}, "env": {"API_BASE_URL": api}},
+        "gateway": {
+            "ingress": {"host": n["apiHost"]},
+            # A list REPLACES the lower source's list (no merge), so this is the
+            # complete set: the env's storefront, plus the two dev-server origins.
+            "springConfig": {"application": {"gateway": {"cors": {"allowed-origins": [
+                shop, "http://localhost:5173", "http://localhost:3000"]}}}},
+        },
+        # PayPal return/cancel URLs: the browser comes back to THIS env's shop.
+        "payment-service": {
+            "springConfig": {"application": {"frontend": {"base-url": shop}}},
+            "env": {"PAYPAL_TUNNEL_URL": api},
+        },
+        # The mock's approve/cancel links the browser follows.
+        "mock-paypal-service": {
+            "springConfig": {"mock": {"public-base-url": mock_public}},
+            "env": {"MOCK_PUBLIC_BASE_URL": mock_public},
+        },
+    }
+
+
+def deep_merge(base: dict, extra: dict) -> dict:
+    for k, v in extra.items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            deep_merge(base[k], v)
+        else:
+            base[k] = v
+    return base
 
 
 def env_topic(n: dict, base: str) -> str:
@@ -147,21 +188,22 @@ def files(n: dict, template_dir: pathlib.Path, resolved: dict, out: pathlib.Path
         + "# overrides the shared Vault config). Secrets still come from Vault.\n"
         + yaml.safe_dump(env_yaml, sort_keys=False, default_flow_style=False))
 
+    browser = browser_overrides(n)
     for f in sorted((template_dir / "services").glob("*.yaml")):
         svc = f.stem
         doc = yaml.safe_load(f.read_text())
         block = doc["apps"][svc]
         if svc != "frontend":
-            # null DELETES the chart default in Helm's value merge: no HPA, no
-            # Ingress. Previews are API-only until phase 3c.
+            # null DELETES the chart default in Helm's value merge: no HPA.
             block["hpa"] = None
-            block["ingress"] = None
             block["resources"] = {"requests": dict(SMALL_REQUESTS)}
-        else:
-            block["ingress"] = None
+        # Ingress only where the browser enters (frontend, gateway) — on the
+        # env's own hosts, set by browser_overrides; elsewhere none.
+        block["ingress"] = None
+        deep_merge(block, browser.get(svc, {}))
         (out / "services" / f.name).write_text(
             HEADER.format(what=f"{svc} in {n['env']}", template=template_dir.name, env=n["env"])
-            + "# Started small (no hpa/ingress, smaller requests) — change and commit to grow it.\n"
+            + "# Started small (no hpa, smaller requests) — change and commit to grow it.\n"
             + yaml.safe_dump(doc, sort_keys=False, default_flow_style=False))
 
     (out / "services" / "redis.yaml").write_text(

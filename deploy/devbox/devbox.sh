@@ -677,7 +677,15 @@ cmd_env_create() {
   $K -n infra exec -i mysql-0 -c mysql -- sh -c "mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" $MYSQL_DB 2>/dev/null" \
     <"$ROOT/deploy/k8s-jobs/06-perftest-seed/perftest-users.sql" && log_ok "seeded perftest users"
 
-  log_ok "$env is up. In-cluster gateway: http://gateway.$NS:6868  (browser access is phase 3c)"
+  log_ok "$env is up"
+  cat <<EOF
+
+  Browser:   http://$env.microecom.local      (API: http://api.$env.microecom.local)
+  One-time:  add to /etc/hosts →  127.0.0.1 $env.microecom.local api.$env.microecom.local
+             and keep the tunnel up →  sudo -v && make k8s-tunnel
+  In-cluster gateway: http://gateway.$NS:6868
+
+EOF
 }
 
 BASE_CONNECTOR_NAME=mongodb-source-connector
@@ -762,7 +770,7 @@ cmd_env_proof() {
 
   log_info "k6: 3 users × 40s of checkout against $env's gateway"
   $K -n "$NS" run devbox-env-proof-k6 --rm -i --restart=Never --image=grafana/k6:0.54.0 --quiet -- \
-    run --quiet --vus 3 --duration 40s -e BASE_URL="http://gateway:6868" -e INGRESS_ORIGIN=http://api.microecom.local \
+    run --quiet --vus 3 --duration 40s -e BASE_URL="http://gateway:6868" -e INGRESS_ORIGIN="http://api.$env.microecom.local" \
     -e PRODUCT_IDS=67c000000000000000000001,67c000000000000000000002,67c000000000000000000003 - \
     <"$ROOT/deploy/k6-stress/payment-flow.js" >"$RUN_DIR/env-proof-k6.log" 2>&1 || true
   grep -E 'checks\.|iterations\.' "$RUN_DIR/env-proof-k6.log" | sed 's/^/    /'
@@ -798,6 +806,24 @@ cmd_env_proof() {
   check "prod-like orders unchanged ($prod_orders)" "[[ \$(orders ecommerce_dev) == $prod_orders ]]"
   check "prod-like success topic unchanged" "[[ \$(end_offsets order-service.order.success-status) == $prod_success ]]"
   check "prod-like CDC topic unchanged" "[[ \$(end_offsets ecommerce_db.ecommerce_inventory.event) == $prod_cdc ]]"
+
+  # Browser path (3c), through the real ingress-nginx controller with Host
+  # headers — from inside the cluster, so it needs no sudo tunnel.
+  local shop="$env.microecom.local" api="api.$env.microecom.local" ing=ingress-nginx-controller.infra.svc.cluster.local
+  local browser
+  browser="$($K -n "$NS" run devbox-env-proof-browser --rm -i --restart=Never --image=curlimages/curl:8.10.1 --quiet -- sh -c "
+    echo config=\$(curl -s -H 'Host: $shop' http://$ing/config.js)
+    echo products=\$(curl -s -o /dev/null -w %{http_code} -H 'Host: $api' 'http://$ing/product-service/v1/products?page=1&size=1')
+    echo cors_own=\$(curl -s -o /dev/null -D - -X OPTIONS -H 'Host: $api' -H 'Origin: http://$shop' -H 'Access-Control-Request-Method: GET' http://$ing/product-service/v1/products | tr -d '\r' | grep -i '^access-control-allow-origin:' | cut -d' ' -f2)
+    echo cors_prod=\$(curl -s -o /dev/null -D - -X OPTIONS -H 'Host: $api' -H 'Origin: http://microecom.local' -H 'Access-Control-Request-Method: GET' http://$ing/product-service/v1/products | tr -d '\r' | grep -i '^access-control-allow-origin:' | cut -d' ' -f2)
+    echo prod_config=\$(curl -s -H 'Host: microecom.local' http://$ing/config.js)
+  " 2>/dev/null)"
+  printf '%s\n' "$browser" | sed 's/^/    /'
+  check "browser: $shop's /config.js points the SPA at $api" "grep -q 'config=.*apiBaseUrl: \"http://$api\"' <<<\"\$browser\""
+  check "browser: $api serves the catalog through its Ingress" "grep -qx 'products=200' <<<\"\$browser\""
+  check "browser: CORS allows http://$shop" "grep -qx 'cors_own=http://$shop' <<<\"\$browser\""
+  check "browser: CORS refuses prod-like's origin" "grep -qx 'cors_prod=' <<<\"\$browser\""
+  check "browser: prod-like's storefront config untouched" "! grep -q 'prod_config=.*$env' <<<\"\$browser\""
 
   if [[ "${KEEP:-0}" != 1 ]]; then
     cmd_env_delete "$env" 1

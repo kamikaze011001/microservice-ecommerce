@@ -1130,7 +1130,26 @@ if [ -z "$pv_err" ]; then ok "every generated preview service file renders"; els
 assert_lacks "preview: nothing lands in prod-like's namespace" '^  namespace: apps$' "$pv_all"
 assert_has   "preview: objects land in apps-preview-x" '^  namespace: apps-preview-x$' "$pv_all"
 assert_lacks "preview: no HPAs (started small)" '^kind: HorizontalPodAutoscaler' "$pv_all"
-assert_lacks "preview: no Ingresses (API-only until 3c)" '^kind: Ingress' "$pv_all"
+# 3c — browser access on the env's own hosts.
+assert_has   "preview: exactly two Ingresses (frontend + gateway)" '^2$' "$(grep -c '^kind: Ingress' <<<"$pv_all")"
+assert_has   "preview: storefront on preview-x.microecom.local" \
+  'host: preview-x\.microecom\.local' "$(doc_named Ingress frontend "$pv_all")"
+assert_has   "preview: API on api.preview-x.microecom.local, keeping the 120s nginx timeout" \
+  'host: api\.preview-x\.microecom\.local' "$(doc_named Ingress gateway "$pv_all")"
+pv_fe="$(doc_named Deployment frontend "$pv_all")"
+assert_has   "preview: the ONE frontend image gets its API URL at runtime" \
+  '^"http://api\.preview-x\.microecom\.local"$' "$(env_value "$pv_fe" API_BASE_URL)"
+assert_lacks "preview: static frontend inherits no JVM env / Vault token / springConfig" \
+  'VAULT_TOKEN|JAVA_OPTS|SPRING_APPLICATION_JSON' "$pv_fe"
+pv_gw_json="$(env_value "$(doc_named Deployment gateway "$pv_all")" SPRING_APPLICATION_JSON)"
+assert_has   "preview: gateway CORS allows the env's storefront" 'http://preview-x\.microecom\.local' "$pv_gw_json"
+assert_lacks "preview: ...and not prod-like's" 'http://microecom\.local' "$pv_gw_json"
+assert_has   "preview: PayPal returns the browser to the env's storefront" \
+  '\\"frontend\\":\{\\"base-url\\":\\"http://preview-x\.microecom\.local\\"\}' \
+  "$(env_value "$(doc_named Deployment payment-service "$pv_all")" SPRING_APPLICATION_JSON)"
+assert_has   "preview: mock-paypal links point at the env's API host" \
+  'api\.preview-x\.microecom\.local/mock-paypal-service' \
+  "$(env_value "$(doc_named Deployment mock-paypal-service "$pv_all")" MOCK_PUBLIC_BASE_URL)"
 assert_has   "preview: its own Redis renders" 'image: redis:7\.4-alpine' "$(doc_named Deployment redis "$pv_all")"
 
 pv_order_json="$(env_value "$(doc_named Deployment order-service "$pv_all")" SPRING_APPLICATION_JSON)"

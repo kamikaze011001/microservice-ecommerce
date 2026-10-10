@@ -29,7 +29,7 @@
 
 <nav class="toc">
   <a href="#idea">Big idea</a><a href="#demo">Find the leaks</a><a href="#owns">What an env owns</a><a href="#config">How config reaches it</a>
-  <a href="#life">Create &amp; delete</a><a href="#scars">What broke</a><a href="#try">Try it</a><a href="#interview">Interview</a><a href="#next">Next</a>
+  <a href="#life">Create &amp; delete</a><a href="#browser">Browser</a><a href="#scars">What broke</a><a href="#try">Try it</a><a href="#interview">Interview</a><a href="#next">Next</a>
 </nav>
 
 <main>
@@ -98,9 +98,34 @@
   <p style="font-size:14.5px;color:var(--ink2)"><code>make devbox-env-delete name=x APPLY=1</code> runs it backwards: remove the folder → the ApplicationSet deletes the Applications → their <b>finalizer</b> deletes what they deployed (without it the Deployments would be orphaned) → only then connector, topics, groups, schema subjects, databases, namespace. Apps first, so nothing is writing while its data disappears. Without <code>APPLY=1</code> it only prints what it would remove.</p>
 </section>
 
+<section id="browser">
+  <h2><span class="n">4½</span>Opening a preview in the browser (3c)</h2>
+  <p class="lead"><b>Build once, configure per env.</b> The storefront used to bake its API URL into the JavaScript at build time — one image per env, or every preview's SPA calling prod-like's API. Now:</p>
+  <div class="pipe">
+    <div class="step"><b>browser</b>GET /</div><span class="arr">→</span>
+    <div class="step"><b>index.html</b>loads /config.js first</div><span class="arr">→</span>
+    <div class="step"><b>Caddy</b>answers it from the pod's <code>API_BASE_URL</code></div><span class="arr">→</span>
+    <div class="step"><b>SPA</b>reads <code>window.__APP_CONFIG__</code>, falls back to the build-time value</div>
+  </div>
+  <div class="tablewrap"><table>
+    <tr><th>Browser-facing value</th><th>prod-like</th><th>preview-x</th></tr>
+    <tr><td>Storefront / API hosts (Ingress)</td><td><code>microecom.local</code> / <code>api.microecom.local</code></td><td><code>preview-x.microecom.local</code> / <code>api.preview-x.microecom.local</code></td></tr>
+    <tr><td>SPA → API (<code>/config.js</code>)</td><td>build-time value (unchanged)</td><td><code>API_BASE_URL</code> on the frontend pod</td></tr>
+    <tr><td>Gateway CORS origins</td><td><code>application.yml</code></td><td>its own storefront only — prod-like's origin is refused</td></tr>
+    <tr><td>PayPal return URLs, mock-paypal links</td><td>Vault</td><td><code>springConfig</code> / env on payment + mock-paypal</td></tr>
+  </table></div>
+  <p style="font-size:14.5px;color:var(--ink2)">One-time per preview: <code>127.0.0.1 preview-x.microecom.local api.preview-x.microecom.local</code> in <code>/etc/hosts</code>, and the tunnel (<code>sudo -v &amp;&amp; make k8s-tunnel</code>) — the same as prod-like's hosts. <code>env-create</code> prints the line.</p>
+</section>
+
 <section id="scars">
   <h2><span class="n">5</span>What broke while building it</h2>
   <div id="scar-list">
+    <div class="scar">
+      <h3>A Vault token in the web server</h3>
+      <p><b>Symptom:</b> rendering a preview's frontend showed <code>VAULT_TOKEN=root</code>, JVM flags and the env-wide <code>SPRING_APPLICATION_JSON</code> on the Caddy container.</p>
+      <p><b>Cause:</b> the chart kept the JVM defaults' env out of the static SPA with <code>env: {}</code> — a rule that only held while the frontend set <em>no</em> env of its own. The first one (<code>API_BASE_URL</code>) flipped it, and the defaults flowed back in.</p>
+      <p><b>Fix:</b> in the chart, a <code>static: true</code> service never inherits <code>defaults.env</code> or <code>springConfig</code> — by kind, not by an empty map. Render-test now asserts the preview frontend carries none of them. An "it works because this field is empty" rule is one edit away from a leak.</p>
+    </div>
     <div class="scar">
       <h3>A password one commit away from git</h3>
       <p>The first generated <code>env.yaml</code> overrode <code>spring.data.mongodb.uri</code> to point at the preview's database — and the URI carries the Mongo password. It would have been committed to the env repo. Fix: override only <code>spring.data.mongodb.database</code> (Spring prefers it over the URI's path), and a guard in <code>env_gen.py</code> that refuses to write any value with <code>user:pass@</code> in it — tested in render-test.</p>
@@ -155,8 +180,8 @@
 
 <section id="next">
   <div class="next">
-    <h2 style="margin-top:0">Next — 3c: open a preview in the browser</h2>
-    <p>Previews are API-only today: the storefront's API URL is baked into the frontend image at build time, and the gateway's CORS origin is hardcoded. 3c moves both to runtime config, so one frontend image serves <code>microecom.local</code> and <code>preview-x.microecom.local</code> alike.</p>
+    <h2 style="margin-top:0">Next — phase 4: performance testing as a golden path</h2>
+    <p>With versions you can pin and envs you can run side by side, the natural question is "is my change slower?". Phase 4 makes <code>make devbox-perf scenario=payment env=…</code> push k6 results into VictoriaMetrics tagged with the env and every image version, so Grafana can put two runs next to each other.</p>
   </div>
 </section>
 

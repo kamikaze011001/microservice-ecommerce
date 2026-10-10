@@ -1,6 +1,7 @@
 import { useAuthStore } from '@/stores/auth';
+import { API_BASE_URL } from './baseUrl';
 
-const REFRESH_URL = `${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:6868'}/authorization-server/v1/auth:refresh-token`;
+const REFRESH_URL = `${API_BASE_URL}/authorization-server/v1/auth:refresh-token`;
 
 let inflight: Promise<string | null> | null = null;
 

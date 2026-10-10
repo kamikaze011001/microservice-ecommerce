@@ -96,3 +96,9 @@ details p{color:var(--ink2);font-size:14.5px;margin:.5em 0 .2em}
 
 .next{background:linear-gradient(135deg,color-mix(in srgb,var(--purple) 12%,var(--bg2)),var(--bg2));border:1px solid var(--line);border-radius:18px;padding:16px 20px;margin-top:20px}
 @media (max-width:560px){ .demo .cols{grid-template-columns:1fr} header.hero h1{font-size:26px} }
+
+/* pipeline diagram (02, 03) */
+.pipe{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:14px 0}
+.pipe .step{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:8px 11px;font-size:13.5px;box-shadow:var(--shadow)}
+.pipe .step b{display:block;font-size:12px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em}
+.pipe .arr{color:var(--faint);font-weight:800}

@@ -21,7 +21,12 @@
 */}}
 {{- if include "apps.selected" (dict "name" $name "svc" $svc "root" $) }}
 {{- $s := mergeOverwrite (deepCopy $.Values.defaults) (omit $svc "env") }}
-{{- $env := deepCopy (default (dict) $.Values.defaults.env) }}
+{{- /* A static service (the Caddy SPA) never inherits defaults.env: those are
+     JVM flags and the Vault token. `env: {}` used to be the only thing keeping
+     them out, and it stopped working the moment the service set an env var of
+     its own (a devbox preview's API_BASE_URL) — VAULT_TOKEN leaked into Caddy. */}}
+{{- $env := dict }}
+{{- if not $svc.static }}{{- $env = deepCopy (default (dict) $.Values.defaults.env) }}{{- end }}
 {{- if hasKey $svc "env" }}{{- range $k, $v := $svc.env }}{{- $_ := set $env $k $v }}{{- end }}{{- end }}
 {{- if and (hasKey $svc "env") (not $svc.env) }}{{- $env = dict }}{{- end }}
 {{- $_ := set $s "env" $env }}
