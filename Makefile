@@ -919,6 +919,12 @@ devbox-env-delete:
 devbox-env-proof:
 	@KEEP=$(KEEP) $(DEVBOX) env-proof $(or $(name),proof)
 
+.PHONY: inventory-redis-loss-proof
+
+## inventory-redis-loss-proof env=preview-X [orders=12]: create orders, wipe the env's Redis, pay — no decrement may be lost
+inventory-redis-loss-proof:
+	@CONTEXT=$(K8S_CLUSTER) bash scripts/inventory/redis-loss-proof.sh $(or $(env),$(error env=preview-<name> is required)) $(or $(orders),12)
+
 .PHONY: devbox-api-test
 
 ## devbox-api-test [env=prod-like]: Bruno API contract suite (api-tests/) run inside the env
