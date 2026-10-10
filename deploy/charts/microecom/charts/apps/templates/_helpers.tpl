@@ -129,6 +129,17 @@ inventory-service at another, and roll back one without the other.
     initialDelaySeconds: {{ $s.probes.readiness.initialDelaySeconds }}
     periodSeconds: {{ $s.probes.readiness.periodSeconds }}
     failureThreshold: {{ $s.probes.readiness.failureThreshold }}
+  {{- /* Not for static services: the SPA's probes use the `http` port, and an
+       inherited startup probe on `management` would name a port it doesn't
+       have. Caddy starts in milliseconds anyway. */}}
+  {{- if and $s.probes.startup (not $s.static) }}
+  startupProbe:
+    httpGet:
+      path: {{ $s.probes.startup.path }}
+      port: {{ $s.probes.startup.port }}
+    periodSeconds: {{ $s.probes.startup.periodSeconds }}
+    failureThreshold: {{ $s.probes.startup.failureThreshold }}
+  {{- end }}
   resources:
     {{- toYaml $s.resources | nindent 4 }}
   {{- if and (eq $root.Values.global.secret.backend "externalSecrets") (not $s.static) }}
