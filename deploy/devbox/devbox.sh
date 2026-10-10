@@ -767,14 +767,32 @@ cmd_env_proof() {
     <"$ROOT/deploy/k6-stress/payment-flow.js" >"$RUN_DIR/env-proof-k6.log" 2>&1 || true
   grep -E 'checks\.|iterations\.' "$RUN_DIR/env-proof-k6.log" | sed 's/^/    /'
 
-  # Let the saga settle: no PROCESSING orders left in the preview.
+  # payment-flow.js approves 90% / cancels 5% / fails 5% on purpose. A PayPal
+  # cancel abandons the payment ATTEMPT, not the order: the saga stays
+  # AWAITING_PAYMENT for a retry until saga-ttl-minutes (30) expires it
+  # (SagaOrchestrationServiceImpl). So a PROCESSING order is legitimate iff its
+  # saga is AWAITING_PAYMENT, not expired, with a CANCELED payment and no
+  # successful one. Anything else PROCESSING is unexplained — and fails.
+  # (Two earlier versions asserted "all completed", then "none PROCESSING";
+  # both contradicted what the workload does by design.)
+  unexplained() {
+    mysql_root "SELECT COALESCE(SUM(CASE WHEN s.state = 'AWAITING_PAYMENT' AND s.expires_at > NOW()
+        AND EXISTS (SELECT 1 FROM \`$MYSQL_DB\`.payment p WHERE p.order_id = o.id AND p.status = 'CANCELED')
+        AND NOT EXISTS (SELECT 1 FROM \`$MYSQL_DB\`.payment p WHERE p.order_id = o.id AND p.status IN ('SUCCESS','PROCESSING'))
+      THEN 0 ELSE 1 END), 0)
+      FROM \`$MYSQL_DB\`.\`order\` o LEFT JOIN \`$MYSQL_DB\`.saga_instance s ON s.order_id = o.id
+      WHERE o.status = 'PROCESSING';"
+  }
   local start=$SECONDS
-  while [[ "$(orders "$MYSQL_DB" PROCESSING)" != 0 ]] && (( SECONDS - start < 180 )); do sleep 5; done
+  while [[ "$(unexplained)" != 0 ]] && (( SECONDS - start < 180 )); do sleep 5; done
 
-  local pv_orders pv_done
+  local pv_orders pv_done pv_cancel pv_failed pv_waiting pv_unexplained
   pv_orders="$(orders "$MYSQL_DB")"; pv_done="$(orders "$MYSQL_DB" COMPLETED)"
+  pv_cancel="$(orders "$MYSQL_DB" CANCELED)"; pv_failed="$(orders "$MYSQL_DB" FAILED)"
+  pv_unexplained="$(unexplained)"; pv_waiting=$(( $(orders "$MYSQL_DB" PROCESSING) - pv_unexplained ))
   check "preview took orders ($pv_orders)" "(( pv_orders > 0 ))"
-  check "every preview order completed inside the preview ($pv_done/$pv_orders)" "(( pv_done == pv_orders ))"
+  check "every preview order settled in the preview: completed $pv_done, failed $pv_failed, canceled $pv_cancel, awaiting retry after a PayPal cancel $pv_waiting, unexplained $pv_unexplained" \
+    "(( pv_unexplained == 0 && pv_done > 0 && pv_done + pv_cancel + pv_failed + pv_waiting == pv_orders ))"
   check "preview's own success topic carried them" "(( \$(end_offsets ${PREFIX}order-service.order.success-status) >= pv_done ))"
   check "preview's own CDC topic carried the saga trigger" "(( \$(end_offsets $CDC_TOPIC) > 0 ))"
   check "prod-like orders unchanged ($prod_orders)" "[[ \$(orders ecommerce_dev) == $prod_orders ]]"
