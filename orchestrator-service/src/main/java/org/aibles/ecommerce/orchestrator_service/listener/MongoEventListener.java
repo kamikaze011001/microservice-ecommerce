@@ -1,5 +1,9 @@
 package org.aibles.ecommerce.orchestrator_service.listener;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import org.aibles.ecommerce.orchestrator_service.entity.SagaItem;
+import java.util.ArrayList;
+import java.util.List;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -73,7 +77,7 @@ public class MongoEventListener {
                 log.warn("(handleChangeStream) Could not extract orderId from Order.Created data: {} — skipping", eventDTO.getData());
                 return;
             }
-            sagaOrchestrationService.startSaga(orderId);
+            sagaOrchestrationService.startSaga(orderId, extractItems(eventDTO.getData()));
             return;
         }
 
@@ -88,6 +92,42 @@ public class MongoEventListener {
         // event source so the forward can carry its id for downstream deduplication.
         eventPublisher.publishEvent(ecommerceEvent.createEvent(
                 new CdcRecordSource(topic, partition, offset), eventDTO.getData()));
+    }
+
+    /**
+     * The order's lines from Order.Created data — a Map, or the JSON string the
+     * Avro record's toString() wrote to Mongo. Empty when the event predates
+     * them (or has none); the saga then forwards no lines and inventory falls
+     * back to its old lookup.
+     */
+    List<SagaItem> extractItems(Object data) {
+        JsonNode items;
+        if (data instanceof String str) {
+            try {
+                items = mapper.readTree(str).path("items");
+            } catch (Exception e) {
+                log.warn("(extractItems) unparseable Order.Created data, no lines taken: {}", str, e);
+                return List.of();
+            }
+        } else if (data instanceof Map) {
+            items = mapper.valueToTree(((Map<?, ?>) data).get("items"));
+        } else {
+            return List.of();
+        }
+        if (items == null || !items.isArray()) {
+            return List.of();
+        }
+        List<SagaItem> out = new ArrayList<>();
+        for (JsonNode item : items) {
+            String productId = item.path("productId").asText(null);
+            long quantity = item.path("quantity").asLong(0);
+            if (productId == null || quantity <= 0) {
+                log.warn("(extractItems) skipping malformed line in Order.Created: {}", item);
+                continue;
+            }
+            out.add(new SagaItem(productId, quantity));
+        }
+        return out;
     }
 
     private String extractOrderId(Object data) {

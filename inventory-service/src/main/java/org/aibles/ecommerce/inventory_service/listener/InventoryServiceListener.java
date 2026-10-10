@@ -1,5 +1,11 @@
 package org.aibles.ecommerce.inventory_service.listener;
 
+import org.aibles.ecommerce.common_dto.avro_kafka.OrderLine;
+
+import java.util.stream.Collectors;
+
+import java.util.Map;
+
 import lombok.extern.slf4j.Slf4j;
 import org.aibles.ecommerce.common_dto.avro_kafka.PaymentSuccess;
 import org.aibles.ecommerce.common_dto.avro_kafka.ProductUpdate;
@@ -39,6 +45,9 @@ public class InventoryServiceListener {
         log.info("(handlePaymentSuccess)partitions: {}, offsets: {}",
                 partitions,
                 offsets);
-        inventoryService.handleSuccessPayment(paymentSuccess.getOrderId().toString());
+        // productId → quantity, summed in case a line repeats a product.
+        Map<String, Long> lines = paymentSuccess.getItems().stream()
+                .collect(Collectors.toMap(l -> l.getProductId().toString(), OrderLine::getQuantity, Long::sum));
+        inventoryService.handleSuccessPayment(paymentSuccess.getOrderId().toString(), lines);
     }
 }

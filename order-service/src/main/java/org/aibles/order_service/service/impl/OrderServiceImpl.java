@@ -2,6 +2,7 @@ package org.aibles.order_service.service.impl;
 
 import lombok.extern.slf4j.Slf4j;
 import org.aibles.ecommerce.common_dto.avro_kafka.OrderCreated;
+import org.aibles.ecommerce.common_dto.avro_kafka.OrderLine;
 import org.aibles.ecommerce.common_dto.event.EcommerceEvent;
 import org.aibles.ecommerce.common_dto.event.MongoSavedEvent;
 import org.aibles.ecommerce.common_dto.exception.ForbiddenException;
@@ -152,9 +153,18 @@ public class OrderServiceImpl implements OrderService {
             // Create order and persist metadata to cache
             Order order = persistOrderAndMetadata(userId, request, reservation);
 
-            // Publish Order.Created for Saga Orchestrator
+            // Publish Order.Created for Saga Orchestrator — WITH the lines. The saga
+            // carries them to inventory on PaymentSuccess, so the stock decrement
+            // never depends on the Redis pending-order index (which a Redis restart
+            // loses). Sorted for a deterministic event body.
             OrderCreated orderCreated = OrderCreated.newBuilder()
                     .setOrderId(order.getId())
+                    .setItems(sortedProductIds.stream()
+                            .map(id -> OrderLine.newBuilder()
+                                    .setProductId(id)
+                                    .setQuantity(productQuantityMap.get(id))
+                                    .build())
+                            .toList())
                     .build();
             eventPublisher.publishEvent(new MongoSavedEvent(
                     this,
