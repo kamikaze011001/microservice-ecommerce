@@ -1,9 +1,18 @@
 # syntax=docker/dockerfile:1.7
+# The UI (ui/, Vue + Vite) is built first and dropped into Spring's static/.
+FROM node:20-alpine AS ui
+WORKDIR /ui
+COPY ui/package.json ui/package-lock.json ./
+RUN --mount=type=cache,id=npm-devbox-portal,target=/root/.npm npm ci --no-audit --no-fund
+COPY ui ./
+RUN npm run build
+
 FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /workspace
 COPY pom.xml .
 RUN --mount=type=cache,id=m2-devbox-portal,target=/root/.m2 mvn -q -B dependency:go-offline
 COPY src ./src
+COPY --from=ui /ui/dist ./src/main/resources/static
 RUN --mount=type=cache,id=m2-devbox-portal,target=/root/.m2 mvn -q -B package -DskipTests
 
 FROM eclipse-temurin:17-jre

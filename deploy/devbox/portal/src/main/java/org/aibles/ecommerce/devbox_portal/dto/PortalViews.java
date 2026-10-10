@@ -39,4 +39,19 @@ public final class PortalViews {
 
     public record Links(String argocd, String gitea, String grafana, String registry) {
     }
+
+    /** What the page needs once: where the other UIs are, and the preview cap. */
+    public record Info(Links links, int maxPreviews, boolean jobsEnabled) {
+    }
+
+    public record JobRequest(@NotBlank String kind, @NotBlank String target) {
+    }
+
+    /**
+     * One runner Job. {@code status}: PENDING (pod starting), RUNNING,
+     * SUCCEEDED, FAILED. Times are ISO-8601, null until known.
+     */
+    public record JobView(String name, String kind, String title, String target, String status,
+                          String startedAt, String finishedAt) {
+    }
 }

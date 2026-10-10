@@ -35,8 +35,17 @@ devbox:
   registry-url: http://registry.kube-system.svc.cluster.local
   metrics-url: http://vmsingle.monitoring.svc.cluster.local:8428
   argo-namespace: argocd
+  # Ingress hosts (minikube tunnel + /etc/hosts, like the storefront) — no
+  # port-forward to keep alive.
   links:
-    argocd: http://localhost:8180
-    gitea: http://localhost:3300
-    grafana: http://localhost:3301
-    registry: http://localhost:8181
+    argocd: http://argocd.microecom.local
+    gitea: http://gitea.microecom.local
+    grafana: http://grafana.microecom.local
+    registry: http://registry.microecom.local
+  # The Job that runs devbox.sh for the page (create/delete env, …).
+  # RUNNER_IMAGE is set by devbox.sh `portal`; unset = jobs disabled.
+  runner:
+    image: ${RUNNER_IMAGE:}
+    namespace: devbox
+    service-account: devbox-runner
+    max-previews: ${MAX_PREVIEWS:1}

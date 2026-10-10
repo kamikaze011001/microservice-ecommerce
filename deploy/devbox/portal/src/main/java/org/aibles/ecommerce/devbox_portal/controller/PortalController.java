@@ -10,15 +10,22 @@ import org.aibles.ecommerce.devbox_portal.configuration.PortalProperties;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.DeployRequest;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.DeployResult;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.EnvView;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.Info;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.JobRequest;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.JobView;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.Links;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.TagView;
 import org.aibles.ecommerce.devbox_portal.service.EnvService;
+import org.aibles.ecommerce.devbox_portal.service.JobService;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -36,11 +43,15 @@ public class PortalController {
 
     private static final String NAME = "[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?";
 
+    private static final String JOB_NAME = "devbox-[a-z0-9-]{1,63}";
+
     private final EnvService envService;
+    private final JobService jobService;
     private final PortalProperties properties;
 
-    public PortalController(EnvService envService, PortalProperties properties) {
+    public PortalController(EnvService envService, JobService jobService, PortalProperties properties) {
         this.envService = envService;
+        this.jobService = jobService;
         this.properties = properties;
     }
 
@@ -76,5 +87,32 @@ public class PortalController {
     public Links links() {
         PortalProperties.Links l = properties.links();
         return new Links(l.argocd(), l.gitea(), l.grafana(), l.registry());
+    }
+
+    @GetMapping("/api/info")
+    public Info info() {
+        PortalProperties.Runner runner = properties.runner();
+        return new Info(links(), runner.maxPreviews(), runner.image() != null && !runner.image().isBlank());
+    }
+
+    @PostMapping("/api/jobs")
+    @ResponseStatus(HttpStatus.CREATED)
+    public JobView startJob(@RequestBody @Valid JobRequest request) {
+        return jobService.start(request.kind(), request.target());
+    }
+
+    @GetMapping("/api/jobs")
+    public List<JobView> jobs() {
+        return jobService.jobs();
+    }
+
+    @GetMapping("/api/jobs/{name}")
+    public JobView job(@PathVariable @Pattern(regexp = JOB_NAME) String name) {
+        return jobService.job(name);
+    }
+
+    @GetMapping(value = "/api/jobs/{name}/log", produces = MediaType.TEXT_PLAIN_VALUE)
+    public String jobLog(@PathVariable @Pattern(regexp = JOB_NAME) String name) {
+        return jobService.log(name);
     }
 }

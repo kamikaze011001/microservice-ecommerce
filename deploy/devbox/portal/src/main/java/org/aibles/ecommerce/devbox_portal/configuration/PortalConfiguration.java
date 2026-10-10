@@ -7,10 +7,14 @@ import org.aibles.ecommerce.devbox_portal.client.GiteaClient;
 import org.aibles.ecommerce.devbox_portal.client.MetricsClient;
 import org.aibles.ecommerce.devbox_portal.client.RegistryClient;
 import org.aibles.ecommerce.devbox_portal.service.EnvService;
+import org.aibles.ecommerce.devbox_portal.service.JobService;
 import org.aibles.ecommerce.devbox_portal.service.impl.EnvServiceImpl;
+import org.aibles.ecommerce.devbox_portal.service.impl.JobServiceImpl;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
+
+import java.time.Clock;
 
 /** Manual wiring, as in every service in this repo (no @Service on implementations). */
 @Configuration
@@ -49,5 +53,10 @@ public class PortalConfiguration {
     @Bean
     public EnvService envService(GiteaClient gitea, RegistryClient registry, ArgoClient argo, MetricsClient metrics) {
         return new EnvServiceImpl(gitea, registry, argo, metrics);
+    }
+
+    @Bean
+    public JobService jobService(KubernetesClient kubernetes, PortalProperties properties) {
+        return new JobServiceImpl(kubernetes, properties.runner(), Clock.systemUTC());
     }
 }

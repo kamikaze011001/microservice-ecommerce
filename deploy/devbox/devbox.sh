@@ -59,6 +59,12 @@ GITEA_PASS=devbox-local
 GITEA_LOCAL_PORT=3300
 GITEA_LOCAL="http://$GITEA_USER:$GITEA_PASS@localhost:$GITEA_LOCAL_PORT"
 GITEA_IN_CLUSTER=http://gitea-http.devbox.svc.cluster.local:3000
+# In the portal's runner Job (deploy/devbox/runner): Gitea by Service DNS and
+# no port-forwards — there is no laptop. Everything else already goes through
+# the API server (kubectl exec), so the same commands work unchanged.
+if [[ "${DEVBOX_IN_CLUSTER:-}" == 1 ]]; then
+  GITEA_LOCAL="http://$GITEA_USER:$GITEA_PASS@${GITEA_IN_CLUSTER#http://}"
+fi
 ARGOCD_LOCAL_PORT=8180
 GRAFANA_LOCAL_PORT=3301
 REGISTRY_UI_LOCAL_PORT=8181
@@ -109,7 +115,10 @@ start_forward() {
   log_err "$name forward did not become ready; see $log"; stop_forward "$name"; return 1
 }
 
-gitea_forward() { start_forward gitea devbox gitea-http "$GITEA_LOCAL_PORT" 3000 /api/healthz; }
+gitea_forward() {
+  [[ "${DEVBOX_IN_CLUSTER:-}" == 1 ]] && return 0
+  start_forward gitea devbox gitea-http "$GITEA_LOCAL_PORT" 3000 /api/healthz
+}
 
 # ── commands ────────────────────────────────────────────────────────────────
 
@@ -270,10 +279,26 @@ cmd_portal() {
     docker build -q -t "$REGISTRY_HOST/devbox-portal:$tag" "$DEVBOX/portal" >/dev/null
     docker push -q "$REGISTRY_HOST/devbox-portal:$tag" >/dev/null
   fi
+  local runner_tag; runner_tag="$(cd "$ROOT" && version_of devbox-runner)"
+  if ! is_dirty_tag "$runner_tag" && image_exists devbox-runner "$runner_tag"; then
+    log_info "devbox-runner:$runner_tag is already in the registry — no rebuild"
+  else
+    # The runner is a copy of deploy/ (the scripts the portal's Jobs run) plus
+    # the product images the pre-apps seed uploads —
+    # staged without deploy/.run (env-repo clone, PID files) or build output.
+    log_info "building devbox-runner:$runner_tag"
+    local stage; stage="$(mktemp -d)"
+    COPYFILE_DISABLE=1 tar -C "$ROOT" --exclude=deploy/.run --exclude='*/target' --exclude='*/node_modules' \
+      -cf - deploy docker/seed-images | tar -C "$stage" -xf -
+    docker build -q -t "$REGISTRY_HOST/devbox-runner:$runner_tag" -f "$DEVBOX/runner/Dockerfile" "$stage" >/dev/null
+    rm -rf "$stage"
+    docker push -q "$REGISTRY_HOST/devbox-runner:$runner_tag" >/dev/null
+  fi
   $K -n devbox create secret generic devbox-portal --from-literal=gitea-password="$GITEA_PASS" \
     --dry-run=client -o yaml | $K apply -f - >/dev/null
   image="localhost:5000/devbox-portal:$tag"
-  sed "s#PORTAL_IMAGE#$image#" "$DEVBOX/portal/k8s.yaml" | $K apply -f - >/dev/null
+  sed -e "s#PORTAL_IMAGE#$image#" -e "s#value: RUNNER_IMAGE#value: localhost:5000/devbox-runner:$runner_tag#" \
+    "$DEVBOX/portal/k8s.yaml" | $K apply -f - >/dev/null
   $K -n devbox rollout status deploy/devbox-portal --timeout=5m >/dev/null
   # kubectl port-forward binds to ONE pod: after a rollout an existing forward
   # points at the deleted pod ("lost connection to pod") while its PID file
@@ -366,7 +391,7 @@ set_tag() {  # <env> <svc> <tag>
 
 env_commit_push() {  # <subject> <body>
   git -C "$ENV_CLONE" add -A
-  git -C "$ENV_CLONE" -c user.name="$(git -C "$ROOT" config user.name || echo devbox)" \
+  git -C "$ENV_CLONE" -c user.name="${DEVBOX_ACTOR:-$(git -C "$ROOT" config user.name || echo devbox)}" \
     -c user.email="$(git -C "$ROOT" config user.email || echo devbox@microecom.local)" \
     commit --quiet -m "$1" -m "$2"
   git -C "$ENV_CLONE" push --quiet origin main
@@ -689,7 +714,8 @@ cmd_env_create() {
   # 4. Mongo: seed this env's database (api_role, catalog) BEFORE apps start —
   #    the gateway reads routes' roles from it at boot.
   MONGO_DB_NAME="$MONGO_DB" "$ROOT/deploy/scripts/seed.sh" --env k8s --stage pre-apps --context "$CONTEXT" >/dev/null \
-    && log_ok "seeded Mongo $MONGO_DB"
+    || { log_err "seeding Mongo $MONGO_DB failed — the gateway would refuse every route"; return 1; }
+  log_ok "seeded Mongo $MONGO_DB"
 
   # 5. CDC: prod-like's connector config, re-pointed at this env's database
   #    and topic prefix. Copying it (not re-typing it) keeps the two in step.
@@ -698,7 +724,8 @@ cmd_env_create() {
         '.name = $n | .database = $db | ."topic.prefix" = $p' \
     | connect_curl -X PUT -H 'Content-Type: application/json' --data @- \
         "http://localhost:8083/connectors/$CONNECTOR/config" >/dev/null \
-    && log_ok "connector $CONNECTOR → $CDC_TOPIC"
+    || { log_err "registering CDC connector $CONNECTOR failed — orders would never start a saga"; return 1; }
+  log_ok "connector $CONNECTOR → $CDC_TOPIC"
 
   # 6. The env's files, committed: this is what makes it exist for Argo CD.
   if [[ ! -d "$ENV_CLONE/envs/$env" ]]; then
@@ -716,9 +743,12 @@ cmd_env_create() {
   #    rebuilds the stock counters in THIS env's Redis.
   MYSQL_DB_NAME="$MYSQL_DB" APPS_NAMESPACE="$NS" \
     "$ROOT/deploy/scripts/seed.sh" --env k8s --stage post-apps --context "$CONTEXT" >/dev/null \
-    && log_ok "seeded MySQL $MYSQL_DB (+ stock counters in $env's Redis)"
+    || { log_err "seeding MySQL $MYSQL_DB failed — no products or stock in $env"; return 1; }
+  log_ok "seeded MySQL $MYSQL_DB (+ stock counters in $env's Redis)"
   $K -n infra exec -i mysql-0 -c mysql -- sh -c "mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" $MYSQL_DB 2>/dev/null" \
-    <"$ROOT/deploy/k8s-jobs/06-perftest-seed/perftest-users.sql" && log_ok "seeded perftest users"
+    <"$ROOT/deploy/k8s-jobs/06-perftest-seed/perftest-users.sql" \
+    || { log_err "seeding perftest users failed"; return 1; }
+  log_ok "seeded perftest users"
 
   log_ok "$env is up"
   cat <<EOF

@@ -4,6 +4,7 @@ import org.aibles.ecommerce.devbox_portal.configuration.PortalProperties;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.DeployResult;
 import org.aibles.ecommerce.devbox_portal.exception.PortalException;
 import org.aibles.ecommerce.devbox_portal.service.EnvService;
+import org.aibles.ecommerce.devbox_portal.service.JobService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -28,7 +29,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "devbox.gitea.url=http://gitea", "devbox.gitea.user=u", "devbox.gitea.password=p",
         "devbox.gitea.owner=devbox", "devbox.gitea.env-repo=env-config", "devbox.gitea.branch=main",
         "devbox.registry-url=http://r", "devbox.metrics-url=http://m", "devbox.argo-namespace=argocd",
-        "devbox.links.argocd=http://localhost:8180"})
+        "devbox.links.argocd=http://localhost:8180",
+        "devbox.runner.namespace=devbox", "devbox.runner.service-account=devbox-runner", "devbox.runner.max-previews=1"})
 class PortalControllerTest {
 
     @Autowired
@@ -36,6 +38,9 @@ class PortalControllerTest {
 
     @MockBean
     private EnvService envService;
+
+    @MockBean
+    private JobService jobService;
 
     @Test
     void deployIsAColonActionAndAnswersSnakeCase() throws Exception {

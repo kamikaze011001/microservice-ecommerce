@@ -2,7 +2,7 @@
 # is applied by deploy/devbox/devbox.sh (`portal`), not by the ApplicationSet:
 # the thing that changes envs shouldn't itself be an env's app.
 #
-# Image: PORTAL_IMAGE is replaced by devbox.sh with the built tag.
+# Images: PORTAL_IMAGE and RUNNER_IMAGE are replaced by devbox.sh with the built tags.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -35,6 +35,58 @@ roleRef:
   kind: Role
   name: devbox-portal
 ---
+# The portal starts runner Jobs and reads their pods' logs — in `devbox` only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: devbox-portal-jobs
+  namespace: devbox
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: devbox-portal-jobs
+  namespace: devbox
+subjects:
+  - kind: ServiceAccount
+    name: devbox-portal
+    namespace: devbox
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: devbox-portal-jobs
+---
+# The runner does what `make devbox-env-create` does with your kubeconfig:
+# creates namespaces, copies a Secret, execs into infra pods, nudges Argo CD.
+# That is cluster-admin-shaped work, so it gets cluster-admin — acceptable on
+# a single-user local cluster ONLY. The portal can't choose what it runs: the
+# Job's command is fixed per kind (JobKind), never a command line.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: devbox-runner
+  namespace: devbox
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: devbox-runner
+subjects:
+  - kind: ServiceAccount
+    name: devbox-runner
+    namespace: devbox
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -58,6 +110,7 @@ spec:
             - { name: http, containerPort: 8282 }
             - { name: management, containerPort: 18282 }
           env:
+            - { name: RUNNER_IMAGE, value: RUNNER_IMAGE }
             - name: GITEA_PASSWORD
               valueFrom: { secretKeyRef: { name: devbox-portal, key: gitea-password } }
           readinessProbe:
@@ -82,3 +135,58 @@ spec:
   selector: { app.kubernetes.io/name: devbox-portal }
   ports:
     - { name: http, port: 80, targetPort: http }
+---
+# Every devbox UI by name through the ingress (minikube tunnel + /etc/hosts,
+# like the storefront) — nothing to port-forward and keep alive.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: devbox-portal
+  namespace: devbox
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: devbox.microecom.local
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: devbox-portal, port: { number: 80 } } } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gitea
+  namespace: devbox
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: gitea.microecom.local
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: gitea-http, port: { number: 3000 } } } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: registry-ui
+  namespace: devbox
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: registry.microecom.local
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: registry-ui, port: { number: 80 } } } }
+---
+# Argo CD runs with server.insecure (plain HTTP behind the ingress).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd
+  namespace: argocd
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: argocd.microecom.local
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: argocd-server, port: { number: 80 } } } }
