@@ -119,11 +119,18 @@ public class GiteaClient {
                     .retrieve().body(JsonNode.class);
             List<Commit> out = new ArrayList<>();
             if (list != null) {
-                list.forEach(c -> out.add(new Commit(
+                // Gitea ignores `limit` when the query is filtered by `path`
+                // (seen live: limit=3 returned 12), so the cap is enforced here.
+                list.forEach(c -> {
+                    if (out.size() >= limit) {
+                        return;
+                    }
+                    out.add(new Commit(
                         c.path("sha").asText(),
                         c.path("commit").path("message").asText().strip(),
                         c.path("commit").path("author").path("name").asText(),
-                        c.path("commit").path("author").path("date").asText())));
+                        c.path("commit").path("author").path("date").asText()));
+                });
             }
             return out;
         } catch (RestClientException e) {

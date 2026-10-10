@@ -82,6 +82,17 @@ class GiteaClientTest {
     }
 
     @Test
+    void commitsAreCappedEvenWhenGiteaIgnoresLimit() {
+        String commit = "{\"sha\":\"%s\",\"commit\":{\"message\":\"m\\n\\nbody\",\"author\":{\"name\":\"a\",\"date\":\"d\"}}}";
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith(BASE + "/api/v1/repos/devbox/env-config/commits")))
+                .andRespond(withSuccess("[" + String.join(",", commit.formatted("1"), commit.formatted("2"),
+                        commit.formatted("3"), commit.formatted("4")) + "]", MediaType.APPLICATION_JSON));
+
+        assertThat(client.commits("envs/prod-like", 2))
+                .extracting(GiteaClient.Commit::sha).containsExactly("1", "2");
+    }
+
+    @Test
     void aMissingFileIs404() {
         server.expect(requestTo(FILE_URL + "?ref=main")).andRespond(withStatus(HttpStatus.NOT_FOUND));
 
