@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Devbox Portal</title>
+<script src="https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"></script>
+<style>
+  :root{--bg:#f6f4ef;--card:#fff;--ink:#23211d;--ink2:#625c53;--line:#e6e0d6;--good:#2f9e6e;--warn:#d38b1f;--bad:#d64545;--acc:#e2703a;--mono:ui-monospace,Menlo,Consolas,monospace}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#1b1a17;--card:#25231f;--ink:#efe9df;--ink2:#b8b0a3;--line:#3a362f}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:5}
+  header h1{font-size:18px;margin:0 12px 0 0}
+  header a{color:var(--ink2);text-decoration:none;font-size:14px;border:1px solid var(--line);border-radius:999px;padding:3px 11px}
+  header a:hover{border-color:var(--acc);color:var(--ink)}
+  header .sp{flex:1}
+  button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:4px 10px;cursor:pointer}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+  button:disabled{opacity:.5;cursor:default}
+  main{max-width:1150px;margin:0 auto;padding:18px 16px 60px}
+  section.env{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:0 0 20px;overflow:hidden}
+  section.env h2{margin:0;padding:12px 16px;font-size:17px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center}
+  .tablewrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink2);font-weight:600}
+  code,.mono{font-family:var(--mono);font-size:13px}
+  .pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:700;color:#fff;background:var(--ink2)}
+  .Synced,.Healthy{background:var(--good)} .OutOfSync,.Progressing{background:var(--warn)} .Degraded,.Missing,.Unknown{background:var(--bad)}
+  .drift{color:var(--warn);font-size:12px}
+  select{font:inherit;font-family:var(--mono);font-size:13px;padding:3px 6px;border-radius:7px;border:1px solid var(--line);background:var(--card);color:var(--ink);max-width:230px}
+  .cols{display:grid;grid-template-columns:2fr 1fr;gap:0}
+  .history{border-left:1px solid var(--line);padding:8px 14px;font-size:13px;max-height:470px;overflow:auto}
+  .history h3{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink2);margin:6px 0}
+  .history li{margin:0 0 8px;list-style:none}
+  .history ul{padding:0;margin:0}
+  .history .meta{color:var(--ink2);font-size:12px}
+  .toast{position:fixed;right:16px;bottom:16px;max-width:420px;padding:10px 14px;border-radius:10px;color:#fff;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.2)}
+  .toast.ok{background:var(--good)} .toast.err{background:var(--bad)}
+  .muted{color:var(--ink2)}
+  @media (max-width:820px){.cols{grid-template-columns:1fr}.history{border-left:none;border-top:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Devbox</h1>
+    <a v-for="(url, name) in links" :key="name" v-show="url" :href="url" target="_blank" rel="noopener">{{ name }}</a>
+    <span class="sp"></span>
+    <span class="muted" v-if="loadedAt">updated {{ loadedAt }}</span>
+    <button @click="load" :disabled="loading">{{ loading ? 'Loading…' : 'Refresh' }}</button>
+  </header>
+
+  <main>
+    <p class="muted" v-if="error">⚠ {{ error }}</p>
+
+    <section class="env" v-for="env in envs" :key="env.name">
+      <h2>{{ env.name }} <span class="muted mono">{{ env.services.length }} services</span></h2>
+      <div class="cols">
+        <div class="tablewrap">
+          <table>
+            <tr><th>Service</th><th>Git says</th><th>Running</th><th>Sync</th><th>Health</th><th>Deploy a version</th></tr>
+            <tr v-for="s in env.services" :key="s.name">
+              <td>{{ s.name }}</td>
+              <td><code>{{ s.desired_tag || '—' }}</code></td>
+              <td>
+                <code v-for="img in s.running_images" :key="img">{{ img.split(':').pop() }}</code>
+                <div class="drift" v-if="drifted(s)">≠ git (still rolling out?)</div>
+              </td>
+              <td><span class="pill" :class="s.sync">{{ s.sync }}</span></td>
+              <td><span class="pill" :class="s.health">{{ s.health }}</span></td>
+              <td>
+                <template v-if="s.desired_tag">
+                  <select v-model="choice[env.name + '/' + s.name]" @focus="loadTags(s.name)">
+                    <option :value="undefined" disabled>pick a tag…</option>
+                    <option v-for="t in tags[s.name] || []" :key="t.tag" :value="t.tag">
+                      {{ t.tag }}{{ t.used_by.length ? '  ← ' + t.used_by.join(', ') : '' }}
+                    </option>
+                  </select>
+                  <button class="primary" :disabled="!choice[env.name + '/' + s.name] || choice[env.name + '/' + s.name] === s.desired_tag || busy"
+                          @click="deploy(env.name, s.name)">Deploy</button>
+                </template>
+                <span v-else class="muted">—</span>
+              </td>
+            </tr>
+          </table>
+        </div>
+        <div class="history">
+          <h3>Change history (env repo)</h3>
+          <ul>
+            <li v-for="c in history[env.name] || []" :key="c.sha">
+              <div>{{ c.message.split('\n')[0] }}</div>
+              <div class="meta"><code>{{ c.sha.slice(0, 7) }}</code> · {{ c.author }} · {{ when(c.date) }}</div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="env">
+      <h2>Perf runs <span class="muted mono">make devbox-perf</span></h2>
+      <div class="tablewrap">
+        <table>
+          <tr><th>Run</th><th>Env</th><th>Scenario</th><th>Profile</th><th>Result</th><th>Seconds</th></tr>
+          <tr v-for="r in perfRuns" :key="r.run">
+            <td><code>{{ r.run }}</code></td><td>{{ r.env }}</td><td>{{ r.scenario }}</td><td>{{ r.profile }}</td>
+            <td><span class="pill" :class="r.exit_code === 0 ? 'Healthy' : 'Degraded'">{{ r.exit_code === 0 ? 'PASS' : 'FAIL ' + r.exit_code }}</span></td>
+            <td>{{ r.duration_seconds }}</td>
+          </tr>
+          <tr v-if="!perfRuns.length"><td colspan="6" class="muted">No runs yet.</td></tr>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" :class="toast.kind" v-if="toast.text">{{ toast.text }}</div>
+</div>
+
+<script>
+const { createApp } = Vue;
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || res.status + ' ' + res.statusText);
+  return body;
+}
+
+createApp({
+  data: () => ({ envs: [], history: {}, tags: {}, choice: {}, perfRuns: [], links: {},
+                 loading: false, busy: false, error: '', loadedAt: '', toast: { text: '', kind: 'ok' } }),
+  methods: {
+    async load() {
+      this.loading = true; this.error = '';
+      try {
+        const [envs, runs, links] = await Promise.all([api('/api/envs'), api('/api/perf-runs'), api('/api/links')]);
+        this.envs = envs; this.perfRuns = runs; this.links = links;
+        await Promise.all(envs.map(async e => { this.history[e.name] = await api(`/api/envs/${e.name}/history?limit=15`); }));
+        this.loadedAt = new Date().toLocaleTimeString();
+      } catch (e) { this.error = e.message; } finally { this.loading = false; }
+    },
+    async loadTags(service) {
+      if (!this.tags[service]) this.tags[service] = await api(`/api/services/${service}/tags`);
+    },
+    async deploy(env, service) {
+      const tag = this.choice[env + '/' + service];
+      if (!confirm(`Commit "${service} → ${tag}" to ${env}? Argo CD will roll it out.`)) return;
+      this.busy = true;
+      try {
+        const r = await api(`/api/envs/${env}/services/${service}:deploy`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag }) });
+        this.notify(r.changed ? `${service}: ${r.previous_tag} → ${r.tag} committed (${r.commit.slice(0, 7)})`
+          + (r.refreshed ? '' : ' — Argo CD will pick it up within 60s') : `${env} already runs ${tag}`, 'ok');
+        delete this.tags[service];
+        await this.load();
+      } catch (e) { this.notify(e.message, 'err'); } finally { this.busy = false; }
+    },
+    drifted(s) {
+      return s.desired_tag && s.running_images.length && !s.running_images.some(i => i.endsWith(':' + s.desired_tag));
+    },
+    when(iso) { return iso ? new Date(iso).toLocaleString() : ''; },
+    notify(text, kind) { this.toast = { text, kind }; setTimeout(() => (this.toast.text = ''), 6000); },
+  },
+  mounted() { this.load(); setInterval(() => !this.busy && this.load(), 30000); },
+}).mount('#app');
+</script>
+</body>
+</html>

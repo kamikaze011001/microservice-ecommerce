@@ -1,0 +1,84 @@
+# devbox-portal — platform tooling, so it lives in `devbox` next to Gitea and
+# is applied by deploy/devbox/devbox.sh (`portal`), not by the ApplicationSet:
+# the thing that changes envs shouldn't itself be an env's app.
+#
+# Image: PORTAL_IMAGE is replaced by devbox.sh with the built tag.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: devbox-portal
+  namespace: devbox
+---
+# Least privilege: read Argo CD Applications and annotate them (the refresh
+# nudge). Nothing in any app namespace; no Secrets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: devbox-portal
+  namespace: argocd
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: devbox-portal
+  namespace: argocd
+subjects:
+  - kind: ServiceAccount
+    name: devbox-portal
+    namespace: devbox
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: devbox-portal
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devbox-portal
+  namespace: devbox
+  labels: { app.kubernetes.io/name: devbox-portal, app.kubernetes.io/part-of: devbox }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: devbox-portal }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: devbox-portal, app.kubernetes.io/part-of: devbox }
+    spec:
+      serviceAccountName: devbox-portal
+      containers:
+        - name: devbox-portal
+          image: PORTAL_IMAGE
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8282 }
+            - { name: management, containerPort: 18282 }
+          env:
+            - name: GITEA_PASSWORD
+              valueFrom: { secretKeyRef: { name: devbox-portal, key: gitea-password } }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: management }
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: management }
+            initialDelaySeconds: 40
+            periodSeconds: 15
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits:   { cpu: 1000m, memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: devbox-portal
+  namespace: devbox
+  labels: { app.kubernetes.io/name: devbox-portal, app.kubernetes.io/part-of: devbox }
+spec:
+  selector: { app.kubernetes.io/name: devbox-portal }
+  ports:
+    - { name: http, port: 80, targetPort: http }

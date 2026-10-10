@@ -11,6 +11,7 @@
 #   open       port-forward the UIs (Argo CD, Gitea, Grafana) and print URLs
 #   close      stop those port-forwards
 #   status     one line per Application: sync, health, image
+#   portal     build + deploy the devbox portal UI (namespace devbox, :8282)
 #
 #   version <svc>               the tag a build of <svc> would get right now
 #   ship    <svc> [env]         build → push image → commit tag to env → sync
@@ -60,6 +61,7 @@ GITEA_IN_CLUSTER=http://gitea-http.devbox.svc.cluster.local:3000
 ARGOCD_LOCAL_PORT=8180
 GRAFANA_LOCAL_PORT=3301
 REGISTRY_UI_LOCAL_PORT=8181
+PORTAL_LOCAL_PORT=8282
 # The host side of the minikube registry addon (cluster.sh's forward). Pods
 # pull the same repositories as localhost:5000 through the node proxy.
 REGISTRY_HOST=localhost:5001
@@ -230,10 +232,12 @@ cmd_open() {
   start_forward argocd argocd argocd-server "$ARGOCD_LOCAL_PORT" 80 /healthz
   start_forward grafana monitoring grafana "$GRAFANA_LOCAL_PORT" 80 /api/health || log_warn "Grafana forward failed (is infra up?)"
   start_forward registry-ui devbox registry-ui "$REGISTRY_UI_LOCAL_PORT" 80 / || log_warn "registry UI forward failed (run make devbox-platform)"
+  start_forward portal devbox devbox-portal "$PORTAL_LOCAL_PORT" 80 /api/links || log_warn "portal forward failed (run make devbox-portal)"
   local argo_pass
   argo_pass="$($K -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo '<secret missing>')"
   cat <<EOF
 
+  Portal    http://localhost:$PORTAL_LOCAL_PORT     envs, versions, deploy, history, perf runs
   Argo CD   http://localhost:$ARGOCD_LOCAL_PORT     admin / $argo_pass
   Gitea     http://localhost:$GITEA_LOCAL_PORT     $GITEA_USER / $GITEA_PASS   (repos: devbox/env-config, devbox/microecom)
   Grafana   http://localhost:$GRAFANA_LOCAL_PORT     admin / admin
@@ -247,8 +251,30 @@ EOF
 }
 
 cmd_close() {
-  for n in gitea argocd grafana registry-ui registry; do stop_forward "$n"; done
+  for n in gitea argocd grafana registry-ui registry portal vm; do stop_forward "$n"; done
   log_ok "devbox port-forwards stopped"
+}
+
+# The portal is platform tooling: built from deploy/devbox/portal, tagged like
+# the apps (last commit touching it, or -dirty-<time>), applied with kubectl —
+# not through the ApplicationSet, which is for the envs it manages.
+cmd_portal() {
+  local tag image
+  tag="$(cd "$ROOT" && version_of devbox-portal)"
+  ensure_registry
+  if ! is_dirty_tag "$tag" && image_exists devbox-portal "$tag"; then
+    log_info "devbox-portal:$tag is already in the registry — no rebuild"
+  else
+    log_info "building devbox-portal:$tag"
+    docker build -q -t "$REGISTRY_HOST/devbox-portal:$tag" "$DEVBOX/portal" >/dev/null
+    docker push -q "$REGISTRY_HOST/devbox-portal:$tag" >/dev/null
+  fi
+  $K -n devbox create secret generic devbox-portal --from-literal=gitea-password="$GITEA_PASS" \
+    --dry-run=client -o yaml | $K apply -f - >/dev/null
+  image="localhost:5000/devbox-portal:$tag"
+  sed "s#PORTAL_IMAGE#$image#" "$DEVBOX/portal/k8s.yaml" | $K apply -f - >/dev/null
+  $K -n devbox rollout status deploy/devbox-portal --timeout=5m >/dev/null
+  log_ok "devbox-portal $tag running — make devbox-open, then http://localhost:$PORTAL_LOCAL_PORT"
 }
 
 # ── versions: ship / deploy / tags / gc / proof ─────────────────────────────
@@ -856,7 +882,7 @@ case "${1:-}" in
     cmd="cmd_${1//-/_}"; shift; "$cmd" "$@" ;;
   env-list|env-create|env-delete|env-proof)
     cmd="cmd_${1//-/_}"; shift; "$cmd" "$@" ;;
-  platform|push|apps|wait|open|close|status|version|ship|deploy|tags|gc|proof)
+  platform|push|apps|wait|open|close|status|version|ship|deploy|tags|gc|proof|portal)
     cmd="cmd_$1"; shift; "$cmd" "$@" ;;
-  *) sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
