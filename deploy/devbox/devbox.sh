@@ -25,6 +25,10 @@
 #   env-delete <name> [apply]   remove all of it; dry run unless apply = 1
 #   env-proof  [name]           two envs, one order stream each — PASS/FAIL
 #
+#   perf <scenario> [env] [prof] k6 run tagged with every image version
+#   perf-runs                    recorded runs, newest first
+#   perf-compare <a> <b>         p95/errors per request + versions that differ
+#
 # CONTEXT is required and never taken from the ambient kubectl context — same
 # rule as secrets-seed / kafka-chaos-proof. `make devbox-*` passes microecom.
 set -euo pipefail
@@ -844,10 +848,15 @@ cmd_env_proof() {
   return "$failed"
 }
 
+# shellcheck source=lib/perf.sh
+. "$DEVBOX/lib/perf.sh"
+
 case "${1:-}" in
+  perf|perf-runs|perf-compare)
+    cmd="cmd_${1//-/_}"; shift; "$cmd" "$@" ;;
   env-list|env-create|env-delete|env-proof)
     cmd="cmd_${1//-/_}"; shift; "$cmd" "$@" ;;
   platform|push|apps|wait|open|close|status|version|ship|deploy|tags|gc|proof)
     cmd="cmd_$1"; shift; "$cmd" "$@" ;;
-  *) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

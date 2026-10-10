@@ -914,9 +914,24 @@ devbox-env-delete:
 devbox-env-proof:
 	@KEEP=$(KEEP) $(DEVBOX) env-proof $(or $(name),proof)
 
+.PHONY: devbox-perf devbox-perf-runs devbox-perf-compare
+
+## devbox-perf scenario=payment|storefront [env=prod-like] [profile=smoke]: k6 run tagged with every image version
+devbox-perf:
+	@$(DEVBOX) perf $(or $(scenario),$(error scenario= is required (payment|storefront))) $(or $(env),prod-like) $(or $(profile),smoke)
+
+## devbox-perf-runs: recorded perf runs, newest first, PASS/FAIL
+devbox-perf-runs:
+	@$(DEVBOX) perf-runs
+
+## devbox-perf-compare a=RUN b=RUN: p95/error deltas per request + which versions differ
+devbox-perf-compare:
+	@$(DEVBOX) perf-compare $(or $(a),$(error a= is required)) $(or $(b),$(error b= is required))
+
 # Offline: tag rules against a throwaway git repo. No cluster needed.
 devbox-test:
 	@bash deploy/devbox/tests/version-test.sh
+	@bash deploy/devbox/tests/perf-test.sh
 
 # ============================================================================
 # AWS (ephemeral EKS) — see docs/superpowers/specs/2026-06-10-aws-deployment-design.md

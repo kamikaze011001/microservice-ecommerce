@@ -1,0 +1,89 @@
+{
+  "uid": "devbox-perf",
+  "title": "Devbox — perf runs",
+  "description": "Uploaded by deploy/devbox (make devbox-perf). Pick two runs; every number is the run's whole-test figure (k6 trend stats are cumulative, so a run's last sample is its total).",
+  "tags": ["devbox", "k6"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "time": { "from": "now-7d", "to": "now" },
+  "refresh": "",
+  "templating": {
+    "list": [
+      { "name": "ds", "label": "Datasource", "type": "datasource", "query": "prometheus", "hide": 2 },
+      {
+        "name": "run_a", "label": "Run A", "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${ds}" },
+        "query": { "query": "label_values(devbox_perf_run, run)", "refId": "A" },
+        "definition": "label_values(devbox_perf_run, run)", "sort": 2, "refresh": 2
+      },
+      {
+        "name": "run_b", "label": "Run B", "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${ds}" },
+        "query": { "query": "label_values(devbox_perf_run, run)", "refId": "A" },
+        "definition": "label_values(devbox_perf_run, run)", "sort": 2, "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "table", "title": "Recorded runs (value = k6 exit code; 0 = thresholds held)",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 7 },
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "targets": [ { "refId": "A", "expr": "last_over_time(devbox_perf_run[90d])", "instant": true, "format": "table" } ],
+      "transformations": [
+        { "id": "organize", "options": {
+          "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true },
+          "indexByName": { "run": 0, "env": 1, "scenario": 2, "profile": 3, "duration_s": 4, "Value": 5, "versions": 6 },
+          "renameByName": { "Value": "exit", "duration_s": "seconds" } } }
+      ]
+    },
+    {
+      "id": 2, "type": "table", "title": "p95 per request (ms) — A vs B",
+      "gridPos": { "x": 0, "y": 7, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "targets": [
+        { "refId": "A", "instant": true, "format": "table",
+          "expr": "max by (name) (last_over_time(k6_http_req_duration_p95{devbox_run=\"$run_a\",group!=\"::setup\"}[90d])) * 1000" },
+        { "refId": "B", "instant": true, "format": "table",
+          "expr": "max by (name) (last_over_time(k6_http_req_duration_p95{devbox_run=\"$run_b\",group!=\"::setup\"}[90d])) * 1000" }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true },
+          "renameByName": { "name": "request", "Value #A": "A p95 (ms)", "Value #B": "B p95 (ms)" } } },
+        { "id": "calculateField", "options": { "mode": "binary", "alias": "Δ (ms)",
+          "binary": { "left": "B p95 (ms)", "operator": "-", "right": "A p95 (ms)" } } }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 0 }, "overrides": [] }
+    },
+    {
+      "id": 3, "type": "table", "title": "Error rate per request — A vs B",
+      "gridPos": { "x": 12, "y": 7, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "targets": [
+        { "refId": "A", "instant": true, "format": "table",
+          "expr": "max by (name) (last_over_time(k6_http_req_failed_rate{devbox_run=\"$run_a\",group!=\"::setup\"}[90d]))" },
+        { "refId": "B", "instant": true, "format": "table",
+          "expr": "max by (name) (last_over_time(k6_http_req_failed_rate{devbox_run=\"$run_b\",group!=\"::setup\"}[90d]))" }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true },
+          "renameByName": { "name": "request", "Value #A": "A errors", "Value #B": "B errors" } } }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1 }, "overrides": [] }
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "p95 over the run — A and B (set the time range to cover both)",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "${ds}" },
+      "targets": [
+        { "refId": "A", "legendFormat": "A {{name}}",
+          "expr": "max by (name) (k6_http_req_duration_p95{devbox_run=\"$run_a\",group!=\"::setup\"}) * 1000" },
+        { "refId": "B", "legendFormat": "B {{name}}",
+          "expr": "max by (name) (k6_http_req_duration_p95{devbox_run=\"$run_b\",group!=\"::setup\"}) * 1000" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
+    }
+  ]
+}

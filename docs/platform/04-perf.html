@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Devbox 4 — Perf</title>
+<link rel="stylesheet" href="platform.css"/>
+<style>
+  .noise .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0;font-size:14px}
+  .noise .bar{height:14px;border-radius:7px;background:var(--git);min-width:2px;transition:width .3s}
+  .noise .bar.b{background:var(--purple)}
+  .noise .lbl{width:150px;color:var(--ink2);font-family:ui-monospace,Menlo,monospace;font-size:13px}
+  .noise .v{width:150px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+  .noise input{vertical-align:middle}
+  pre.out{font-size:12.5px}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="icon">📈</div>
+  <h1>"Is my change slower?" as one command</h1>
+  <p>Phase 4 of the devbox. Every load test is tagged with the exact code it ran against, so comparing two runs also tells you <em>what changed</em> between them.</p>
+  <div class="series">Devbox · platform engineering series · 4 / 6</div>
+</header>
+
+<nav class="toc">
+  <a href="#idea">Big idea</a><a href="#path">The golden path</a><a href="#noise">Noise</a><a href="#how">How it works</a>
+  <a href="#scars">What broke</a><a href="#try">Try it</a><a href="#interview">Interview</a><a href="#next">Next</a>
+</nav>
+
+<main>
+
+<section id="idea">
+  <div class="bigidea">
+    <p class="big">A latency number on its own is trivia. <b>"p95 went from 57 ms to 62 ms"</b> only means something next to <b>"…and the only change was order-service ac48ad8 → 9f8e7d6"</b> — or "…and nothing changed", which makes it noise.</p>
+    <p class="big">Phases 1–3 made <em>what's running</em> a fact in git. Phase 4 stamps that fact onto every perf run.</p>
+  </div>
+</section>
+
+<section id="path">
+  <h2><span class="n">1</span>The golden path</h2>
+  <pre class="out"><code>make devbox-perf scenario=payment                # smoke against prod-like
+make devbox-perf scenario=payment env=preview-cart profile=load
+make devbox-perf-runs
+make devbox-perf-compare a=prod-like-payment-1010-104742 b=prod-like-payment-1010-104818</code></pre>
+  <p class="lead">A real compare from this cluster — the same code run twice:</p>
+  <pre class="out"><code>  REQUEST          A p95  B p95  Δ p95  A err  B err  A reqs  B reqs
+  create_order     69ms   69ms   +1%    0%     0%     75      75
+  create_payment   57ms   62ms   +8%    0%     0%     75      75
+  login            91ms   94ms   +3%    0%     0%     75      75
+  paypal_callback  78ms   83ms   +6%    0%     0%     75      75
+  paypal_cancel    6ms    5ms    -26%   0%     0%     5       3       &lt;30 reqs: noise
+  paypal_fail      5ms    9ms    +71%   0%     0%     4       5       &lt;30 reqs: noise
+
+  versions that differ:
+    none — same code, so any delta is noise or environment</code></pre>
+  <p style="font-size:14.5px;color:var(--ink2)">Grafana shows the same data (<code>make devbox-open</code> → <em>Devbox — perf runs</em>): the run list with pass/fail, p95 and error rate per request for run A vs run B, and both runs over time.</p>
+</section>
+
+<section id="noise">
+  <h2><span class="n">2</span>Noise — play with it</h2>
+  <p class="lead">Two runs of identical code never match exactly. How big a difference is real depends on how many requests the p95 is computed from.</p>
+  <div class="demo noise">
+    <div class="row">requests per run: <input type="range" id="n" min="3" max="400" value="5"/> <b id="nv">5</b> <button id="go">run twice</button></div>
+    <div class="row"><span class="lbl">run A p95</span><span class="bar" id="ba"></span><span class="v" id="va"></span></div>
+    <div class="row"><span class="lbl">run B p95</span><span class="bar b" id="bb"></span><span class="v" id="vb"></span></div>
+    <div class="row"><b id="dv"></b></div>
+  </div>
+  <p style="font-size:14.5px;color:var(--ink2)">Same latency distribution both times; only sampling differs. With a handful of requests the p95 is one unlucky request — that's why compare marks rows under 30 requests. For decisions, use <code>profile=load</code> (thousands of requests), run each side more than once, and compare like with like: a preview's pods are smaller than prod-like's, so <em>cross-env</em> deltas measure the pods, not your code.</p>
+</section>
+
+<section id="how">
+  <h2><span class="n">3</span>How it works</h2>
+  <div class="pipe">
+    <div class="step"><b>1 · versions</b>read from the env repo (the truth)</div><span class="arr">→</span>
+    <div class="step"><b>2 · k6 pod</b>in the env's namespace, BASE_URL = its gateway</div><span class="arr">→</span>
+    <div class="step"><b>3 · remote write</b>every metric tagged devbox_run / env / scenario</div><span class="arr">→</span>
+    <div class="step"><b>4 · run record</b><code>devbox_perf_run{…versions}</code> = exit code</div><span class="arr">→</span>
+    <div class="step"><b>5 · compare</b>PromQL, last sample per run</div>
+  </div>
+  <div class="cards">
+    <div class="card"><h3>Why VictoriaMetrics is the only store</h3><p>No local results file to lose, and the Grafana dashboard reads the exact same series as the CLI. A run's metadata is one sample of <code>devbox_perf_run</code>, pushed through VM's import API.</p></div>
+    <div class="card"><h3>Why the last sample is the whole run</h3><p>k6's Prometheus output computes trend stats (p95, avg…) over the whole test so far. So <code>last_over_time(k6_http_req_duration_p95{devbox_run=…})</code> is the run's overall p95 — checked against k6's own summary: 56.93 ms ↔ 57 ms.</p></div>
+    <div class="card"><h3>Thresholds decide PASS/FAIL</h3><p>The scripts already declare SLOs (<code>p(95)&lt;2000</code> for create_payment, error rate &lt; 5%). k6 exits 99 when one is breached; that exit code is the run's recorded value. Gating a ship on it is one <code>&amp;&amp;</code> away.</p></div>
+    <div class="card"><h3>Setup isn't the workload</h3><p>Admin login and inventory top-up run once in k6's <code>setup()</code>; they're excluded (<code>group!="::setup"</code>) so they don't distort the per-request table.</p></div>
+  </div>
+</section>
+
+<section id="scars">
+  <h2><span class="n">4</span>What broke while building it</h2>
+  <div class="scar">
+    <h3>"No recorded run" — for 30 seconds</h3>
+    <p><b>Symptom:</b> straight after the second run, <code>devbox-perf-compare</code> said the run didn't exist. Retrying "a few minutes later" failed too — so I dropped my first hypothesis.</p>
+    <p><b>Cause:</b> the first hypothesis was right. VictoriaMetrics hides samples younger than <code>-search.latencyOffset</code> (30 s) from queries. The timestamps showed the retry had run 31 s after the run — the "few minutes" was my sense of time, not the clock.</p>
+    <p><b>Fix:</b> <code>devbox-perf</code> returns only once its run record is queryable. Lesson twice over: a TSDB's "now" lags real now, and check timestamps before discarding a hypothesis.</p>
+  </div>
+  <div class="scar">
+    <h3>A failed threshold that would have vanished</h3>
+    <p>The k6 call ran under <code>set -e</code>. A breached threshold (exit 99) would have aborted the script <em>before</em> recording the run — so exactly the runs you most need to see would leave no trace. <code>|| code=$?</code>: a failure is a result to record, not a reason to stop.</p>
+  </div>
+</section>
+
+<section id="try">
+  <h2><span class="n">5</span>Try it</h2>
+  <ol class="try">
+    <li><code>make devbox-perf scenario=payment</code> twice, then compare the two run ids.
+      <div class="expect">"none — same code": your noise floor.</div></li>
+    <li>Change something in <code>order-service/</code> (or ship a branch), <code>make devbox-ship svc=order-service</code>, run perf again, compare with the last run.
+      <div class="expect">"order-service  ac48ad8 → &lt;new tag&gt;" under versions that differ.</div></li>
+    <li><code>make devbox-perf scenario=payment profile=load</code> (5 min, 50 users).
+      <div class="expect">Thousands of requests per endpoint — no noise flags.</div></li>
+    <li><code>make devbox-open</code> → Grafana → <em>Devbox — perf runs</em>; pick run A and run B.</li>
+  </ol>
+</section>
+
+<section id="interview">
+  <h2><span class="n">6</span>Interview questions</h2>
+  <details><summary>Why p95/p99 instead of average latency?</summary>
+    <p>Averages hide the tail; users feel the tail. One slow dependency can leave the average flat while 5% of requests time out. p95 says "19 of 20 requests were at least this fast".</p></details>
+  <details><summary>How do you know a perf regression is real?</summary>
+    <p>Know your noise floor first (same code, several runs), use enough requests per endpoint, hold the environment constant, change one thing, and repeat. A delta smaller than the noise floor isn't a finding.</p></details>
+  <details><summary>Where should perf tests run in a delivery pipeline?</summary>
+    <p>Smoke-sized checks with thresholds on every deploy to a prod-like env (cheap, catch big regressions); full load tests on a schedule or before releases. Results tied to the deployed versions, or nobody can act on them.</p></details>
+  <details><summary>Why tag metrics with versions instead of keeping a results spreadsheet?</summary>
+    <p>The tag travels with the data: any dashboard, alert or query can slice by version without joining to an external record that drifts. The cost is label cardinality — fine for one label set per run, not per request.</p></details>
+</section>
+
+<section id="next">
+  <div class="next">
+    <h2 style="margin-top:0">Next — phase 5: the portal</h2>
+    <p>Everything so far is a <code>make</code> target. Phase 5 is a small Spring Boot <code>devbox-portal</code>: env and service tiles, a version dropdown that commits to the env repo, change history, and recent perf runs — a client of Argo CD, the registry, Gitea and VictoriaMetrics, exactly like a Backstage plugin.</p>
+  </div>
+</section>
+
+</main>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  function sample(){ // lognormal-ish latency around 50ms with a tail
+    var u=Math.random(), v=Math.random();
+    var z=Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+    return Math.round(Math.exp(3.9+0.35*z));
+  }
+  function p95(n){ var a=[]; for(var i=0;i<n;i++) a.push(sample()); a.sort(function(x,y){return x-y}); return a[Math.min(n-1,Math.ceil(0.95*n)-1)]; }
+  function go(){
+    var n=+$("n").value, a=p95(n), b=p95(n), d=Math.round((b-a)/a*100);
+    $("ba").style.width=(a*3)+"px"; $("bb").style.width=(b*3)+"px";
+    $("va").textContent=a+" ms"; $("vb").textContent=b+" ms";
+    $("dv").textContent="Δ "+(d>0?"+":"")+d+"% — same code"+(n<30?" (under 30 requests: this is mostly luck)":"");
+  }
+  $("n").oninput=function(){ $("nv").textContent=this.value; };
+  $("go").onclick=go; go();
+})();
+</script>
+</body>
+</html>
