@@ -28,6 +28,17 @@ defaults:
       initialDelaySeconds: 30
       periodSeconds: 10
       failureThreshold: 6
+    # Liveness and readiness don't run until this succeeds, so a JVM that starts
+    # slowly gets up to 5 min (60 × 5s) instead of being killed by liveness after
+    # ~2 min. Without it, a rollout on CPU-starved nodes restarted pods
+    # mid-startup, each restart burned another JVM start, and the rollout fed on
+    # itself (docs/platform/05-portal.html, "a rollout that fed on itself").
+    # A stuck-forever start still fails — after 5 min, not never.
+    startup:
+      path: /actuator/health/liveness
+      port: management
+      periodSeconds: 5
+      failureThreshold: 60
   # A MAP, not a list: YAML lists cannot merge element-wise. The
   # list-of-{name,value} shape appears only at render time, emitted by a sorted
   # `range`, so renders are deterministic and diffs are stable.

@@ -1019,6 +1019,19 @@ assert_lacks "aws: payment-service does NOT point at mock-paypal" \
              'mock-paypal-service:8585/mock-paypal-service' \
              "$(doc_named Deployment payment-service "$aws_out")"
 
+# ── startupProbe: a slow JVM start is not a liveness failure ───────────────
+section "apps subchart — startupProbe"
+
+sp_order="$(doc_named Deployment order-service "$local_out")"
+sp_block="$(awk '/^ *startupProbe:/{p=1} p{print} p && /failureThreshold/{exit}' <<<"$sp_order")"
+assert_has   "order-service has a startupProbe on the management port" 'port: management' "$sp_block"
+assert_has   "...probing liveness" 'path: /actuator/health/liveness' "$sp_block"
+assert_has   "...with a 5-minute budget (60 × 5s)" 'failureThreshold: 60' "$sp_block"
+assert_has   "...polled every 5s" 'periodSeconds: 5' "$sp_block"
+assert_lacks "the static frontend has none (no management port)" 'startupProbe' \
+  "$(doc_named Deployment frontend "$local_out")"
+assert_has   "every JVM service has one" '^9$' "$(grep -c 'startupProbe:' <<<"$local_out")"
+
 # ── devbox: one Argo CD Application per service ─────────────────────────────
 section "apps subchart — devbox per-service renders"
 
