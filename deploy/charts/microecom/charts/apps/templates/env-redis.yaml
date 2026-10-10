@@ -1,0 +1,58 @@
+{{- /*
+A Redis that belongs to ONE env (devbox previews). In this app Redis holds
+per-env authoritative state — the available-stock counters, pendingOrders,
+refresh tokens, and the scheduler locks — with unprefixed keys, and Redisson
+ignores the database index, so a preview sharing the infra Redis would share
+all of it. Its apps reach this one as `redis` (a bare name, resolved in the
+env's namespace) via springConfig spring.data.redis.host.
+
+Rendered only when an env sets envRedis.enabled — prod-like doesn't, and keeps
+the shared infra Redis. In the devbox it is its own Application
+(envs/<env>/services/redis.yaml → onlyService=redis). No persistence: losing
+it on restart is the same contract the infra Redis has today.
+*/ -}}
+{{- $r := .Values.envRedis | default dict }}
+{{- if and $r.enabled (or (not .Values.onlyService) (eq .Values.onlyService "redis")) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: {{ .Values.global.namespaces.apps }}
+  labels:
+    {{- include "apps.labels" (dict "name" "redis" "root" $) | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "apps.selectorLabels" (dict "name" "redis" "root" $) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "apps.labels" (dict "name" "redis" "root" $) | nindent 8 }}
+    spec:
+      containers:
+        - name: redis
+          image: {{ $r.image | default "redis:7.4-alpine" }}
+          args: ["--save", "", "--appendonly", "no", "--maxmemory", "96mb", "--maxmemory-policy", "noeviction"]
+          ports:
+            - { name: redis, containerPort: 6379 }
+          readinessProbe:
+            exec: { command: ["redis-cli", "ping"] }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits:   { cpu: 500m, memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: {{ .Values.global.namespaces.apps }}
+  labels:
+    {{- include "apps.labels" (dict "name" "redis" "root" $) | nindent 4 }}
+spec:
+  selector:
+    {{- include "apps.selectorLabels" (dict "name" "redis" "root" $) | nindent 4 }}
+  ports:
+    - { name: redis, port: 6379, targetPort: redis }
+{{- end }}

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Devbox 3 — Environments</title>
+<link rel="stylesheet" href="platform.css"/>
+<style>
+  .envdemo .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:10px 0}
+  .res{border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:var(--bg);font-size:13.5px;cursor:pointer;user-select:none}
+  .res b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint)}
+  .res.shared{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 8%,var(--bg))}
+  .res.own{border-color:var(--good)}
+  .leak{font-size:14px;margin:4px 0;color:var(--bad)} .fine{font-size:14px;margin:4px 0;color:var(--good)}
+  .ladder{display:flex;flex-direction:column;gap:6px;margin:12px 0}
+  .rung{border:1px solid var(--line);border-radius:10px;padding:6px 10px;background:var(--bg2);font-size:14px}
+  .rung.hot{border-color:var(--good);box-shadow:0 0 0 2px color-mix(in srgb,var(--good) 25%,transparent)}
+  .rung small{color:var(--faint)}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="icon">🧪</div>
+  <h1>What an environment really is</h1>
+  <p>Phase 3 of the devbox. The same code, twice, on the same databases and Kafka — and neither copy can see the other's orders.</p>
+  <div class="series">Devbox · platform engineering series · 3 / 6</div>
+</header>
+
+<nav class="toc">
+  <a href="#idea">Big idea</a><a href="#demo">Find the leaks</a><a href="#owns">What an env owns</a><a href="#config">How config reaches it</a>
+  <a href="#life">Create &amp; delete</a><a href="#scars">What broke</a><a href="#try">Try it</a><a href="#interview">Interview</a><a href="#next">Next</a>
+</nav>
+
+<main>
+
+<section id="idea">
+  <div class="bigidea">
+    <p class="big">An environment is <b>not</b> a copy of the code. It's a <b>set of config values</b> — namespace, database names, topic names, hostnames — <b>plus the state those values point at</b>.</p>
+    <p class="big">So "make a second env" is mostly a search: find every value that names shared state, and make it a per-env setting. Miss one, and the two envs quietly share it.</p>
+  </div>
+</section>
+
+<section id="demo">
+  <h2><span class="n">1</span>Find the leaks — play with it</h2>
+  <p class="lead">A preview env sends one order. Click a resource to toggle it between <b>shared with prod-like</b> and <b>owned by the preview</b>, and see what goes wrong.</p>
+  <div class="demo envdemo">
+    <div class="grid" id="grid"></div>
+    <div id="verdict"></div>
+  </div>
+</section>
+
+<section id="owns">
+  <h2><span class="n">2</span>What <code>preview-x</code> owns</h2>
+  <p class="lead">Decided in one place — <code>deploy/devbox/lib/env_gen.py</code> — so create, delete and the proof can't disagree.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Resource</th><th>prod-like</th><th>preview-x</th><th>How</th></tr>
+    <tr><td>Namespace</td><td><code>apps</code></td><td><code>apps-preview-x</code></td><td>ApplicationSet destination + chart <code>global.namespaces.apps</code></td></tr>
+    <tr><td>App → app calls</td><td colspan="2"><code>order-service</code>, <code>inventory-service</code>… (bare names)</td><td>DNS search path resolves them in the caller's namespace — one Vault value, every env</td></tr>
+    <tr><td>MySQL</td><td><code>ecommerce_dev</code></td><td><code>ecommerce_preview_x</code></td><td>same server; Hibernate creates tables; replication carries it</td></tr>
+    <tr><td>Mongo</td><td><code>ecommerce_inventory</code></td><td><code>ecommerce_preview_x</code></td><td><code>spring.data.mongodb.database</code> (not the URI — it holds the password)</td></tr>
+    <tr><td>Kafka topics</td><td><code>order-service.order.success-status</code>…</td><td><code>preview-x.order-service.order.success-status</code>…</td><td>14 topics incl. DLTs; schema subjects follow topic names</td></tr>
+    <tr><td>Consumer groups</td><td><code>order.update-status</code>…</td><td><code>preview-x.order.update-status</code>…</td><td>prefixed</td></tr>
+    <tr><td>CDC (saga trigger)</td><td><code>mongodb-source-connector</code></td><td><code>…-preview-x</code> → <code>preview-x.ecommerce_db.ecommerce_preview_x.event</code></td><td>prod-like's config copied, re-pointed at its DB and prefix</td></tr>
+    <tr><td>Redis</td><td>infra Redis</td><td>its own <code>redis</code></td><td>keys are unprefixed and Redisson ignores the DB index — so a separate server</td></tr>
+    <tr><td>MinIO bucket</td><td colspan="2"><code>ecommerce-media</code> (shared)</td><td>object keys are unique; nothing to isolate yet</td></tr>
+    <tr><td>Secrets</td><td colspan="2">Vault (shared)</td><td>same infra, same credentials — never in the env repo</td></tr>
+  </table></div>
+</section>
+
+<section id="config">
+  <h2><span class="n">3</span>How per-env config reaches a service</h2>
+  <p class="lead">Spring reads properties from a ladder of sources; higher wins. Vault sits low, so an env can override it without touching it:</p>
+  <div class="ladder">
+    <div class="rung">command-line args</div>
+    <div class="rung hot"><b>SPRING_APPLICATION_JSON</b> <small>← the env repo's <code>springConfig</code>, rendered by the chart</small></div>
+    <div class="rung">OS environment variables <small>← looked fine, but can't name these keys (below)</small></div>
+    <div class="rung">config data: <code>application.yml</code>, <b>Vault import</b> <small>← shared values: secrets + prod-like defaults</small></div>
+  </div>
+  <div class="scar" style="border-left-color:var(--warn)">
+    <h3>Why not plain env vars?</h3>
+    <p>Topics bind into a <code>Map&lt;String,String&gt;</code> whose keys contain dots <em>and</em> dashes: <code>order-service.order.failed-status</code>. The env var <code>APPLICATION_KAFKA_TOPICS_ORDER_SERVICE_ORDER_FAILED_STATUS</code> becomes the key <code>order.service.order.failed.status</code> — a <em>new</em> entry next to Vault's, which keeps being used. No error, no warning: the preview would publish to prod-like's topic. JSON names the key exactly. <code>EnvOverridePrecedenceTest</code> pins it, and fails if you swap in the look-alike key.</p>
+  </div>
+</section>
+
+<section id="life">
+  <h2><span class="n">4</span>Create and delete — order matters</h2>
+  <div class="tablewrap"><table>
+    <tr><th><code>make devbox-env-create name=x</code></th><th>Why this order</th></tr>
+    <tr><td>1 · namespace + copy <code>app-secrets</code></td><td>pods mount it optionally — start them first and they run silently without mail/PayPal settings</td></tr>
+    <tr><td>2 · MySQL database + grant</td><td>empty; Hibernate makes tables when the apps boot</td></tr>
+    <tr><td>3 · 14 topics</td><td>auto-create is off cluster-wide (phase PR1 of the Kafka work)</td></tr>
+    <tr><td>4 · seed Mongo</td><td>the gateway reads route roles (<code>api_role</code>) at boot</td></tr>
+    <tr><td>5 · CDC connector</td><td>the saga starts from it; no connector = orders stuck PROCESSING</td></tr>
+    <tr><td>6 · commit <code>envs/preview-x/</code></td><td>this is the moment the env exists for Argo CD — 11 Applications appear</td></tr>
+    <tr><td>7 · seed MySQL + rebuild stock counters</td><td>needs the tables from 6; the reconcile restarts <em>this env's</em> inventory into <em>this env's</em> Redis</td></tr>
+  </table></div>
+  <p style="font-size:14.5px;color:var(--ink2)"><code>make devbox-env-delete name=x APPLY=1</code> runs it backwards: remove the folder → the ApplicationSet deletes the Applications → their <b>finalizer</b> deletes what they deployed (without it the Deployments would be orphaned) → only then connector, topics, groups, schema subjects, databases, namespace. Apps first, so nothing is writing while its data disappears. Without <code>APPLY=1</code> it only prints what it would remove.</p>
+</section>
+
+<section id="scars">
+  <h2><span class="n">5</span>What broke while building it</h2>
+  <div id="scar-list">
+    <div class="scar">
+      <h3>A password one commit away from git</h3>
+      <p>The first generated <code>env.yaml</code> overrode <code>spring.data.mongodb.uri</code> to point at the preview's database — and the URI carries the Mongo password. It would have been committed to the env repo. Fix: override only <code>spring.data.mongodb.database</code> (Spring prefers it over the URI's path), and a guard in <code>env_gen.py</code> that refuses to write any value with <code>user:pass@</code> in it — tested in render-test.</p>
+    </div>
+    <div class="scar">
+      <h3>A proof that failed for the wrong reason</h3>
+      <p><b>Symptom:</b> the first <code>devbox-env-proof</code> went 12/13 — every isolation and cleanup check passed, but "every preview order completed" read 80/90.</p>
+      <p><b>Cause:</b> the load script approves 90%, cancels 5% and fails 5% of payments <em>on purpose</em>, to exercise the saga's compensation paths. 10 of 90 ending CANCELED/FAILED is the system working. The invariant was wrong, not the env.</p>
+      <p><b>Second try:</b> "every order settled — none PROCESSING". It failed again: 4 orders PROCESSING. Reading the orchestrator explained it: a PayPal <em>cancel</em> abandons the payment attempt, not the order — the saga waits in AWAITING_PAYMENT for a retry, and only the 30-minute saga TTL cancels it. Correct by design; prod-like's own 7 PROCESSING orders were timed out to CANCELED during the same session.</p>
+      <p><b>Fix:</b> a PROCESSING order is legitimate only if its saga is AWAITING_PAYMENT, not expired, with a CANCELED payment and no successful one — one SQL join. Anything else is "unexplained" and fails. Phase 2's proof once passed while proving nothing; this one failed twice while everything was right. Same bug both ways: <b>an assertion that doesn't match what the system is designed to do</b>. Read the workload and the state machine before writing the check.</p>
+    </div>
+    <div class="scar">
+      <h3>Deleting an env shakes the shared broker</h3>
+      <p>Right after a delete, the cluster API timed out and prod-like's services climbed to 0.5–0.9 CPU with no traffic. Their logs showed Kafka <code>DisconnectException</code>s and consumer-group rebalances: deleting 14 topics on a one-broker cluster that also hosts prod-like makes every consumer rebalance at once, on CPU-starved nodes. It settled by itself within minutes (Kafka 970m → 43m CPU, groups <code>Stable</code>), and prod-like's data and offsets were untouched. Shared infra means an env's lifecycle is never <em>fully</em> invisible to its neighbours — that's the price of logical isolation over separate clusters.</p>
+    </div>
+    <div class="scar">
+      <h3>Golden files are evidence, not caches</h3>
+      <p>Making app hosts namespace-relative changed resolved secrets, and the equivalence test (resolved output vs a frozen capture of the deleted legacy scripts) failed. Regenerating the golden would have erased the proof that the migration was faithful. Instead: <code>deploy/secrets/tests/deviations/k8s.jq</code> — each deliberate change, with its reason, applied to the golden before diffing.</p>
+    </div>
+  </div>
+</section>
+
+<section id="try">
+  <h2><span class="n">6</span>Try it</h2>
+  <ol class="try">
+    <li><code>make devbox-env-delete name=cart</code> (dry run).
+      <div class="expect">The full list of what <code>preview-cart</code> would own — nothing touched.</div></li>
+    <li><code>make devbox-env-create name=cart</code>, then <code>make devbox-env-list</code>.
+      <div class="expect">Two envs; Argo CD shows 11 <code>preview-cart-*</code> tiles next to the 10 <code>prod-like-*</code>.</div></li>
+    <li>Ship your branch to the preview only: <code>make devbox-ship svc=order-service env=preview-cart</code>.
+      <div class="expect">prod-like keeps its version; Gitea shows the commit under <code>envs/preview-cart/</code>.</div></li>
+    <li>Grow one service: add <code>hpa: { maxReplicas: 2, scaleUpPods: 1 }</code> back to <code>envs/preview-cart/services/order-service.yaml</code>, commit, push.
+      <div class="expect">An HPA appears in <code>apps-preview-cart</code> — "small" was only a starting value.</div></li>
+    <li><code>make devbox-env-proof</code>
+      <div class="expect">A throwaway <code>preview-proof</code>: orders go in, stay in, and everything it owned is gone after.</div></li>
+  </ol>
+</section>
+
+<section id="interview">
+  <h2><span class="n">7</span>Interview questions</h2>
+  <details><summary>What makes two environments isolated, beyond separate namespaces?</summary>
+    <p>Every piece of shared <em>state</em> they touch: databases, topics and consumer groups, caches, schedulers' locks, object storage, external callbacks. A namespace isolates workloads and DNS; it does nothing for a Kafka topic both envs name the same.</p></details>
+  <details><summary>Two envs share a Kafka topic. What breaks?</summary>
+    <p>Same consumer group: they split the partitions and each env processes the other's events. Different groups: both process every event — double side effects. Either way one env's actions show up in the other.</p></details>
+  <details><summary>Why per-env logical databases instead of a database server per env?</summary>
+    <p>Cost and speed: a database is a <code>CREATE DATABASE</code>; a server is gigabytes and minutes. The isolation is the same for an app that only ever names its own database. Production-grade isolation (noisy neighbours, versions, blast radius) is when you'd split servers.</p></details>
+  <details><summary>How do you keep env-specific config out of the image?</summary>
+    <p>Build once, configure at deploy time: the same image everywhere, with config injected by the platform (env vars, mounted files, a config service). Anything baked at build time — like the SPA's API URL today — forces an image per env. Phase 3c fixes exactly that.</p></details>
+  <details><summary>Where must secrets NOT go in a GitOps setup?</summary>
+    <p>In the config repo, in plain text — including inside URLs. Keep them in a secret manager and reference them; add guards that fail when a value looks like a credential.</p></details>
+</section>
+
+<section id="next">
+  <div class="next">
+    <h2 style="margin-top:0">Next — 3c: open a preview in the browser</h2>
+    <p>Previews are API-only today: the storefront's API URL is baked into the frontend image at build time, and the gateway's CORS origin is hardcoded. 3c moves both to runtime config, so one frontend image serves <code>microecom.local</code> and <code>preview-x.microecom.local</code> alike.</p>
+  </div>
+</section>
+
+</main>
+
+<script>
+(function(){
+  var res=[
+    {k:"ns",t:"Namespace",leak:"Pods of both envs share Service names — one replaces the other."},
+    {k:"host",t:"App hosts",leak:"The preview's gateway calls prod-like's order-service (an FQDN pins the namespace)."},
+    {k:"topic",t:"Kafka topics",leak:"prod-like's order-service consumes the preview's success event and completes an order it never had."},
+    {k:"group",t:"Consumer groups",leak:"With shared topics AND groups the envs split partitions — each processes some of the other's events."},
+    {k:"db",t:"MySQL / Mongo",leak:"The order row lands next to prod-like's orders; the saga's CDC event is seen by prod-like's connector."},
+    {k:"redis",t:"Redis",leak:"The preview reserves stock from prod-like's available counter — prod-like customers see fewer items."}
+  ];
+  var own={}; res.forEach(function(r){own[r.k]=false});
+  function render(){
+    var g=document.getElementById("grid"); g.innerHTML="";
+    res.forEach(function(r){
+      var d=document.createElement("div"); d.className="res "+(own[r.k]?"own":"shared");
+      d.innerHTML="<b>"+(own[r.k]?"owned":"shared")+"</b>"+r.t;
+      d.onclick=function(){own[r.k]=!own[r.k];render()}; g.appendChild(d);
+    });
+    var leaks=res.filter(function(r){
+      if(r.k==="group") return !own.group && !own.topic;
+      return !own[r.k];
+    });
+    var v=document.getElementById("verdict");
+    v.innerHTML = leaks.length
+      ? leaks.map(function(r){return '<div class="leak">✗ '+r.t+': '+r.leak+'</div>'}).join("")
+      : '<div class="fine">✓ The order is created, paid, and completed entirely inside the preview. prod-like never saw it.</div>';
+  }
+  render();
+})();
+</script>
+</body>
+</html>

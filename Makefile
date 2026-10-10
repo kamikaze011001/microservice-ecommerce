@@ -896,6 +896,24 @@ devbox-gc:
 devbox-proof:
 	@$(DEVBOX) proof
 
+.PHONY: devbox-env-list devbox-env-create devbox-env-delete devbox-env-proof
+
+## devbox-env-list: envs in the env repo, namespace, apps synced+healthy
+devbox-env-list:
+	@$(DEVBOX) env-list
+
+## devbox-env-create name=X [MAX_PREVIEWS=1]: preview-X with its own namespace, DBs, topics, connector, Redis
+devbox-env-create:
+	@MAX_PREVIEWS=$(or $(MAX_PREVIEWS),1) $(DEVBOX) env-create $(or $(name),$(error name= is required))
+
+## devbox-env-delete name=X [APPLY=1]: remove preview-X and its data (dry run by default)
+devbox-env-delete:
+	@$(DEVBOX) env-delete $(or $(name),$(error name= is required)) $(or $(APPLY),0)
+
+## devbox-env-proof [name=proof] [KEEP=1]: orders in a preview stay in it; delete removes it all
+devbox-env-proof:
+	@KEEP=$(KEEP) $(DEVBOX) env-proof $(or $(name),proof)
+
 # Offline: tag rules against a throwaway git repo. No cluster needed.
 devbox-test:
 	@bash deploy/devbox/tests/version-test.sh
