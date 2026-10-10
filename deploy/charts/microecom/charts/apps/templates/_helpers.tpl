@@ -94,7 +94,9 @@ inventory-service at another, and roll back one without the other.
     well is refused rather than letting one silently win.
   */ -}}
   {{- $env := deepCopy (default (dict) $s.env) }}
-  {{- if $s.springConfig }}
+  {{- /* Not for static services: defaults.springConfig (env-wide Spring
+       properties) would otherwise land in the Caddy container too. */}}
+  {{- if and $s.springConfig (not $s.static) }}
   {{- if get $env "SPRING_APPLICATION_JSON" }}
   {{- fail (printf "%s: set either springConfig or env.SPRING_APPLICATION_JSON, not both" $name) }}
   {{- end }}

@@ -5,8 +5,9 @@ import { ApiError } from './error';
 import { useAuthStore } from '@/stores/auth';
 import { router } from '@/router';
 import { refreshAccessToken } from './refresh';
+import { API_BASE_URL } from './baseUrl';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:6868';
+const BASE_URL = API_BASE_URL;
 const REFRESH_PATH = '/authorization-server/v1/auth:refresh-token';
 
 // Pre-login / PERMIT_ALL auth endpoints. These must NOT carry an Authorization

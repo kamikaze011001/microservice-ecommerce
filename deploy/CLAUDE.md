@@ -414,6 +414,12 @@ infra and one shared Vault. Two rules keep that working:
   `env.SPRING_APPLICATION_JSON` together fail the render.
   `orchestrator-service`'s `EnvOverridePrecedenceTest` pins the precedence.
 
+- **The frontend takes its API URL at runtime** (`API_BASE_URL` on the pod →
+  Caddy's `/config.js`), never a per-env image. A `static: true` service
+  inherits neither `defaults.env` (JVM flags, `VAULT_TOKEN`) nor `springConfig`
+  — by kind, in the chart; `env: {}` alone once leaked the Vault token into
+  Caddy as soon as the frontend set a var of its own.
+
 Deliberate changes to resolved secrets are recorded in
 `deploy/secrets/tests/deviations/<env>.jq`, never by regenerating the golden.
 

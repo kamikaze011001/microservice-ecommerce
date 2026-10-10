@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/vue-query';
 import { useRouter } from 'vue-router';
 import { apiFetchUnsafe } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
+import { API_BASE_URL } from '../baseUrl';
 import type {
   LoginInput,
   RegisterInput,
@@ -10,7 +11,7 @@ import type {
   VerifyForgotOtpInput,
 } from '@/lib/zod-schemas';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:6868';
+const BASE_URL = API_BASE_URL;
 
 interface LoginResponseData {
   access_token: string;

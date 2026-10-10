@@ -1,6 +1,20 @@
 :8080 {
-    root * /srv
-    try_files {path} /index.html
-    file_server
+    # Runtime config: ONE image serves every environment. The container's
+    # API_BASE_URL becomes window.__APP_CONFIG__.apiBaseUrl (src/api/baseUrl.ts),
+    # read by index.html before the app boots. Unset → "__build__", and the
+    # build-time VITE_API_BASE_URL applies, so existing deployments are
+    # unchanged. no-store: an env's config must never be served from a cache
+    # another env filled.
+    handle /config.js {
+        header Content-Type "application/javascript; charset=utf-8"
+        header Cache-Control "no-store"
+        respond `window.__APP_CONFIG__ = { apiBaseUrl: "{$API_BASE_URL:__build__}" };` 200
+    }
+
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
     encode gzip
 }
