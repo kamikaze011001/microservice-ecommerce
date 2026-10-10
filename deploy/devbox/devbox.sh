@@ -26,6 +26,7 @@
 #   env-delete <name> [apply]   remove all of it; dry run unless apply = 1
 #   env-proof  [name]           two envs, one order stream each — PASS/FAIL
 #
+#   api-test [env]               Bruno contract suite (api-tests/) as a pod in the env
 #   perf <scenario> [env] [prof] k6 run tagged with every image version
 #   perf-runs                    recorded runs, newest first
 #   perf-compare <a> <b>         p95/errors per request + versions that differ
@@ -425,6 +426,9 @@ cmd_ship() {
       "from $(git -C "$ROOT" branch --show-current)@$(git -C "$ROOT" rev-parse --short HEAD) by make devbox-ship"
   fi
   sync_wait "$env" "$svc" "$tag"
+  # Post-deploy smoke: the version is live, so check the API contract still
+  # holds. SMOKE=0 skips it (devbox-proof does, to keep its timing honest).
+  if [[ "${SMOKE:-1}" == 1 ]]; then cmd_api_test "$env"; fi
 }
 
 cmd_deploy() {
@@ -549,7 +553,7 @@ cmd_proof() {
   new="$(cd "$ROOT" && version_of "$svc")"
   back="$prev"; [[ "$back" == "$new" ]] && back=dev
 
-  if cmd_ship "$svc" "$env"; then check "ship: $svc runs $new" "running $new"
+  if SMOKE=0 cmd_ship "$svc" "$env"; then check "ship: $svc runs $new" "running $new"
   else check "ship: $svc runs $new" false; fi
 
   # The rollback target must be DIFFERENT BYTES, or the rollback proves nothing.
@@ -880,15 +884,59 @@ cmd_env_proof() {
   return "$failed"
 }
 
+# ── API contract tests (phase 6) ────────────────────────────────────────────
+#
+# api-tests/ is a Bruno collection: open it in the Bruno GUI to click around,
+# or run it here. The collection is streamed into a one-off node pod IN the
+# env's namespace, so `gateway:6868` is that env's gateway — the same trick as
+# the k6 runs. Exits non-zero when any test fails.
+BRUNO_CLI_VERSION=4.2.1
+
+cmd_api_test() {
+  local env=${1:-$DEFAULT_ENV} ns origin code=0 log
+  env_sync_clone >/dev/null
+  [[ -d "$ENV_CLONE/envs/$env" ]] || { log_err "no env '$env' (make devbox-env-list)"; return 1; }
+  if [[ "$env" == "$DEFAULT_ENV" ]]; then ns=apps; origin=http://api.microecom.local
+  else
+    local NS MYSQL_DB MONGO_DB PREFIX CONNECTOR CDC_PREFIX CDC_TOPIC; eval "$(env_names "$env")"
+    ns=$NS; origin="http://api.$env.microecom.local"
+  fi
+  log="$RUN_DIR/api-test-$env.log"
+  log_info "API contract tests (api-tests/, Bruno $BRUNO_CLI_VERSION) against $env"
+  # shellcheck disable=SC2016 # expanded inside the pod
+  # COPYFILE_DISABLE: macOS tar would add an AppleDouble `._x.bru` for every
+  # file, which Bruno counts as extra (skipped) requests.
+  COPYFILE_DISABLE=1 tar -C "$ROOT/api-tests" --exclude node_modules -cf - . | $K -n "$ns" run "devbox-api-test-$(date +%H%M%S)" --rm -i --restart=Never \
+    --image=node:20-alpine --quiet -- sh -c '
+      mkdir -p /c && cd /c && tar xf - &&
+      npx -y "@usebruno/cli@$0" run -r --env devbox \
+        --env-var baseUrl=http://gateway:6868 --env-var "apiOrigin=$1" \
+        --reporter-skip-all-headers 2>&1' "$BRUNO_CLI_VERSION" "$origin" >"$log" 2>&1 || code=$?
+  # Only FAILED tests (✕), each with its request and reason — not "non-2xx
+  # requests": the suite's negative tests expect 400/401/403 and pass. The log
+  # is full of ANSI colour (which also makes grep call it binary): strip it.
+  sed 's/\x1b\[[0-9;]*m//g' "$log" | awk '
+    /^[0-9][0-9] [^ ].* \([0-9][0-9][0-9] / { req = $0; shown = 0; next }
+    /^ +✕ / { if (!shown) { print "    " req; shown = 1 }
+              sub(/^ +/, ""); print "      " $0; getline; sub(/^ +/, ""); print "        " $0 }' | head -30
+  sed 's/\x1b\[[0-9;]*m//g' "$log" | sed -n '/Execution Summary/,$p' | grep -aE 'Requests|Tests|Assertions' \
+    | sed 's/[│┌┐└┘├┤─]//g; s/^ */    /'
+  if [[ "$code" == 0 ]]; then log_ok "$env: API contract holds"
+  else log_err "$env: API contract broken — full output in $log"; fi
+  return "$code"
+}
+
 # shellcheck source=lib/perf.sh
 . "$DEVBOX/lib/perf.sh"
 
 case "${1:-}" in
+  api-test)
+    shift; cmd_api_test "$@" ;;
   perf|perf-runs|perf-compare)
     cmd="cmd_${1//-/_}"; shift; "$cmd" "$@" ;;
   env-list|env-create|env-delete|env-proof)
     cmd="cmd_${1//-/_}"; shift; "$cmd" "$@" ;;
   platform|push|apps|wait|open|close|status|version|ship|deploy|tags|gc|proof|portal)
     cmd="cmd_$1"; shift; "$cmd" "$@" ;;
-  *) sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

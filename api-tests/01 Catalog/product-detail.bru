@@ -1,0 +1,27 @@
+meta {
+  name: product detail via bff (public)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/bff-service/v1/products/{{productId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.data.id: eq {{productId}}
+}
+
+tests {
+  test("bff joins catalog (product-service) with stock (inventory gRPC)", function () {
+    const d = res.getBody().data;
+    expect(d.stock_quantity).to.be.a("number");
+    expect(d.in_stock).to.be.a("boolean");
+  });
+  test("wire format is snake_case", function () {
+    expect(res.getBody().data).to.not.have.property("stockQuantity");
+  });
+}

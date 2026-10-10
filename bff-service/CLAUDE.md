@@ -24,5 +24,12 @@ When a Feign response is deserialized as `Map<String, Object>` instead of a type
 ### Cart endpoints
 `/v1/cart`, `/v1/cart:add-item`, `/v1/cart:update-quantity`, `/v1/cart:remove-item`. Colon-action paths must be **absolute on the method annotation** (no class-level `@RequestMapping`) — otherwise Spring inserts a slash and the route breaks. See root CLAUDE.md.
 
+### Downstream errors keep their meaning
+`exception/DownstreamExceptionHandler` handles every `FeignException`: a downstream **4xx is passed
+through with its own status and body** (the caller's mistake, with the real validation detail), a
+**5xx/unreachable becomes 502** without internal URLs. Before it, every downstream error — even a 400
+for the caller's own bad input — surfaced as a raw 500. Pinned by
+`api-tests/03 Cart/add-item-invalid-400.bru` and `DownstreamExceptionHandlerTest`.
+
 ### Cart upsert
 "Add N of X" must look up existing line and merge quantity (slave repo lookup → master upsert), not blind insert. See `memory/feedback_cart_upsert.md`.

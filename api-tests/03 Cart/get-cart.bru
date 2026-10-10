@@ -1,0 +1,30 @@
+meta {
+  name: get cart
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/bff-service/v1/cart
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+}
+
+tests {
+  test("the item just added is in the cart", function () {
+    const items = res.getBody().data.items;
+    expect(items.map(i => i.product_id)).to.include(bru.getEnvVar("productId2"));
+  });
+  test("adding the same product again upserts, never duplicates", function () {
+    const ids = res.getBody().data.items.map(i => i.product_id);
+    expect(ids.length).to.equal(new Set(ids).size);
+  });
+}

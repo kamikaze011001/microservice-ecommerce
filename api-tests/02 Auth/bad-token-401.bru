@@ -1,0 +1,22 @@
+meta {
+  name: garbage token → 401
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/bff-service/v1/cart
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: not.a.jwt
+}
+
+tests {
+  test("401 auth.token_invalid", function () {
+    expect(res.getStatus()).to.equal(401);
+    expect(res.getBody().data.code).to.equal("auth.token_invalid");
+  });
+}

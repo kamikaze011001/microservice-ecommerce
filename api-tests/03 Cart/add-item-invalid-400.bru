@@ -1,0 +1,33 @@
+meta {
+  name: add item without price → 400
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/bff-service/v1/cart:add-item
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "product_id": "{{productId2}}",
+    "quantity": 1
+  }
+}
+
+tests {
+  // order-service rejects this with 400 + the field error; the caller must get
+  // that, not a 500. (bff used to turn every downstream 4xx into a raw 500.)
+  test("a client error stays a client error (400, not 500)", function () {
+    expect(res.getStatus()).to.equal(400);
+  });
+  test("the validation detail reaches the caller", function () {
+    expect(res.getBody().data.errors).to.have.property("price");
+  });
+}

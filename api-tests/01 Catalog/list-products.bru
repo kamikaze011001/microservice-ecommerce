@@ -1,0 +1,32 @@
+meta {
+  name: list products (public)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/product-service/v1/products?page=1&size=5
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+tests {
+  test("PERMIT_ALL: browsing needs no token", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("paged: page/size/total + a data array", function () {
+    const d = res.getBody().data;
+    expect(d.page).to.equal(1);
+    expect(d.size).to.equal(5);
+    expect(d.total).to.be.at.least(1);
+    expect(d.data).to.be.an("array").that.is.not.empty;
+  });
+  test("items carry id, name, price", function () {
+    const p = res.getBody().data.data[0];
+    expect(p).to.include.keys("id", "name", "price");
+  });
+}

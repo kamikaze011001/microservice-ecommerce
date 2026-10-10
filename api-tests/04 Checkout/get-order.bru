@@ -1,0 +1,31 @@
+meta {
+  name: get order
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/order-service/v1/orders/{{orderId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.data.id: eq {{orderId}}
+}
+
+tests {
+  test("unpaid order is PROCESSING (the saga waits for payment)", function () {
+    expect(res.getBody().data.status).to.equal("PROCESSING");
+  });
+  test("keeps what was ordered", function () {
+    const d = res.getBody().data;
+    expect(d.address).to.equal("bruno api test");
+    expect(d.items.map(i => i.product_id)).to.include(bru.getEnvVar("productId"));
+  });
+}
