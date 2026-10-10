@@ -6,6 +6,15 @@
     {
       "name": "orderId",
       "type": "string"
+    },
+    {
+      "name": "items",
+      "type": {
+        "type": "array",
+        "items": "org.aibles.ecommerce.common_dto.avro_kafka.OrderLine"
+      },
+      "default": [],
+      "doc": "The order's lines. Default [] keeps the change backward compatible: records written before it read as no items."
     }
   ]
 }

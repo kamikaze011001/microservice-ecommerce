@@ -40,4 +40,13 @@ public class SagaInstance {
 
     @Column(name = "expires_at", nullable = false)
     private LocalDateTime expiresAt;
+
+    /**
+     * The order's lines as JSON ([{"productId":…,"quantity":…}]), from
+     * Order.Created; forwarded to inventory on PaymentSuccess. Null for sagas
+     * started before Order.Created carried them — inventory then falls back to
+     * its old Redis lookup.
+     */
+    @Column(name = "items", columnDefinition = "TEXT")
+    private String items;
 }

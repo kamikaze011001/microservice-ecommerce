@@ -72,6 +72,10 @@
 						<configuration>
 							<sourceDirectory>${project.basedir}/src/main/resources/avro</sourceDirectory>
 							<outputDirectory>${project.basedir}/target/generated-sources/avro</outputDirectory>
+							<!-- Named types used by other schemas must be parsed first. -->
+							<imports>
+								<import>${project.basedir}/src/main/resources/avro/OrderLine.avsc</import>
+							</imports>
 						</configuration>
 					</execution>
 				</executions>

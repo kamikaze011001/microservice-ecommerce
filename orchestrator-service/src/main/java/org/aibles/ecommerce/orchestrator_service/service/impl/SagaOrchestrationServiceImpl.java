@@ -1,8 +1,11 @@
 package org.aibles.ecommerce.orchestrator_service.service.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.aibles.ecommerce.common_dto.avro_kafka.PaymentCanceled;
+import org.aibles.ecommerce.common_dto.avro_kafka.OrderLine;
 import org.aibles.ecommerce.common_dto.avro_kafka.PaymentFailed;
 import org.aibles.ecommerce.common_dto.avro_kafka.PaymentSuccess;
 import org.aibles.ecommerce.common_dto.event.*;
@@ -19,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -55,13 +59,14 @@ public class SagaOrchestrationServiceImpl implements SagaOrchestrationService {
 
     @Override
     @Transactional
-    public void startSaga(String orderId) {
-        log.info("(startSaga) Starting saga for orderId: {}", orderId);
+    public void startSaga(String orderId, List<SagaItem> items) {
+        log.info("(startSaga) Starting saga for orderId: {} with {} line(s)", orderId, items.size());
         SagaInstance saga = SagaInstance.builder()
                 .id(UUID.randomUUID().toString())
                 .orderId(orderId)
                 .state(SagaState.AWAITING_PAYMENT)
                 .expiresAt(LocalDateTime.now().plusMinutes(sagaTtlMinutes))
+                .items(items.isEmpty() ? null : writeItems(items))
                 .build();
         try {
             repo.save(saga);
@@ -134,7 +139,13 @@ public class SagaOrchestrationServiceImpl implements SagaOrchestrationService {
         saga.setState(SagaState.CONFIRMING);
         repo.save(saga);
 
-        PaymentSuccess avro = PaymentSuccess.newBuilder().setOrderId(orderId).build();
+        // The lines ride along so inventory decrements from the event itself.
+        PaymentSuccess avro = PaymentSuccess.newBuilder()
+                .setOrderId(orderId)
+                .setItems(readItems(saga).stream()
+                        .map(i -> OrderLine.newBuilder().setProductId(i.productId()).setQuantity(i.quantity()).build())
+                        .toList())
+                .build();
         boolean orderSent = sendWithRetry(topic("order-service.order.success-status"), orderId, avro);
         if (!orderSent) {
             log.error("(handleSuccess) Failed to notify order-service for orderId: {} — compensating", orderId);
@@ -204,6 +215,26 @@ public class SagaOrchestrationServiceImpl implements SagaOrchestrationService {
         } catch (Exception e) {
             log.warn("(extractOrderId) Failed to extract orderId from data: {}", data, e);
             return null;
+        }
+    }
+
+    private String writeItems(List<SagaItem> items) {
+        try {
+            return objectMapper.writeValueAsString(items);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("cannot serialize saga items", e);
+        }
+    }
+
+    /** Empty for sagas started before Order.Created carried lines. */
+    private List<SagaItem> readItems(SagaInstance saga) {
+        if (saga.getItems() == null || saga.getItems().isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(saga.getItems(), new TypeReference<List<SagaItem>>() { });
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("corrupt saga items for orderId " + saga.getOrderId(), e);
         }
     }
 }

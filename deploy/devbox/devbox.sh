@@ -376,16 +376,19 @@ env_commit_push() {  # <subject> <body>
 # Application reports THIS env commit Synced + Healthy and the Deployment has
 # finished rolling out the expected tag.
 sync_wait() {  # <env> <svc> <tag>
-  local app="$1-$2" want rev sync health img start=$SECONDS
+  local app="$1-$2" want rev sync health img start=$SECONDS NS=apps MYSQL_DB MONGO_DB PREFIX CONNECTOR CDC_PREFIX CDC_TOPIC
+  # The env's own namespace — `apps` is only prod-like's. Hard-coding it made
+  # every preview ship read prod-like's Deployment and time out (600s).
+  [[ "$1" == preview-* ]] && eval "$(env_names "$1")"
   want="$(git -C "$ENV_CLONE" rev-parse HEAD)"
   $K -n argocd annotate application "$app" argocd.argoproj.io/refresh=normal --overwrite >/dev/null
   log_info "waiting for $app to run $3 (env commit ${want:0:7})"
   while :; do
     IFS=$'\t' read -r rev sync health < <($K -n argocd get application "$app" -o json \
       | jq -r '[.status.sync.revisions[1] // "-", .status.sync.status // "-", .status.health.status // "-"] | @tsv')
-    img="$($K -n apps get deploy "$2" -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
+    img="$($K -n "$NS" get deploy "$2" -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
     if [[ "$rev" == "$want" && "$sync" == Synced && "$health" == Healthy && "$img" == *":$3" ]] \
-       && $K -n apps rollout status deploy/"$2" --timeout=5s >/dev/null 2>&1; then
+       && $K -n "$NS" rollout status deploy/"$2" --timeout=5s >/dev/null 2>&1; then
       log_ok "$app → $3 (Synced, Healthy, $((SECONDS - start))s)"
       return 0
     fi

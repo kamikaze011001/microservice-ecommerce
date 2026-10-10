@@ -1,0 +1,10 @@
+{
+  "type": "record",
+  "namespace": "org.aibles.ecommerce.common_dto.avro_kafka",
+  "name": "OrderLine",
+  "doc": "One product line of an order: what inventory decrements when the order is paid. Carried by OrderCreated and PaymentSuccess so inventory never has to look the order up (in particular not in Redis, which can lose it).",
+  "fields": [
+    { "name": "productId", "type": "string" },
+    { "name": "quantity", "type": "long" }
+  ]
+}

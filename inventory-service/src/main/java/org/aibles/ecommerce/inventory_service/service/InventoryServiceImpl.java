@@ -216,49 +216,70 @@ public class InventoryServiceImpl implements InventoryService {
                 .build();
     }
 
+    /**
+     * Applies a paid order to stock — exactly once, and never silently not at all.
+     *
+     * <p>The lines come from the event (PaymentSuccess carries them since the
+     * order was created), so this no longer depends on the Redis pending-order
+     * index: a Redis restart used to empty it, this method then logged "invalid
+     * or already processed" and committed the inbox row anyway — the decrement
+     * was lost and every redelivery skipped it as a duplicate (70 of 532 orders
+     * in the chaos run).
+     *
+     * <p>If the lines can't be determined, or the floor-guarded decrement can't
+     * be applied, it THROWS: the whole transaction (inbox row included) rolls
+     * back, the consumer retries, then dead-letters it — visible and replayable,
+     * instead of marked done.
+     *
+     * <p>The inbox row is written AFTER the stock work, in the same transaction:
+     * it records "this payment's stock change happened". Two pods racing on one
+     * order both decrement under the per-product locks, then collide on the
+     * inbox primary key at flush; the loser's transaction — its decrement with
+     * it — rolls back, and its redelivery takes the existsById branch.
+     */
     @Override
     @Transactional
-    public void handleSuccessPayment(String orderId) {
-        log.info("(handleSuccessPayment)orderId: {}", orderId);
+    public void handleSuccessPayment(String orderId, Map<String, Long> lines) {
+        log.info("(handleSuccessPayment)orderId: {} lines: {}", orderId, lines.size());
 
-        // Inbox, in THIS transaction: if anything below fails, the row rolls back with
-        // the stock decrement and the redelivery does the work again.
         String inboxId = ProcessedPaymentEvent.idOf(orderId, PaymentEventType.PAYMENT_SUCCESS);
         if (masterProcessedPaymentEventRepo.existsById(inboxId)) {
             log.info("payment success already applied, skipping redelivery. orderId={}", orderId);
             return;
         }
-        // Flushed now so two pods racing on the same order collide on the primary key
-        // here, before either touches stock. The loser's transaction rolls back and its
-        // redelivery takes the existsById branch above.
-        masterProcessedPaymentEventRepo.saveAndFlush(ProcessedPaymentEvent.of(orderId, PaymentEventType.PAYMENT_SUCCESS));
 
-        processInventoryUpdate(orderId);
+        processInventoryUpdate(orderId, resolveLines(orderId, lines));
+
+        masterProcessedPaymentEventRepo.saveAndFlush(ProcessedPaymentEvent.of(orderId, PaymentEventType.PAYMENT_SUCCESS));
     }
 
     /**
-     * Processes inventory update for a successful payment.
-     * Layer 1: does NOT touch Redis available counter (the unit was already removed at reserve time).
-     * Layer 2: decrements inventory_product.stock with an atomic conditional floor (stock >= n).
-     *          If 0 rows updated → would-be oversell blocked; log alert, skip ledger row.
-     * Keeps the product_quantity_history ledger write for history/compat when DB floor passes.
+     * The event's lines; for events published before they were carried, the old
+     * Redis index (transition only). Neither → the payment can't be applied.
      */
-    private void processInventoryUpdate(String orderId) {
+    private Map<String, Long> resolveLines(String orderId, Map<String, Long> fromEvent) {
+        if (!fromEvent.isEmpty()) {
+            return fromEvent;
+        }
+        Map<String, Long> fromRedis = pendingOrderCacheRepository.getProductQuantitiesForOrder(orderId)
+                .orElse(Map.of());
+        if (!fromRedis.isEmpty()) {
+            log.warn("payment success without lines (published before they were carried); using the Redis index. orderId={}",
+                    orderId);
+            return fromRedis;
+        }
+        throw new PaymentStockNotAppliedException(
+                "no order lines for orderId " + orderId + ": not in the event, not in the Redis index");
+    }
+
+    /**
+     * Layer 1: does NOT touch the Redis available counter (the unit left it at reserve time).
+     * Layer 2: decrements inventory_product.stock with an atomic conditional floor (stock >= n).
+     *          0 rows = this paid order would take stock below zero → throw; the whole order
+     *          rolls back to the dead-letter topic rather than being half-applied or skipped.
+     */
+    private void processInventoryUpdate(String orderId, Map<String, Long> productQuantityFromOrder) {
         log.info("(processInventoryUpdate) Processing inventory update for order: {}", orderId);
-
-        Optional<Map<String, Long>> productQuantityFromOrderOptional =
-                pendingOrderCacheRepository.getProductQuantitiesForOrder(orderId);
-        if (productQuantityFromOrderOptional.isEmpty()) {
-            log.warn("(processInventoryUpdate) orderId: {} is invalid or already processed", orderId);
-            return;
-        }
-
-        Map<String, Long> productQuantityFromOrder = productQuantityFromOrderOptional.get();
-
-        if (productQuantityFromOrder.isEmpty()) {
-            log.warn("(processInventoryUpdate) orderId: {} has no products", orderId);
-            return;
-        }
 
         List<String> productIds = new ArrayList<>(productQuantityFromOrder.keySet());
         Collections.sort(productIds);
@@ -280,13 +301,12 @@ public class InventoryServiceImpl implements InventoryService {
                 int rows = masterInventoryProductRepository.decrementStockIfSufficient(productId, qty);
 
                 if (rows == 0) {
-                    // DB floor triggered: this commit would have caused an oversell.
-                    // Log an error-level alert — this must never happen in normal operation.
-                    log.error("(processInventoryUpdate) DB floor blocked would-be oversell — " +
-                              "productId={} requestedDecrement={} currentStock<qty; skipping ledger write",
-                              productId, qty);
-                    // Skip the ledger row for this product to keep SUM(history) consistent
-                    continue;
+                    // DB floor: applying this paid order would take stock below zero.
+                    // Skipping it (the old behaviour) silently dropped a sold unit from
+                    // the ledger; throwing rolls back the whole order to the DLT, where
+                    // an operator sees it and `make dlt-replay` can re-apply it.
+                    throw new PaymentStockNotAppliedException("stock floor: productId " + productId
+                            + " has less than " + qty + " left for paid orderId " + orderId);
                 }
 
                 // Layer 1 (commit path): do NOT touch Redis available counter.
@@ -314,6 +334,8 @@ public class InventoryServiceImpl implements InventoryService {
             pendingOrderCacheRepository.removeFromPendingOrders(orderId);
             log.info("(processInventoryUpdate) Successfully processed inventory and cleaned up order: {}", orderId);
 
+        } catch (PaymentStockNotAppliedException e) {
+            throw e;   // already says why; don't bury it under a generic wrapper
         } catch (Exception e) {
             log.error("(processInventoryUpdate) Error processing inventory for orderId: {}", orderId, e);
             throw new InternalErrorException("inventory.order.processing_failed", Map.of("order_id", orderId));

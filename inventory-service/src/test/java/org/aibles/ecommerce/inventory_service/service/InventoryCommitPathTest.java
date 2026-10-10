@@ -3,7 +3,6 @@ package org.aibles.ecommerce.inventory_service.service;
 import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheRepository;
 import org.aibles.ecommerce.core_redis.constant.RedisConstant;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
-import org.aibles.ecommerce.inventory_service.constant.PaymentEventType;
 import org.aibles.ecommerce.inventory_service.repository.master.MasterProcessedPaymentEventRepo;
 import org.aibles.ecommerce.inventory_service.repository.master.MasterInventoryProductRepository;
 import org.aibles.ecommerce.inventory_service.repository.master.MasterProductQuantityHistoryRepo;
@@ -19,19 +18,26 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * The payment-success commit path. Contract (since the chaos run lost 70 of 532
+ * decrements when Redis restarted):
+ *  - the order lines come from the EVENT; the Redis index is only a fallback
+ *    for events published before lines were carried;
+ *  - no lines anywhere, or the stock floor → THROW (the transaction, inbox row
+ *    included, rolls back; the consumer retries, then dead-letters it);
+ *  - the inbox row is written AFTER the stock work — it means "applied".
+ */
 class InventoryCommitPathTest {
 
     private MasterInventoryProductRepository masterInventoryProductRepository;
-    private SlaveInventoryProductRepository slaveInventoryProductRepository;
     private MasterProductQuantityHistoryRepo masterProductQuantityHistoryRepo;
-    private SlaveProductQuantityHistoryRepo slaveProductQuantityHistoryRepo;
     private ApplicationEventPublisher applicationEventPublisher;
     private RedisRepository redisRepository;
     private PendingOrderCacheRepository pendingOrderCacheRepository;
-    private RedissonClient redissonClient;
     private MasterProcessedPaymentEventRepo masterProcessedPaymentEventRepo;
 
     private InventoryServiceImpl inventoryService;
@@ -39,20 +45,18 @@ class InventoryCommitPathTest {
     @BeforeEach
     void setUp() {
         masterInventoryProductRepository = mock(MasterInventoryProductRepository.class);
-        slaveInventoryProductRepository = mock(SlaveInventoryProductRepository.class);
         masterProductQuantityHistoryRepo = mock(MasterProductQuantityHistoryRepo.class);
-        slaveProductQuantityHistoryRepo = mock(SlaveProductQuantityHistoryRepo.class);
         applicationEventPublisher = mock(ApplicationEventPublisher.class);
         redisRepository = mock(RedisRepository.class);
         pendingOrderCacheRepository = mock(PendingOrderCacheRepository.class);
-        redissonClient = mock(RedissonClient.class);
+        RedissonClient redissonClient = mock(RedissonClient.class);
         masterProcessedPaymentEventRepo = mock(MasterProcessedPaymentEventRepo.class);
 
         inventoryService = new InventoryServiceImpl(
                 masterInventoryProductRepository,
-                slaveInventoryProductRepository,
+                mock(SlaveInventoryProductRepository.class),
                 masterProductQuantityHistoryRepo,
-                slaveProductQuantityHistoryRepo,
+                mock(SlaveProductQuantityHistoryRepo.class),
                 applicationEventPublisher,
                 redisRepository,
                 pendingOrderCacheRepository,
@@ -60,7 +64,6 @@ class InventoryCommitPathTest {
                 masterProcessedPaymentEventRepo
         );
 
-        // Default lock stub
         RLock lock = mock(RLock.class);
         when(redissonClient.getFairLock(anyString())).thenReturn(lock);
         try {
@@ -70,108 +73,105 @@ class InventoryCommitPathTest {
     }
 
     @Test
-    void handleSuccessPayment_doesNotDecrRedisQueueCounter() {
-        // Arrange
-        when(pendingOrderCacheRepository.getProductQuantitiesForOrder("order-1"))
-                .thenReturn(Optional.of(Map.of("prod-1", 3L)));
-        when(masterInventoryProductRepository.decrementStockIfSufficient("prod-1", 3L))
-                .thenReturn(1);
-
-        // Act
-        inventoryService.handleSuccessPayment("order-1");
-
-        // Assert — MUST NOT call decr on QUEUE_PRODUCT_KEY (old pattern)
-        verify(redisRepository, never()).decr(
-                eq(RedisConstant.QUEUE_PRODUCT_KEY + "prod-1"), anyLong());
-        // MUST NOT call incr/decr on AVAILABLE_PRODUCT_KEY at commit time either
-        verify(redisRepository, never()).decr(
-                eq(RedisConstant.AVAILABLE_PRODUCT_KEY + "prod-1"), anyLong());
-        verify(redisRepository, never()).incr(
-                eq(RedisConstant.AVAILABLE_PRODUCT_KEY + "prod-1"), anyLong());
-    }
-
-    @Test
-    void handleSuccessPayment_callsDecrementStockIfSufficient_forEachProduct() {
-        when(pendingOrderCacheRepository.getProductQuantitiesForOrder("order-2"))
-                .thenReturn(Optional.of(Map.of("prod-A", 2L, "prod-B", 5L)));
+    void decrementsFromTheEventsLinesWithoutAskingRedis() {
         when(masterInventoryProductRepository.decrementStockIfSufficient("prod-A", 2L)).thenReturn(1);
         when(masterInventoryProductRepository.decrementStockIfSufficient("prod-B", 5L)).thenReturn(1);
 
-        inventoryService.handleSuccessPayment("order-2");
+        inventoryService.handleSuccessPayment("order-2", Map.of("prod-A", 2L, "prod-B", 5L));
 
         verify(masterInventoryProductRepository).decrementStockIfSufficient("prod-A", 2L);
         verify(masterInventoryProductRepository).decrementStockIfSufficient("prod-B", 5L);
+        verify(masterProductQuantityHistoryRepo, times(2)).save(any());
+        verify(pendingOrderCacheRepository, never()).getProductQuantitiesForOrder(anyString());
     }
 
     @Test
-    void handleSuccessPayment_dbFloorReturnsZero_logsAlertAndSkipsLedgerWrite() {
-        // Arrange — stock already 0 (DB floor would be violated)
-        when(pendingOrderCacheRepository.getProductQuantitiesForOrder("order-3"))
-                .thenReturn(Optional.of(Map.of("prod-depleted", 1L)));
-        when(masterInventoryProductRepository.decrementStockIfSufficient("prod-depleted", 1L))
-                .thenReturn(0); // DB floor triggered
+    void theRedisLossScenario_noLinesAnywhere_throwsAndLeavesNoInboxRow() {
+        // The chaos-run bug: the event has no lines (old) and Redis lost the index.
+        // It used to log "invalid or already processed" and commit the inbox row.
+        when(pendingOrderCacheRepository.getProductQuantitiesForOrder("order-lost")).thenReturn(Optional.empty());
 
-        // Act — must not throw
-        inventoryService.handleSuccessPayment("order-3");
+        assertThatThrownBy(() -> inventoryService.handleSuccessPayment("order-lost", Map.of()))
+                .isInstanceOf(PaymentStockNotAppliedException.class)
+                .hasMessageContaining("order-lost");
 
-        // Assert — ledger row must NOT be saved for a would-be oversell
+        verify(masterProcessedPaymentEventRepo, never()).saveAndFlush(any());
+        verify(masterInventoryProductRepository, never()).decrementStockIfSufficient(anyString(), anyLong());
+    }
+
+    @Test
+    void anEventFromBeforeTheChangeFallsBackToTheRedisIndex() {
+        when(pendingOrderCacheRepository.getProductQuantitiesForOrder("order-old"))
+                .thenReturn(Optional.of(Map.of("prod-1", 3L)));
+        when(masterInventoryProductRepository.decrementStockIfSufficient("prod-1", 3L)).thenReturn(1);
+
+        inventoryService.handleSuccessPayment("order-old", Map.of());
+
+        verify(masterInventoryProductRepository).decrementStockIfSufficient("prod-1", 3L);
+        verify(masterProcessedPaymentEventRepo).saveAndFlush(argThat(e -> e.getId().equals("order-old:PAYMENT_SUCCESS")));
+    }
+
+    @Test
+    void doesNotTouchTheRedisAvailableCounterAtCommit() {
+        when(masterInventoryProductRepository.decrementStockIfSufficient("prod-1", 3L)).thenReturn(1);
+
+        inventoryService.handleSuccessPayment("order-1", Map.of("prod-1", 3L));
+
+        // The unit left the available counter at reserve time (order-service).
+        verify(redisRepository, never()).decr(eq(RedisConstant.QUEUE_PRODUCT_KEY + "prod-1"), anyLong());
+        verify(redisRepository, never()).decr(eq(RedisConstant.AVAILABLE_PRODUCT_KEY + "prod-1"), anyLong());
+        verify(redisRepository, never()).incr(eq(RedisConstant.AVAILABLE_PRODUCT_KEY + "prod-1"), anyLong());
+    }
+
+    @Test
+    void stockFloor_throwsInsteadOfSilentlySkippingAPaidLine() {
+        when(masterInventoryProductRepository.decrementStockIfSufficient("prod-depleted", 1L)).thenReturn(0);
+
+        assertThatThrownBy(() -> inventoryService.handleSuccessPayment("order-3", Map.of("prod-depleted", 1L)))
+                .isInstanceOf(PaymentStockNotAppliedException.class)
+                .hasMessageContaining("prod-depleted");
+
         verify(masterProductQuantityHistoryRepo, never()).save(any());
-        // ...and no inventory-update event may be published for a floor-blocked product
-        verify(applicationEventPublisher, never()).publishEvent(any());
+        verify(masterProcessedPaymentEventRepo, never()).saveAndFlush(any());
     }
 
     @Test
-    void handleSuccessPayment_oneProductFloorBlocked_otherStillProcessed() {
-        when(pendingOrderCacheRepository.getProductQuantitiesForOrder("order-mix"))
-                .thenReturn(Optional.of(Map.of("prod-ok", 2L, "prod-blocked", 4L)));
-        when(masterInventoryProductRepository.decrementStockIfSufficient("prod-ok", 2L)).thenReturn(1);
-        when(masterInventoryProductRepository.decrementStockIfSufficient("prod-blocked", 4L)).thenReturn(0);
+    void oneLineAtTheFloor_failsTheWholeOrder_notHalfOfIt() {
+        // Lines are applied in sorted order: prod-a passes, prod-b hits the floor.
+        when(masterInventoryProductRepository.decrementStockIfSufficient("prod-a", 2L)).thenReturn(1);
+        when(masterInventoryProductRepository.decrementStockIfSufficient("prod-b", 4L)).thenReturn(0);
 
-        inventoryService.handleSuccessPayment("order-mix");
+        assertThatThrownBy(() -> inventoryService.handleSuccessPayment("order-mix", Map.of("prod-a", 2L, "prod-b", 4L)))
+                .isInstanceOf(PaymentStockNotAppliedException.class);
 
-        // Only the passing product writes a ledger row and publishes an event;
-        // the floor-blocked product is skipped via continue.
-        verify(masterProductQuantityHistoryRepo, times(1)).save(any());
-        verify(applicationEventPublisher, times(1)).publishEvent(any());
-        // Cleanup still runs for the order as a whole.
-        verify(pendingOrderCacheRepository).removeFromPendingOrders("order-mix");
+        // prod-a's writes happened inside the transaction that now rolls back;
+        // what matters here is the event is NOT marked applied.
+        verify(masterProcessedPaymentEventRepo, never()).saveAndFlush(any());
+        verify(pendingOrderCacheRepository, never()).removeFromPendingOrders("order-mix");
     }
 
     @Test
-    void handleSuccessPayment_alreadyProcessed_skipsEverything() {
-        when(masterProcessedPaymentEventRepo.existsById("order-dup:PAYMENT_SUCCESS")).thenReturn(true);
-
-        inventoryService.handleSuccessPayment("order-dup");
-
-        verifyNoInteractions(pendingOrderCacheRepository);
-        verifyNoInteractions(masterInventoryProductRepository);
-        verifyNoInteractions(redisRepository);
-    }
-
-    @Test
-    void handleSuccessPayment_firstDelivery_writesInboxRowBeforeTouchingStock() {
-        when(pendingOrderCacheRepository.getProductQuantitiesForOrder("order-4"))
-                .thenReturn(Optional.of(Map.of("prod-1", 2L)));
+    void theInboxRowIsWrittenAfterTheStockWork() {
         when(masterInventoryProductRepository.decrementStockIfSufficient("prod-1", 2L)).thenReturn(1);
 
-        inventoryService.handleSuccessPayment("order-4");
+        inventoryService.handleSuccessPayment("order-4", Map.of("prod-1", 2L));
 
-        // The inbox row is flushed first: a concurrent pod collides on its primary key
-        // before either of them decrements stock.
-        org.mockito.InOrder inOrder = inOrder(masterProcessedPaymentEventRepo, masterInventoryProductRepository);
+        // "processed" means the stock change happened — never the other way round.
+        org.mockito.InOrder inOrder = inOrder(masterInventoryProductRepository, masterProcessedPaymentEventRepo);
+        inOrder.verify(masterInventoryProductRepository).decrementStockIfSufficient("prod-1", 2L);
         inOrder.verify(masterProcessedPaymentEventRepo).saveAndFlush(argThat(e ->
                 e.getId().equals("order-4:PAYMENT_SUCCESS")));
-        inOrder.verify(masterInventoryProductRepository).decrementStockIfSufficient("prod-1", 2L);
     }
 
     @Test
-    void handleSuccessPayment_redelivery_doesNotDecrementAgain() {
+    void aRedeliveryOfAnAppliedPaymentChangesNothing() {
         when(masterProcessedPaymentEventRepo.existsById("order-5:PAYMENT_SUCCESS")).thenReturn(true);
 
-        inventoryService.handleSuccessPayment("order-5");
+        inventoryService.handleSuccessPayment("order-5", Map.of("prod-1", 2L));
 
         verify(masterInventoryProductRepository, never()).decrementStockIfSufficient(anyString(), anyLong());
         verify(masterProductQuantityHistoryRepo, never()).save(any());
         verify(masterProcessedPaymentEventRepo, never()).saveAndFlush(any());
+        verifyNoInteractions(pendingOrderCacheRepository);
     }
 }
