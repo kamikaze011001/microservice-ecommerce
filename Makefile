@@ -821,7 +821,7 @@ k8s-down: k8s-cluster-down
 # ============================================================================
 # Devbox — GitOps on the local cluster (deploy/devbox/, docs/platform/)
 # ============================================================================
-.PHONY: devbox-up devbox-platform devbox-push devbox-apps devbox-wait devbox-status devbox-open devbox-close
+.PHONY: devbox-portal devbox-up devbox-platform devbox-push devbox-apps devbox-wait devbox-status devbox-open devbox-close
 
 DEVBOX := CONTEXT=$(K8S_CLUSTER) deploy/devbox/devbox.sh
 
@@ -843,6 +843,7 @@ devbox-up: k8s-cluster-up k8s-infra-helm k8s-build-reuse
 	@$(DEVBOX) wait
 	@$(MAKE) --no-print-directory seed ENV=k8s STAGE=post-apps CONTEXT=$(K8S_CLUSTER)
 	@$(MAKE) --no-print-directory k8s-seed-perftest
+	@$(DEVBOX) portal
 	@$(DEVBOX) open
 
 ## devbox-platform: install/upgrade Gitea + Argo CD only
@@ -869,6 +870,10 @@ devbox-open:
 
 devbox-close:
 	@$(DEVBOX) close
+
+## devbox-portal: build + deploy the portal UI (envs, versions, deploy, history, perf) on :8282
+devbox-portal:
+	@$(DEVBOX) portal
 
 .PHONY: devbox-version devbox-ship devbox-deploy devbox-tags devbox-gc devbox-proof devbox-test
 

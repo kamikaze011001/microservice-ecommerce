@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: devbox-portal
+  jackson:
+    # The repo's wire format (root CLAUDE.md): snake_case on every DTO.
+    property-naming-strategy: SNAKE_CASE
+
+server:
+  port: 8282
+
+# Same split as every service here: actuator on http+10000, never behind an Ingress.
+management:
+  server:
+    port: 18282
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+# In-cluster defaults (namespace devbox). Override any of them with env vars,
+# e.g. DEVBOX_GITEA_URL=http://localhost:3300 to run the portal on your laptop
+# against `make devbox-open`'s forwards.
+devbox:
+  gitea:
+    url: http://gitea-http.devbox.svc.cluster.local:3000
+    user: devbox
+    password: ${GITEA_PASSWORD:}
+    owner: devbox
+    env-repo: env-config
+    branch: main
+  registry-url: http://registry.kube-system.svc.cluster.local
+  metrics-url: http://vmsingle.monitoring.svc.cluster.local:8428
+  argo-namespace: argocd
+  links:
+    argocd: http://localhost:8180
+    gitea: http://localhost:3300
+    grafana: http://localhost:3301
+    registry: http://localhost:8181

@@ -17,6 +17,7 @@ version_inputs() {
   case "$1" in
     frontend)            echo "frontend" ;;
     mock-paypal-service) echo "mock-paypal-service" ;;
+    devbox-portal)       echo "deploy/devbox/portal" ;;
     *) echo "$1 core deploy/images/Dockerfile.jvm deploy/images/Dockerfile.cores" ;;
   esac
 }
