@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Devbox 6 — API tests</title>
+<link rel="stylesheet" href="platform.css"/>
+<style>
+  .pyr{display:flex;flex-direction:column;align-items:center;gap:6px;margin:16px 0}
+  .pyr div{border:1px solid var(--line);border-radius:10px;padding:8px 12px;text-align:center;background:var(--bg2);font-size:14px}
+  .pyr .hot{border-color:var(--git);box-shadow:0 0 0 2px color-mix(in srgb,var(--git) 25%,transparent)}
+  .pyr small{display:block;color:var(--faint);font-size:12px}
+  .recap td:first-child{font-weight:700;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="icon">🧪</div>
+  <h1>The contract, written down</h1>
+  <p>Phase 6 of the devbox. Every endpoint's promise — status, shape, error cases — as plain text files you can click through in a GUI or run against any env. On its first live run it found a real bug.</p>
+  <div class="series">Devbox · platform engineering series · 6 / 6</div>
+</header>
+
+<nav class="toc">
+  <a href="#idea">Big idea</a><a href="#where">Where it sits</a><a href="#anatomy">Anatomy</a><a href="#run">Run it</a>
+  <a href="#found">What it found</a><a href="#scars">What broke</a><a href="#interview">Interview</a><a href="#recap">The whole devbox</a>
+</nav>
+
+<main>
+
+<section id="idea">
+  <div class="bigidea">
+    <p class="big">A client of your API depends on <b>more than the happy path</b>: that a bad request is a 400 naming the bad field, that a missing token is a 401, that a forbidden route is a 403. Those promises are the contract — and they break silently, because nothing in the UI exercises them.</p>
+    <p class="big">So write them down as tests, and run them <b>after every deploy</b>.</p>
+  </div>
+</section>
+
+<section id="where">
+  <h2><span class="n">1</span>Where it sits</h2>
+  <div class="pyr">
+    <div style="width:45%">k6 end-to-end<small>PayPal redirects, saga, load — phases 4 / 3b</small></div>
+    <div class="hot" style="width:65%"><b>API contract (Bruno)</b><small>each endpoint's status, shape and errors — this phase</small></div>
+    <div style="width:85%">unit / slice tests<small>JUnit, Mockito, MockMvc, Vitest — in each service</small></div>
+  </div>
+  <p style="font-size:14.5px;color:var(--ink2)">The middle layer is the one that was missing. Unit tests mock the neighbours, so they can't see a 400 turning into a 500 <em>between</em> services; k6 checks that checkout works, not what an invalid request gets back.</p>
+</section>
+
+<section id="anatomy">
+  <h2><span class="n">2</span>Anatomy of the collection</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Folder</th><th>Requests</th><th>Contract pinned</th></tr>
+    <tr><td>01 Catalog</td><td>list products, product detail (bff)</td><td>public without a token; paging shape; bff joins stock; snake_case</td></tr>
+    <tr><td>02 Auth</td><td>login, wrong password, no token, garbage token, user on admin route</td><td>RS256 JWT; 400 / 401 <code>auth.token_missing</code> / 401 <code>auth.token_invalid</code> / 403 <code>auth.forbidden</code></td></tr>
+    <tr><td>03 Cart</td><td>add, get, add without price</td><td>upsert never duplicates; <b>a client error stays a 400</b></td></tr>
+    <tr><td>04 Checkout</td><td>invalid order, create order, create payment, get order, bff detail</td><td>400 names each bad field; approve link on <em>this env's</em> API host; unpaid = PROCESSING</td></tr>
+  </table></div>
+  <pre><code>meta { name: add item without price → 400 }
+post { url: {{baseUrl}}/bff-service/v1/cart:add-item  body: json  auth: bearer }
+auth:bearer { token: {{accessToken}} }          # set by 02 Auth/login
+body:json { { "product_id": "{{productId2}}", "quantity": 1 } }
+tests {
+  test("a client error stays a client error (400, not 500)", function () {
+    expect(res.getStatus()).to.equal(400);
+  });
+}</code></pre>
+  <p style="font-size:14.5px;color:var(--ink2)">Plain text: reviewed in PRs, diffed, merged — unlike a Postman export. Login stores <code>accessToken</code>; create-order stores <code>orderId</code>; later requests use them.</p>
+</section>
+
+<section id="run">
+  <h2><span class="n">3</span>Run it — three ways, same files</h2>
+  <div class="cards">
+    <div class="card"><h3>Bruno GUI</h3><p>Open <code>api-tests/</code>, environment <code>local</code> (needs the tunnel). Click, edit, add a request — it's a file in your diff.</p></div>
+    <div class="card"><h3><code>make devbox-api-test env=…</code></h3><p>The collection is streamed into a one-off pod <em>in that env's namespace</em>, so <code>gateway:6868</code> is that env's gateway. Bruno CLI 4.2.1. Prints only failed tests with their reason.</p></div>
+    <div class="card"><h3>After every ship</h3><p><code>make devbox-ship</code> runs it once the new version is live. <code>SMOKE=0</code> skips it. A deploy that breaks a contract says so in the same command.</p></div>
+  </div>
+</section>
+
+<section id="found">
+  <h2><span class="n">4</span>What it found on day one</h2>
+  <div class="scar">
+    <h3>A client's mistake reported as a server error</h3>
+    <p><b>Symptom:</b> <code>POST /bff-service/v1/cart:add-item</code> without <code>price</code> → <b>500</b>, Spring's default error body.</p>
+    <p><b>Cause:</b> order-service correctly answered <b>400</b> with <code>errors.price</code>. bff calls it over Feign, and nothing handled <code>FeignException</code> — so <em>every</em> downstream error, including the caller's own bad input, became a raw 500, and the validation detail was thrown away. A storefront would show "something went wrong" instead of "price is required"; monitoring would count user typos as outages.</p>
+    <p><b>Fix:</b> <code>DownstreamExceptionHandler</code> in bff — a downstream 4xx is passed through with its status and body; a 5xx or no answer is a 502 without internal URLs. Unit-tested (4 cases) and pinned by the Bruno test that found it.</p>
+  </div>
+  <div class="scar" style="border-left-color:var(--warn)">
+    <h3>Pinned, not changed: wrong password is a 400</h3>
+    <p>Login with a wrong (well-formed) password answers 400 with <code>code: "Your password is incorrect"</code> — a sentence where a code belongs, and arguably a 401. The suite pins today's behaviour instead of silently "fixing" a product decision; changing it now shows up as a deliberate test change.</p>
+  </div>
+</section>
+
+<section id="scars">
+  <h2><span class="n">5</span>What broke while building it</h2>
+  <div class="scar">
+    <h3>20 requests that didn't exist</h3>
+    <p>The first in-cluster run reported 35 requests (20 skipped) for a 15-request collection. macOS <code>tar</code> adds an AppleDouble <code>._name.bru</code> sidecar for each file; Bruno tried to read them. <code>COPYFILE_DISABLE=1</code>.</p>
+  </div>
+  <div class="scar">
+    <h3>A failure report that listed passing tests</h3>
+    <p>Bruno marks every non-2xx <em>request</em> — and half this suite is negative tests that expect 400/401/403 and pass. Reporting "non-2xx requests" listed six green tests as problems. The report keys on failed <em>tests</em> (<code>✕</code>) and prints the reason under each.</p>
+  </div>
+  <div class="scar">
+    <h3>A patch that silently didn't apply</h3>
+    <p>One scripted search-and-replace in <code>devbox.sh</code> didn't match (an escaping difference) and changed nothing — no error, because "replace" of a missing string is a no-op. The output simply didn't improve, which is how it was noticed. Edits that must apply should fail loudly when they don't.</p>
+  </div>
+</section>
+
+<section id="interview">
+  <h2><span class="n">6</span>Interview questions</h2>
+  <details><summary>What's an API contract test, and how is it different from a unit test?</summary>
+    <p>It calls the real, deployed API over HTTP and checks what a client relies on — status codes, response shape, error semantics — across service boundaries. Unit tests mock those boundaries, so they can't see what one service does with another's error.</p></details>
+  <details><summary>Why test the error cases at all?</summary>
+    <p>Clients branch on them: a 400 shows a field message, a 401 triggers re-login, a 403 hides a button, a 5xx retries or alerts. If a 400 becomes a 500, the UI shows the wrong thing and monitoring counts user mistakes as outages.</p></details>
+  <details><summary>What should a gateway/BFF do with a downstream error?</summary>
+    <p>Preserve its meaning: pass client errors (4xx) through with their detail; turn downstream failures into 502/503/504 for the caller; never leak internal hostnames or stack traces.</p></details>
+  <details><summary>Bruno vs Postman?</summary>
+    <p>Both are API clients with scripting and test runners. Bruno stores collections as plain text in your repo (reviewable, offline, no account); Postman centres on a cloud workspace and JSON exports. For tests that live next to the code and run in CI, the file-based model fits better.</p></details>
+</section>
+
+<section id="recap">
+  <h2><span class="n">7</span>The whole devbox</h2>
+  <div class="tablewrap recap"><table>
+    <tr><th>Phase</th><th>What a developer can do</th><th>The idea underneath</th></tr>
+    <tr><td><a href="01-gitops.html">1 GitOps</a></td><td>See every service's state in Argo CD; change an env by committing</td><td>Desired state in git, a controller reconciles</td></tr>
+    <tr><td><a href="02-versions.html">2 Versions</a></td><td><code>devbox-ship</code> your branch, <code>devbox-deploy</code> any tag back</td><td>Immutable artifacts; rollback is a commit</td></tr>
+    <tr><td><a href="03-envs.html">3 Envs</a></td><td>A full isolated preview next to prod-like, in the browser</td><td>An env is config + the state it points at</td></tr>
+    <tr><td><a href="04-perf.html">4 Perf</a></td><td>"Is my change slower?" with the versions that changed</td><td>Results carry their context; know your noise</td></tr>
+    <tr><td><a href="05-portal.html">5 Portal</a></td><td>All of it on one page; deploy with a click</td><td>A portal is a client, owning nothing</td></tr>
+    <tr><td>6 API tests</td><td>The contract checked after every ship</td><td>Test the promises, especially the errors</td></tr>
+  </table></div>
+  <p style="font-size:14.5px;color:var(--ink2)">Each phase was proven on the live cluster, and each one's proof found something real — a leaked Vault token, a lost-update path, a rollout storm, a 400 turned into a 500. That's the case for a platform: it's where those problems surface on a laptop instead of in production.</p>
+</section>
+
+</main>
+</body>
+</html>
