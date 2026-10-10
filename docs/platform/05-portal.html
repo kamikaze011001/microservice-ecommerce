@@ -88,7 +88,7 @@
       <div class="step">startup outlasts the liveness window → restart</div><span class="arr">↺</span>
     </div>
     <p><b>Evidence vs inference:</b> the young JVMs and the HPA left at 3 replicas while reporting 6% CPU are measured; the liveness kills are inferred — the API was down, so no events were captured.</p>
-    <p><b>Recovery:</b> the platform's own golden path — pin the old tag from the portal. Back on the healthy ReplicaSet in ~135 s; the env repo records deploy and rollback. <b>Follow-up</b> (chart, separate PR): a <code>startupProbe</code> so a slow JVM start isn't a liveness failure, and an HPA scale-up stabilization window so startup CPU can't trigger it.</p>
+    <p><b>Recovery:</b> the platform's own golden path — pin the old tag from the portal. Back on the healthy ReplicaSet in ~135 s; the env repo records deploy and rollback. <b>Follow-up, done</b> (<code>fix/chart-startup-probe</code>): every JVM service got a <code>startupProbe</code> (liveness endpoint, 5 s × 60 = 5 min budget), so a slow start can't be killed for being slow. Measured after: all 9 JVM services rolled at once in 76 s, and the exact storm trigger converged in 51 s (rollback 41 s) — 0 restarts, HPAs stayed at 1. Honest limit: node load was likely lower than during the storm, so this shows the fix holds, not that it alone would have prevented it. The HPA scale-up window was <em>not</em> changed — without evidence it caused the storm, slowing real scale-ups under k6 wasn't worth it.</p>
   </div>
   <div class="scar">
     <h3>Every file read would have been a 404</h3>
