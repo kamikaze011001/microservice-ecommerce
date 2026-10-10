@@ -15,9 +15,18 @@
 VM_LOCAL_PORT=8429
 VM_LOCAL="http://localhost:$VM_LOCAL_PORT"
 VM_IN_CLUSTER=http://vmsingle.monitoring.svc.cluster.local:8428
+GRAFANA_URL="http://localhost:${GRAFANA_LOCAL_PORT:-3301}"
+# In the portal's runner Job: by Service DNS, no port-forwards.
+if [[ "${DEVBOX_IN_CLUSTER:-}" == 1 ]]; then
+  VM_LOCAL=$VM_IN_CLUSTER
+  GRAFANA_URL=http://grafana.monitoring.svc.cluster.local
+fi
 PERF_DASHBOARD="${DEVBOX:-}/dashboards/devbox-perf.json"
 
-vm_forward() { start_forward vm monitoring vmsingle "$VM_LOCAL_PORT" 8428 /health; }
+vm_forward() {
+  [[ "${DEVBOX_IN_CLUSTER:-}" == 1 ]] && return 0
+  start_forward vm monitoring vmsingle "$VM_LOCAL_PORT" 8428 /health
+}
 
 vm_query() {  # <promql> → JSON result array
   curl -fsS --max-time 15 "$VM_LOCAL/api/v1/query" --data-urlencode "query=$1" | jq -c '.data.result'
@@ -55,10 +64,12 @@ env_versions() {  # <env>
 }
 
 ensure_perf_dashboard() {
-  start_forward grafana monitoring grafana "$GRAFANA_LOCAL_PORT" 80 /api/health >/dev/null || return 0
+  if [[ "${DEVBOX_IN_CLUSTER:-}" != 1 ]]; then
+    start_forward grafana monitoring grafana "$GRAFANA_LOCAL_PORT" 80 /api/health >/dev/null || return 0
+  fi
   jq -n --slurpfile d "$PERF_DASHBOARD" '{dashboard: $d[0], overwrite: true, folderId: 0}' \
     | curl -fsS -u admin:admin -H 'Content-Type: application/json' --data @- \
-        "http://localhost:$GRAFANA_LOCAL_PORT/api/dashboards/db" >/dev/null \
+        "$GRAFANA_URL/api/dashboards/db" >/dev/null \
     || log_warn "could not upload the devbox-perf dashboard (Grafana down?)"
 }
 
@@ -110,8 +121,12 @@ cmd_perf() {
 
   if [[ "$code" == 0 ]]; then log_ok "$run: thresholds held"
   else log_err "$run: k6 exited $code (99 = a threshold failed) — see $RUN_DIR/perf-$run.log"; fi
-  echo "    compare:  make devbox-perf-compare a=<earlier run> b=$run"
-  echo "    grafana:  http://localhost:$GRAFANA_LOCAL_PORT/d/devbox-perf  (make devbox-open)"
+  if [[ "${DEVBOX_IN_CLUSTER:-}" == 1 ]]; then
+    echo "    compare it with another run on the portal's Perf page"
+  else
+    echo "    compare:  make devbox-perf-compare a=<earlier run> b=$run"
+    echo "    grafana:  http://localhost:$GRAFANA_LOCAL_PORT/d/devbox-perf  (make devbox-open)"
+  fi
   return "$code"
 }
 

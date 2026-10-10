@@ -70,3 +70,9 @@ export async function copyText(text, inputEl) {
   }
   return false
 }
+
+/** Per-viewer UI memory (last env, last service…). Storage can throw (private mode) — never fatal. */
+export const remember = {
+  get: (k, fallback) => { try { return localStorage.getItem(k) ?? fallback } catch { return fallback } },
+  set: (k, v) => { try { localStorage.setItem(k, v) } catch { /* fine */ } },
+}

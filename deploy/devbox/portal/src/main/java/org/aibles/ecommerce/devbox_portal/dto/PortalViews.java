@@ -46,7 +46,8 @@ public final class PortalViews {
     public record Info(Links links, int maxPreviews, boolean jobsEnabled) {
     }
 
-    public record JobRequest(@NotBlank String kind, @NotBlank String target) {
+    /** {@code params}: kind-specific, e.g. perf {scenario, profile}. */
+    public record JobRequest(@NotBlank String kind, @NotBlank String target, Map<String, String> params) {
     }
 
     /**

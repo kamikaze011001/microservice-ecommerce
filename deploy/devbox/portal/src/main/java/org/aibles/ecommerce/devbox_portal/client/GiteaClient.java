@@ -24,6 +24,10 @@ public class GiteaClient {
     public record RepoFile(String path, String content, String sha) {
     }
 
+    /** A branch of the code repo: its head commit. */
+    public record Branch(String name, String sha, String message, String author, String date) {
+    }
+
     public record Commit(String sha, String message, String author, String date) {
     }
 
@@ -113,6 +117,29 @@ public class GiteaClient {
                 throw PortalException.conflict(file.path() + " changed since it was read — reload and try again");
             }
             throw PortalException.upstream("Gitea", e);
+        } catch (RestClientException e) {
+            throw PortalException.upstream("Gitea", e);
+        }
+    }
+
+    /** Branches developers pushed to the code repo, most recently updated first. */
+    public List<Branch> codeBranches() {
+        try {
+            JsonNode list = http.get().uri("/api/v1/repos/{o}/{r}/branches?limit=50", cfg.owner(), cfg.codeRepo())
+                    .retrieve().body(JsonNode.class);
+            List<Branch> out = new ArrayList<>();
+            if (list != null) {
+                list.forEach(b -> {
+                    JsonNode c = b.path("commit");
+                    out.add(new Branch(b.path("name").asText(), c.path("id").asText(),
+                            c.path("message").asText().strip().split("\n", 2)[0],
+                            c.path("author").path("name").asText(), c.path("timestamp").asText()));
+                });
+            }
+            out.sort(java.util.Comparator.comparing(Branch::date).reversed());
+            return out;
+        } catch (HttpClientErrorException.NotFound e) {
+            return List.of();
         } catch (RestClientException e) {
             throw PortalException.upstream("Gitea", e);
         }

@@ -3,11 +3,12 @@ package org.aibles.ecommerce.devbox_portal.service;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.JobView;
 
 import java.util.List;
+import java.util.Map;
 
 /** Long-running platform work (create/delete an env, …) as Kubernetes Jobs the page can watch. */
 public interface JobService {
 
-    JobView start(String kind, String target);
+    JobView start(String kind, String target, Map<String, String> params);
 
     /** Newest first. */
     List<JobView> jobs();

@@ -21,6 +21,7 @@ import org.aibles.ecommerce.devbox_portal.dto.PortalViews.ToolView;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.Links;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.TagView;
 import org.aibles.ecommerce.devbox_portal.service.EnvService;
+import org.aibles.ecommerce.devbox_portal.service.JobKind;
 import org.aibles.ecommerce.devbox_portal.service.JobService;
 import org.aibles.ecommerce.devbox_portal.service.SettingsService;
 import org.aibles.ecommerce.devbox_portal.service.ToolService;
@@ -37,6 +38,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * The portal's JSON API. Absolute method paths, no class-level mapping — the
@@ -52,6 +54,7 @@ public class PortalController {
     private static final String NAME = "[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?";
 
     private static final String JOB_NAME = "devbox-[a-z0-9-]{1,63}";
+    private static final String PERF_RUN = "[a-z0-9-]{1,80}";
 
     private final EnvService envService;
     private final JobService jobService;
@@ -111,7 +114,8 @@ public class PortalController {
     @PostMapping("/api/jobs")
     @ResponseStatus(HttpStatus.CREATED)
     public JobView startJob(@RequestBody @Valid JobRequest request) {
-        return jobService.start(request.kind(), request.target());
+        return jobService.start(request.kind(), request.target(),
+                request.params() == null ? Map.of() : request.params());
     }
 
     @GetMapping("/api/jobs")
@@ -155,5 +159,23 @@ public class PortalController {
             throw new IllegalArgumentException("not a commit sha: " + request.commit());
         }
         return settingsService.revert(env, service, request.commit());
+    }
+
+    @GetMapping("/api/perf-compare")
+    public MetricsClient.PerfComparison comparePerf(@RequestParam @Pattern(regexp = PERF_RUN) String a,
+                                                    @RequestParam @Pattern(regexp = PERF_RUN) String b) {
+        return envService.comparePerf(a, b);
+    }
+
+    /** Scenarios and the profiles each supports — the Perf page's run form. */
+    @GetMapping("/api/perf-scenarios")
+    public Map<String, java.util.Set<String>> perfScenarios() {
+        return JobKind.perfProfiles();
+    }
+
+    /** What the Build page can build: branches pushed to the devbox code repo. */
+    @GetMapping("/api/source/branches")
+    public List<GiteaClient.Branch> branches() {
+        return envService.branches();
     }
 }

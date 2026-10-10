@@ -23,4 +23,8 @@ public interface EnvService {
     List<TagView> tags(String service);
 
     List<MetricsClient.PerfRun> perfRuns();
+
+    MetricsClient.PerfComparison comparePerf(String runA, String runB);
+
+    List<org.aibles.ecommerce.devbox_portal.client.GiteaClient.Branch> branches();
 }

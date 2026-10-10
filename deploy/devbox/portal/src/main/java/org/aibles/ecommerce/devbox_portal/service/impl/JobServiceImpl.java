@@ -2,6 +2,8 @@ package org.aibles.ecommerce.devbox_portal.service.impl;
 
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Quantity;
+import io.fabric8.kubernetes.api.model.VolumeBuilder;
+import io.fabric8.kubernetes.api.model.VolumeMountBuilder;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder;
 import io.fabric8.kubernetes.api.model.batch.v1.JobCondition;
@@ -36,6 +38,7 @@ public class JobServiceImpl implements JobService {
     static final String PART_OF = "devbox-job";
     static final String KIND_LABEL = "devbox.job/kind";
     static final String TARGET_LABEL = "devbox.job/target";
+    static final String TITLE_ANNOTATION = "devbox.job/title";
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("MMddHHmmss").withZone(ZoneOffset.UTC);
 
     private final KubernetesClient kubernetes;
@@ -49,7 +52,7 @@ public class JobServiceImpl implements JobService {
     }
 
     @Override
-    public JobView start(String kindId, String target) {
+    public JobView start(String kindId, String target, Map<String, String> params) {
         if (runner.image() == null || runner.image().isBlank()) {
             throw PortalException.unprocessable("jobs are disabled: no runner image configured (devbox.runner.image)");
         }
@@ -62,14 +65,16 @@ public class JobServiceImpl implements JobService {
         });
 
         // A Job name is a DNS label (≤63): devbox-<kind>-<env> cut to 52, + "-MMddHHmmss".
-        String base = "devbox-" + kind.id() + "-" + env.substring("preview-".length());
+        List<String> args = kind.args(env, params);   // validates params before anything is created
+        String base = "devbox-" + kind.id() + "-" + env.replaceFirst("^preview-", "");
         String name = base.substring(0, Math.min(base.length(), 52)).replaceAll("-+$", "")
                 + "-" + STAMP.format(clock.instant());
         Map<String, String> labels = Map.of(
                 "app.kubernetes.io/part-of", PART_OF, KIND_LABEL, kind.id(), TARGET_LABEL, env);
 
         Job job = new JobBuilder()
-                .withNewMetadata().withName(name).withNamespace(runner.namespace()).withLabels(labels).endMetadata()
+                .withNewMetadata().withName(name).withNamespace(runner.namespace()).withLabels(labels)
+                    .addToAnnotations(TITLE_ANNOTATION, kind.describe(params)).endMetadata()
                 .withNewSpec()
                     .withBackoffLimit(0)                       // a half-done env step must not silently re-run
                     .withActiveDeadlineSeconds(1800L)
@@ -83,7 +88,7 @@ public class JobServiceImpl implements JobService {
                                 .withName("runner")
                                 .withImage(runner.image())
                                 .withImagePullPolicy("IfNotPresent")
-                                .withArgs(kind.args(env))
+                                .withArgs(args)
                                 .addNewEnv().withName("MAX_PREVIEWS").withValue(String.valueOf(runner.maxPreviews())).endEnv()
                                 .withNewResources()
                                     .addToRequests("cpu", new Quantity("100m"))
@@ -95,6 +100,9 @@ public class JobServiceImpl implements JobService {
                     .endTemplate()
                 .endSpec()
                 .build();
+        if (kind.needsDocker()) {
+            useNodeDocker(job);
+        }
         try {
             Job created = kubernetes.batch().v1().jobs().inNamespace(runner.namespace()).resource(job).create();
             log.info("portal job started. job={} kind={} env={}", name, kind.id(), env);
@@ -102,6 +110,24 @@ public class JobServiceImpl implements JobService {
         } catch (KubernetesClientException e) {
             throw PortalException.upstream("the Kubernetes API (create Job)", e);
         }
+    }
+
+    /**
+     * A build runs `docker build` on the node it lands on (the cluster's runtime
+     * is Docker) and pushes to localhost:5000 — the node's own path to the
+     * registry, the one pods pull through. Host network makes that localhost
+     * the node's; ClusterFirstWithHostNet keeps Service DNS (Gitea) working.
+     * Only build Jobs get this — it is root on the node.
+     */
+    private static void useNodeDocker(Job job) {
+        var pod = job.getSpec().getTemplate().getSpec();
+        pod.setHostNetwork(true);
+        pod.setDnsPolicy("ClusterFirstWithHostNet");
+        pod.getVolumes().add(new VolumeBuilder().withName("docker")
+                .withNewHostPath().withPath("/var/run/docker.sock").withType("Socket").endHostPath().build());
+        pod.getContainers().get(0).getVolumeMounts().add(new VolumeMountBuilder()
+                .withName("docker").withMountPath("/var/run/docker.sock").build());
+        job.getSpec().setActiveDeadlineSeconds(3600L);   // a cold build compiles cores + the service
     }
 
     @Override
@@ -161,8 +187,10 @@ public class JobServiceImpl implements JobService {
     private JobView view(Job job) {
         Map<String, String> labels = job.getMetadata().getLabels();
         String kindId = labels.getOrDefault(KIND_LABEL, "");
-        String title = Arrays.stream(JobKind.values()).filter(k -> k.id().equals(kindId))
-                .map(JobKind::title).findFirst().orElse(kindId);
+        Map<String, String> annotations = job.getMetadata().getAnnotations();
+        String title = annotations != null && annotations.get(TITLE_ANNOTATION) != null
+                ? annotations.get(TITLE_ANNOTATION)
+                : Arrays.stream(JobKind.values()).filter(k -> k.id().equals(kindId)).map(JobKind::title).findFirst().orElse(kindId);
         JobStatus s = job.getStatus();
         String status = "PENDING";
         String finished = null;

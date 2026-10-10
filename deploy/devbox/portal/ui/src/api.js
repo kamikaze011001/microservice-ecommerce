@@ -25,11 +25,14 @@ export const api = {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   }),
   revertSettings: (env, service, commit) => post(`/api/envs/${env}/services/${service}/settings:revert`, { commit }),
+  branches: () => call('/api/source/branches'),
   perfRuns: () => call('/api/perf-runs'),
+  perfScenarios: () => call('/api/perf-scenarios'),
+  perfCompare: (a, b) => call(`/api/perf-compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`),
   jobs: () => call('/api/jobs'),
   job: (name) => call(`/api/jobs/${name}`),
   jobLog: (name) => call(`/api/jobs/${name}/log`),
-  startJob: (kind, target) => post('/api/jobs', { kind, target }),
+  startJob: (kind, target, params = {}) => post('/api/jobs', { kind, target, params }),
 }
 
 export const isActive = (status) => status === 'PENDING' || status === 'RUNNING'

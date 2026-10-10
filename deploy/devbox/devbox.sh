@@ -58,13 +58,24 @@ GITEA_USER=devbox
 GITEA_PASS=devbox-local
 GITEA_LOCAL_PORT=3300
 GITEA_LOCAL="http://$GITEA_USER:$GITEA_PASS@localhost:$GITEA_LOCAL_PORT"
+GITEA_API="http://localhost:$GITEA_LOCAL_PORT"
 GITEA_IN_CLUSTER=http://gitea-http.devbox.svc.cluster.local:3000
 # In the portal's runner Job (deploy/devbox/runner): Gitea by Service DNS and
 # no port-forwards — there is no laptop. Everything else already goes through
 # the API server (kubectl exec), so the same commands work unchanged.
 if [[ "${DEVBOX_IN_CLUSTER:-}" == 1 ]]; then
   GITEA_LOCAL="http://$GITEA_USER:$GITEA_PASS@${GITEA_IN_CLUSTER#http://}"
+  GITEA_API="$GITEA_IN_CLUSTER"
 fi
+# A Job's log is all the developer sees: under set -e a failing command would
+# otherwise end it silently (seen live: a curl's exit 7 and nothing printed).
+if [[ "${DEVBOX_IN_CLUSTER:-}" == 1 ]]; then
+  set -E
+  trap 'log_err "failed (exit $?) at devbox.sh line $LINENO: $BASH_COMMAND"' ERR
+fi
+# The code that ship builds and pushes. Normally this checkout; the portal's
+# build job points it at a fresh clone of the branch the developer picked.
+SRC="$ROOT"
 ARGOCD_LOCAL_PORT=8180
 GRAFANA_LOCAL_PORT=3301
 REGISTRY_UI_LOCAL_PORT=8181
@@ -72,6 +83,9 @@ PORTAL_LOCAL_PORT=8282
 # The host side of the minikube registry addon (cluster.sh's forward). Pods
 # pull the same repositories as localhost:5000 through the node proxy.
 REGISTRY_HOST=localhost:5001
+# A build job runs with hostNetwork + the node's Docker socket: the node
+# itself reaches the registry on localhost:5000 (how pods pull images).
+[[ "${DEVBOX_IN_CLUSTER:-}" == 1 ]] && REGISTRY_HOST=localhost:5000
 DEFAULT_ENV=prod-like
 # Tags `gc` always keeps, whatever their age: the bootstrap tag every service
 # file starts on, so `deploy <svc> dev` is always a valid way back.
@@ -156,7 +170,7 @@ cmd_platform() {
 
 cmd_push() {
   gitea_forward
-  cd "$ROOT"
+  cd "$SRC"
 
   # The chart Argo CD renders is the one on this branch. Committed state only:
   # an uncommitted chart edit isn't in HEAD, so it isn't deployed.
@@ -169,7 +183,7 @@ cmd_push() {
 
   local code
   code="$(curl -s -o /dev/null -w '%{http_code}' -u "$GITEA_USER:$GITEA_PASS" \
-    "http://localhost:$GITEA_LOCAL_PORT/api/v1/repos/$GITEA_USER/env-config")"
+    "$GITEA_API/api/v1/repos/$GITEA_USER/env-config")"
   if [[ "$code" == 404 ]]; then
     # First run only. After this the Gitea repo is the source of truth; seeding
     # again would wipe the env's history, which is the whole point of having it.
@@ -284,12 +298,12 @@ cmd_portal() {
     log_info "devbox-runner:$runner_tag is already in the registry — no rebuild"
   else
     # The runner is a copy of deploy/ (the scripts the portal's Jobs run) plus
-    # the product images the pre-apps seed uploads —
+    # the product images the pre-apps seed uploads and the Bruno API suite —
     # staged without deploy/.run (env-repo clone, PID files) or build output.
     log_info "building devbox-runner:$runner_tag"
     local stage; stage="$(mktemp -d)"
     COPYFILE_DISABLE=1 tar -C "$ROOT" --exclude=deploy/.run --exclude='*/target' --exclude='*/node_modules' \
-      -cf - deploy docker/seed-images | tar -C "$stage" -xf -
+      -cf - deploy docker/seed-images api-tests | tar -C "$stage" -xf -
     docker build -q -t "$REGISTRY_HOST/devbox-runner:$runner_tag" -f "$DEVBOX/runner/Dockerfile" "$stage" >/dev/null
     rm -rf "$stage"
     docker push -q "$REGISTRY_HOST/devbox-runner:$runner_tag" >/dev/null
@@ -313,6 +327,9 @@ cmd_portal() {
 
 ensure_registry() {
   curl -fsS --max-time 5 -o /dev/null "http://$REGISTRY_HOST/v2/" 2>/dev/null && return 0
+  if [[ "${DEVBOX_IN_CLUSTER:-}" == 1 ]]; then
+    log_err "registry not reachable on $REGISTRY_HOST from this node"; return 1
+  fi
   log_info "registry not reachable on $REGISTRY_HOST — starting a forward"
   start_forward registry kube-system registry "${REGISTRY_HOST##*:}" 80 /v2/
 }
@@ -425,6 +442,20 @@ sync_wait() {  # <env> <svc> <tag>
   done
 }
 
+# build-ship <svc> <env> <ref> — the portal's "Build & deploy": clone <ref> of
+# devbox/microecom (where developers push branches) and ship it from there.
+# In-cluster only: it needs the node's Docker socket (the build Job mounts it).
+cmd_build_ship() {
+  local svc=${1:?usage: build-ship <svc> <env> <ref>} env=${2:?env required} ref=${3:?ref required}
+  [[ "${DEVBOX_IN_CLUSTER:-}" == 1 ]] || { log_err "build-ship runs in the portal's build Job — locally, use ship"; return 1; }
+  SRC="$(mktemp -d)/microecom"
+  log_info "cloning devbox/microecom@$ref"
+  git clone --quiet --depth 50 --branch "$ref" "$GITEA_LOCAL/$GITEA_USER/microecom.git" "$SRC" \
+    || { log_err "no branch '$ref' in devbox/microecom — push it first (see the Build page)"; return 1; }
+  log_info "$ref is at $(git -C "$SRC" log -1 --format='%h %s (%an)')"
+  DEVBOX_VIA="devbox-portal build of $ref" cmd_ship "$svc" "$env"
+}
+
 cmd_version() {
   local svc=${1:?usage: version <svc>}
   (cd "$ROOT" && version_of "$svc")
@@ -434,13 +465,13 @@ cmd_ship() {
   local svc=${1:?usage: ship <svc> [env]} env=${2:-$DEFAULT_ENV} tag prev
   env_sync_clone
   [[ -f "$(env_file "$env" "$svc")" ]] || { log_err "no $svc in env '$env' ($(env_file "$env" "$svc"))"; return 1; }
-  tag="$(cd "$ROOT" && version_of "$svc")"
+  tag="$(cd "$SRC" && version_of "$svc")"
   ensure_registry
   if ! is_dirty_tag "$tag" && image_exists "$svc" "$tag"; then
     log_info "$svc:$tag is already in the registry — same inputs, no rebuild"
   else
     log_info "building $svc:$tag"
-    (cd "$ROOT" && REGISTRY="$REGISTRY_HOST" TAG="$tag" SVC="$svc" deploy/images/build.sh)
+    (cd "$SRC" && REGISTRY="$REGISTRY_HOST" TAG="$tag" SVC="$svc" deploy/images/build.sh)
   fi
 
   # The chart travels with the code: this branch's chart renders the new image.
@@ -451,7 +482,7 @@ cmd_ship() {
   else
     set_tag "$env" "$svc" "$tag"
     env_commit_push "ship $svc $prev → $tag" \
-      "from $(git -C "$ROOT" branch --show-current)@$(git -C "$ROOT" rev-parse --short HEAD) by make devbox-ship"
+      "from $(git -C "$SRC" branch --show-current)@$(git -C "$SRC" rev-parse --short HEAD) by ${DEVBOX_VIA:-make devbox-ship}"
   fi
   sync_wait "$env" "$svc" "$tag"
   # Post-deploy smoke: the version is live, so check the API contract still
@@ -945,6 +976,8 @@ cmd_api_test() {
       npx -y "@usebruno/cli@$0" run -r --env devbox \
         --env-var baseUrl=http://gateway:6868 --env-var "apiOrigin=$1" \
         --reporter-skip-all-headers 2>&1' "$BRUNO_CLI_VERSION" "$origin" >"$log" 2>&1 || code=$?
+  # A portal job's log is the only place the developer sees: show every request.
+  [[ "${DEVBOX_IN_CLUSTER:-}" == 1 ]] && sed 's/\x1b\[[0-9;]*m//g' "$log"
   # Only FAILED tests (✕), each with its request and reason — not "non-2xx
   # requests": the suite's negative tests expect 400/401/403 and pass. The log
   # is full of ANSI colour (which also makes grep call it binary): strip it.
@@ -971,5 +1004,7 @@ case "${1:-}" in
     cmd="cmd_${1//-/_}"; shift; "$cmd" "$@" ;;
   platform|push|apps|wait|open|close|status|version|ship|deploy|tags|gc|proof|portal)
     cmd="cmd_$1"; shift; "$cmd" "$@" ;;
+  build-ship)
+    shift; cmd_build_ship "$@" ;;
   *) sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

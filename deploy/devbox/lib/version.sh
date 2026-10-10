@@ -18,7 +18,7 @@ version_inputs() {
     frontend)            echo "frontend" ;;
     mock-paypal-service) echo "mock-paypal-service" ;;
     devbox-portal)       echo "deploy/devbox/portal" ;;
-    devbox-runner)       echo "deploy docker/seed-images" ;;   # what the runner image copies
+    devbox-runner)       echo "deploy docker/seed-images api-tests" ;;   # what the runner image copies
     *) echo "$1 core deploy/images/Dockerfile.jvm deploy/images/Dockerfile.cores" ;;
   esac
 }

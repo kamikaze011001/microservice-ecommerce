@@ -16,10 +16,13 @@ public record PortalProperties(
         @NotBlank String metricsUrl,
         @NotBlank String argoNamespace,
         Links links,
-        Runner runner) {
+        Runner runner,
+        @NotBlank String gatewayUrl) {
 
+    /** {@code codeRepo}: where developers push branches for the Build page (and `make devbox-push`). */
     public record Gitea(@NotBlank String url, @NotBlank String user, @NotBlank String password,
-                        @NotBlank String owner, @NotBlank String envRepo, @NotBlank String branch) {
+                        @NotBlank String owner, @NotBlank String envRepo, @NotBlank String branch,
+                        @NotBlank String codeRepo) {
     }
 
     /**

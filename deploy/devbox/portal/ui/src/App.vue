@@ -35,8 +35,11 @@ onUnmounted(() => clearInterval(timer))
       </div>
       <nav>
         <RouterLink to="/envs">Environments</RouterLink>
+        <RouterLink to="/topology">Topology</RouterLink>
+        <RouterLink to="/build">Build &amp; deploy</RouterLink>
         <RouterLink to="/jobs">Jobs <span v-if="running" class="pill info">{{ running }} running</span></RouterLink>
-        <RouterLink to="/perf">Perf runs</RouterLink>
+        <RouterLink to="/api-testing">API testing</RouterLink>
+        <RouterLink to="/perf">Performance</RouterLink>
         <RouterLink to="/tools">Platform tools &amp; logins</RouterLink>
       </nav>
       <div class="tools">

@@ -30,9 +30,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
         "devbox.gitea.url=http://gitea", "devbox.gitea.user=u", "devbox.gitea.password=p",
         "devbox.gitea.owner=devbox", "devbox.gitea.env-repo=env-config", "devbox.gitea.branch=main",
+        "devbox.gitea.code-repo=microecom",
         "devbox.registry-url=http://r", "devbox.metrics-url=http://m", "devbox.argo-namespace=argocd",
         "devbox.links.argocd=http://localhost:8180",
-        "devbox.runner.namespace=devbox", "devbox.runner.service-account=devbox-runner", "devbox.runner.max-previews=1"})
+        "devbox.runner.namespace=devbox", "devbox.runner.service-account=devbox-runner", "devbox.runner.max-previews=1",
+        "devbox.gateway-url=http://gateway.{namespace}:6868"})
 class PortalControllerTest {
 
     @Autowired

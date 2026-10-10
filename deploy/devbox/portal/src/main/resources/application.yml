@@ -32,9 +32,12 @@ devbox:
     owner: devbox
     env-repo: env-config
     branch: main
+    code-repo: microecom
   registry-url: http://registry.kube-system.svc.cluster.local
   metrics-url: http://vmsingle.monitoring.svc.cluster.local:8428
   argo-namespace: argocd
+  # The API console's proxy target; {namespace} = apps for prod-like, apps-<env> for a preview.
+  gateway-url: http://gateway.{namespace}.svc.cluster.local:6868
   # Ingress hosts (minikube tunnel + /etc/hosts, like the storefront) — no
   # port-forward to keep alive.
   links:

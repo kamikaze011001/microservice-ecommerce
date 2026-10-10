@@ -133,4 +133,14 @@ public class EnvServiceImpl implements EnvService {
     private static String servicePath(String env, String service) {
         return "envs/" + env + "/services/" + service + YAML;
     }
+
+    @Override
+    public MetricsClient.PerfComparison comparePerf(String runA, String runB) {
+        return metrics.compare(runA, runB);
+    }
+
+    @Override
+    public List<GiteaClient.Branch> branches() {
+        return gitea.codeBranches();
+    }
 }

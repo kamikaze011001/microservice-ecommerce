@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Devbox 7a — Self-service</title>
+<title>Devbox 7 — Self-service</title>
 <link rel="stylesheet" href="platform.css"/>
 <style>
   .flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:12px 0}
@@ -16,12 +16,12 @@
 <header class="hero">
   <div class="icon">🖱️</div>
   <h1>A developer should never need the CLI</h1>
-  <p>Phase 7a of the devbox. The portal becomes the front door: create and delete preview envs with a button, watch every step live, deploy or roll back a version — no <code>make</code>, no kubectl, no port-forwards.</p>
-  <div class="series">Devbox · platform engineering series · 7a</div>
+  <p>Phase 7 of the devbox. The portal becomes the front door: envs, versions, settings, builds from your branch, API and performance testing, topology and every tool's login — all from the browser. No <code>make</code>, no kubectl, no port-forwards.</p>
+  <div class="series">Devbox · platform engineering series · 7</div>
 </header>
 
 <nav class="toc">
-  <a href="#idea">Big idea</a><a href="#what">What you can do</a><a href="#arch">How it works</a>
+  <a href="#idea">Big idea</a><a href="#what">What you can do</a><a href="#more">7b–7d</a><a href="#arch">How it works</a>
   <a href="#safe">Why it's safe</a><a href="#scars">What broke</a><a href="#try">Try it</a><a href="#next">Next</a>
 </nav>
 
@@ -44,6 +44,20 @@
     <div class="card"><h3>Open the env</h3><p>Storefront and API-docs buttons per env; Argo CD, Gitea, Grafana and the registry in the sidebar — by name, through the ingress.</p></div>
     <div class="card"><h3>History</h3><p>Per env, every change as a commit — now authored <code>devbox-portal</code> when the portal made it.</p></div>
   </div>
+</section>
+
+<section id="more">
+  <h2><span class="n">1b</span>Settings, testing, building, topology (7b–7d)</h2>
+  <div class="cards">
+    <div class="card"><h3>Settings (per env, per service)</h3><p>Spring properties and env vars in tables, the env-wide defaults shown read-only with an <b>Override</b> button, a +/~/− diff before saving. Saved = one env-repo commit; Argo CD restarts the service. <b>Revert settings</b> on any commit in the file's history. Secrets are refused — they stay in Vault.</p></div>
+    <div class="card"><h3>API testing</h3><p>The full OpenAPI of every service (Swagger UI) for any env, through the portal's proxy into that env's gateway — so it works on localhost with no hosts file and no CORS. <b>Log in as</b> a seeded test user and every request carries the token. <b>Run contract suite</b> runs the Bruno collection as a job.</p></div>
+    <div class="card"><h3>Performance</h3><p>Pick env, scenario and profile, press Run. Every run is recorded with the version of every service; tick two runs to compare p95 and errors per request, plus <b>which versions changed</b> between them.</p></div>
+    <div class="card"><h3>Build &amp; deploy your branch</h3><p>Send your branch to the devbox remote, then pick the branch, the service and the env. The image is built <b>inside the cluster</b> on the node's Docker, tagged with your commit, deployed, and the contract suite runs against it.</p></div>
+    <div class="card"><h3>Topology</h3><p>The services of an env and how they really call each other — HTTP routes, Feign, gRPC, the Kafka saga — each box with its live version and health. Click one for its settings.</p></div>
+    <div class="card"><h3>Platform tools &amp; logins</h3><p>Argo CD, Gitea, Grafana, the registry: URL, username and password (show / copy), read live from each tool.</p></div>
+  </div>
+  <h3>Try the demo versions</h3>
+  <p>Two branches of <code>product-service</code> exist only on the devbox Gitea: <code>demo/product-v2</code> adds <code>GET /product-service/v1/products/_version</code>; <code>demo/product-v3-slow</code> answers <code>v3-slow</code> and adds a deliberate 300&nbsp;ms delay to the product list. Build one, check <code>_version</code> in API testing, run a storefront perf test, build the other, run again, compare — the regression and the version that caused it are on one screen. Then roll back from Environments.</p>
 </section>
 
 <section id="arch">
@@ -103,8 +117,8 @@
 
 <section id="next">
   <div class="next">
-    <h2 style="margin-top:0">Next — 7b: env variables</h2>
-    <p>Edit a service's settings per env in a form, see the diff, save it as a commit — with history and one-click revert, and secrets refused. Then 7c (run perf tests and API tests from the UI, Swagger per env) and 7d (build from your branch, topology view).</p>
+    <h2 style="margin-top:0">What a real platform team would add next</h2>
+    <p>Login for the portal itself (it trusts whoever can reach it — fine on one laptop), per-team ownership of envs, build caching across nodes, and a service catalog (Backstage) once there are more teams than one.</p>
   </div>
 </section>
 
