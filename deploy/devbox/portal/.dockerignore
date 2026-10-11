@@ -1,0 +1,3 @@
+# Not used: the portal image is built from a staged context assembled by
+# devbox.sh `portal` (portal/ + k6-stress/ + api-tests/), whose tar already
+# leaves out target/, node_modules/ and dist/. Build it with `make devbox-portal`.

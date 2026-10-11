@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Devbox 7 — Self-service</title>
+<link rel="stylesheet" href="platform.css"/>
+<style>
+  .flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:12px 0}
+  .flow .step{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:8px 11px;font-size:13.5px}
+  .flow .arr{color:var(--acc,#d9622b);font-weight:800}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="icon">🖱️</div>
+  <h1>A developer should never need the CLI</h1>
+  <p>Phase 7 of the devbox. The portal becomes the front door: envs, versions, settings, builds from your branch, API and performance testing, topology and every tool's login — all from the browser. No <code>make</code>, no kubectl, no port-forwards.</p>
+  <div class="series">Devbox · platform engineering series · 7</div>
+</header>
+
+<nav class="toc">
+  <a href="#idea">Big idea</a><a href="#what">What you can do</a><a href="#more">7b–7d</a><a href="#arch">How it works</a>
+  <a href="#safe">Why it's safe</a><a href="#scars">What broke</a><a href="#try">Try it</a><a href="#next">Next</a>
+</nav>
+
+<main>
+
+<section id="idea">
+  <div class="bigidea">
+    <p class="big">Phases 1–6 built the <b>golden paths</b>: proven, repeatable ways to create an env, ship a version, run a test. But they were <code>make</code> targets — a developer had to learn them. A platform isn't done until its golden paths are <b>self-service</b>: discoverable and one click away.</p>
+    <p class="big">The trick is to <b>not rewrite them</b>. The portal starts a Kubernetes <b>Job</b> that runs the exact same script the CLI runs, and streams its log. One implementation, two front doors.</p>
+  </div>
+</section>
+
+<section id="what">
+  <h2><span class="n">1</span>What you can do from the UI now</h2>
+  <div class="cards">
+    <div class="card"><h3>Create a preview env</h3><p><b>+ New preview env</b> → name it → watch namespace, databases, topics, CDC connector, Redis, seeds and all 11 services come up, step by step. The button explains itself when it's disabled (cap reached, a job running).</p></div>
+    <div class="card"><h3>Delete one</h3><p>Type the env's name to confirm; every piece it owns is removed. prod-like can't be deleted.</p></div>
+    <div class="card"><h3>Deploy / roll back</h3><p>Every service's versions are loaded up front (the old page's empty-first-click bug is gone); confirm in a dialog that tells you how to undo.</p></div>
+    <div class="card"><h3>Jobs</h3><p>Everything the portal ran, with status, duration and the full coloured log — kept 7 days.</p></div>
+    <div class="card"><h3>Open the env</h3><p>Storefront and API-docs buttons per env; Argo CD, Gitea, Grafana and the registry in the sidebar — by name, through the ingress.</p></div>
+    <div class="card"><h3>History</h3><p>Per env, every change as a commit — now authored <code>devbox-portal</code> when the portal made it.</p></div>
+  </div>
+</section>
+
+<section id="more">
+  <h2><span class="n">1b</span>Settings, testing, building, topology (7b–7d)</h2>
+  <div class="cards">
+    <div class="card"><h3>Settings (per env, per service)</h3><p>Spring properties and env vars in tables, the env-wide defaults shown read-only with an <b>Override</b> button, a +/~/− diff before saving. Saved = one env-repo commit; Argo CD restarts the service. <b>Revert settings</b> on any commit in the file's history. Secrets are refused — they stay in Vault.</p></div>
+    <div class="card"><h3>API testing (Bruno-style)</h3><p>The repo's own Bruno collection (<code>api-tests/*.bru</code>) as a console: folders and requests, edit and Send, response with every <code>assert</code> and <code>test</code> result. Run a folder or the whole collection in order — login's <code>bru.setVar("accessToken")</code> carries to every later request, as in Bruno. Requests go through the portal's proxy into the chosen env's gateway (works on localhost, no CORS). <b>Run as job</b> runs the same files with the real Bruno CLI. Why not embed Bruno itself: it's a desktop (Electron) app with no web build — reading the same files keeps one source of truth.</p></div>
+    <div class="card"><h3>Performance</h3><p>Pick env, scenario and profile — the page shows what that run will do <b>as k6 itself resolves it</b> (<code>k6 inspect</code>): the load shape as a chart, total time, the thresholds in plain words, the requests it makes. Press Run; every run is recorded with the version of every service; tick two runs to compare p95 and errors per request, plus <b>which versions changed</b> between them.</p></div>
+    <div class="card"><h3>Build &amp; deploy your branch</h3><p>Send your branch to the devbox remote, then pick the branch, the service and the env. The image is built <b>inside the cluster</b> on the node's Docker, tagged with your commit, deployed, and the contract suite runs against it.</p></div>
+    <div class="card"><h3>Topology</h3><p>The services of an env and how they really call each other — HTTP routes, Feign, gRPC, the Kafka saga — each box with its live version and health. Click one for its settings.</p></div>
+    <div class="card"><h3>Platform tools &amp; logins</h3><p>Argo CD, Gitea, Grafana, the registry: URL, username and password (show / copy), read live from each tool.</p></div>
+  </div>
+  <h3>Try the demo versions</h3>
+  <p>Two branches of <code>product-service</code> exist only on the devbox Gitea: <code>demo/product-v2</code> adds <code>GET /product-service/v1/products/_version</code>; <code>demo/product-v3-slow</code> answers <code>v3-slow</code> and adds a deliberate 300&nbsp;ms delay to the product list. Build one, check <code>_version</code> in API testing, run a storefront perf test, build the other, run again, compare — the regression and the version that caused it are on one screen. Then roll back from Environments.</p>
+</section>
+
+<section id="arch">
+  <h2><span class="n">2</span>How it works</h2>
+  <div class="flow">
+    <div class="step">Button → <code>POST /api/jobs {kind, target}</code></div><span class="arr">→</span>
+    <div class="step">portal creates a <b>Job</b> (image <code>devbox-runner</code>)</div><span class="arr">→</span>
+    <div class="step">runner: <code>devbox.sh env-create preview-x</code></div><span class="arr">→</span>
+    <div class="step">page polls <code>/api/jobs/{name}/log</code> every 2 s</div>
+  </div>
+  <ul>
+    <li><b>The runner image</b> is <code>deploy/</code> + the seed images + kubectl, jq, git, python3. It's tagged like every service: the last commit that touched its inputs.</li>
+    <li><b>In-cluster mode</b> (<code>DEVBOX_IN_CLUSTER=1</code>) is the only change to <code>devbox.sh</code>: Gitea by Service DNS instead of a <code>localhost</code> port-forward. Everything else already went through the API server.</li>
+    <li><b>The Job is the record.</b> Labels say what ran against which env, status says how it went, the pod keeps the log. The portal still owns no state.</li>
+  </ul>
+</section>
+
+<section id="safe">
+  <h2><span class="n">3</span>Why a button that runs cluster-admin work is safe here</h2>
+  <ul>
+    <li><b>No command lines.</b> A request names a <i>kind</i> from a fixed list (<code>JobKind</code>); each maps to fixed arguments. The env name must match the preview grammar. <code>{"kind":"shell"}</code> is a 400.</li>
+    <li><b>One at a time.</b> Env jobs share the env repo and the preview cap, so a second one is a 409 until the first finishes.</li>
+    <li><b>No retries of half-done work</b> (<code>backoffLimit: 0</code>): a failed step is reported, and a re-run is safe because every step checks what already exists.</li>
+    <li><b>Least privilege for the portal itself:</b> it may create Jobs and read their pods' logs in <code>devbox</code> only. The runner's ServiceAccount has cluster-admin — acceptable on a single-user laptop cluster, and called out in <code>k8s.yaml</code>.</li>
+  </ul>
+</section>
+
+<section id="scars">
+  <h2><span class="n">4</span>What broke while building it</h2>
+  <div class="scar">
+    <h3>A job that said SUCCEEDED while half its work failed</h3>
+    <p><b>Symptom:</b> the first portal-created env reported success; the log showed <code>✗ refusing to seed: … current context is '&lt;none&gt;'</code> — twice.</p>
+    <p><b>Two causes.</b> (1) The runner defined its kube context but never selected it, and <code>seed.sh</code> guards against seeding the wrong cluster by checking the <i>current</i> context. (2) The real bug: <code>devbox.sh</code> ran <code>seed.sh … &amp;&amp; log_ok</code>. Under <code>set -e</code> a failure inside an <code>&amp;&amp;</code> list doesn't stop the script — so the env came up with no routes' roles and no stock, and nobody was told. It had always been that way on the CLI too.</p>
+    <p><b>Fix:</b> every seed and connector step is now <code>|| { log_err …; return 1; }</code>. The next run failed <i>loudly</i> on the next gap — the product images live in <code>docker/seed-images</code>, outside <code>deploy/</code> — which went into the runner image. Same lesson as the inventory fix (PR #81): a step that can't do its job must fail, never log and move on.</p>
+  </div>
+  <div class="scar">
+    <h3>The tag picker that was empty on first click</h3>
+    <p>The old page fetched a service's tags on the dropdown's <i>focus</i> — the browser opened the list before they arrived, and the 30 s refresh could close it. Tags now load for every service with the page, and the choice lives in the row's component, so a refresh can't reset it.</p>
+  </div>
+</section>
+
+<section id="try">
+  <h2><span class="n">5</span>Try it</h2>
+  <ol class="try">
+    <li>Open <code>http://localhost:8282</code> (or <code>http://devbox.microecom.local</code> with the hosts entries and tunnel).
+      <div class="expect">Sidebar: Environments, Jobs, Perf runs; platform tools at the bottom.</div></li>
+    <li>On a preview env, <b>Delete</b> → type its name.
+      <div class="expect">You land on the job's live log; it ends with "deleted (databases dropped, namespace … gone)".</div></li>
+    <li><b>+ New preview env</b> → <code>cart</code> → Create.
+      <div class="expect">5–10 minutes of log, ending "preview-cart is up"; Environments shows it with 11/11 healthy.</div></li>
+    <li>While it runs, try to create another.
+      <div class="expect">The button is disabled and says which job you're waiting for.</div></li>
+    <li>Deploy an older tag of any service, then deploy the previous one back.
+      <div class="expect">Two commits in that env's history, both by <code>devbox-portal</code>.</div></li>
+  </ol>
+</section>
+
+<section id="next">
+  <div class="next">
+    <h2 style="margin-top:0">What a real platform team would add next</h2>
+    <p>Login for the portal itself (it trusts whoever can reach it — fine on one laptop), per-team ownership of envs, build caching across nodes, and a service catalog (Backstage) once there are more teams than one.</p>
+  </div>
+</section>
+
+</main>
+</body>
+</html>

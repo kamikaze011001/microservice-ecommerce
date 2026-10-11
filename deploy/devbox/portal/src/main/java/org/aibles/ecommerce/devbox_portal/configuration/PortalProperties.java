@@ -15,13 +15,30 @@ public record PortalProperties(
         @NotBlank String registryUrl,
         @NotBlank String metricsUrl,
         @NotBlank String argoNamespace,
-        Links links) {
+        Links links,
+        Runner runner,
+        @NotBlank String gatewayUrl,
+        Assets assets) {
 
+    /** {@code codeRepo}: where developers push branches for the Build page (and `make devbox-push`). */
     public record Gitea(@NotBlank String url, @NotBlank String user, @NotBlank String password,
-                        @NotBlank String owner, @NotBlank String envRepo, @NotBlank String branch) {
+                        @NotBlank String owner, @NotBlank String envRepo, @NotBlank String branch,
+                        @NotBlank String codeRepo) {
     }
 
-    /** Browser-facing URLs of the other UIs (the `make devbox-open` forwards). */
+    /**
+     * The Job that runs devbox.sh for the page. {@code image} blank = jobs off
+     * (e.g. the portal run on a laptop). {@code maxPreviews} is the laptop's
+     * memory budget: each preview is a full copy of the app.
+     */
+    public record Runner(String image, @NotBlank String namespace, @NotBlank String serviceAccount, int maxPreviews) {
+    }
+
+    /** Where the image keeps api-tests/ and deploy/k6-stress/, and the k6 binary (Dockerfile). */
+    public record Assets(String apiTestsDir, String k6Dir, String k6Binary) {
+    }
+
+    /** Browser-facing URLs of the other UIs (ingress hosts, through the minikube tunnel). */
     public record Links(String argocd, String gitea, String grafana, String registry) {
     }
 }

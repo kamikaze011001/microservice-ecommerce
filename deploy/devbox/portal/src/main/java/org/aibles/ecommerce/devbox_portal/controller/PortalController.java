@@ -10,18 +10,36 @@ import org.aibles.ecommerce.devbox_portal.configuration.PortalProperties;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.DeployRequest;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.DeployResult;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.EnvView;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.Info;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.JobRequest;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.JobView;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.RevertRequest;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.SettingsRequest;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.SettingsResult;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.SettingsView;
+import org.aibles.ecommerce.devbox_portal.dto.PortalViews.ToolView;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.Links;
 import org.aibles.ecommerce.devbox_portal.dto.PortalViews.TagView;
 import org.aibles.ecommerce.devbox_portal.service.EnvService;
+import org.aibles.ecommerce.devbox_portal.service.JobKind;
+import org.aibles.ecommerce.devbox_portal.service.JobService;
+import org.aibles.ecommerce.devbox_portal.service.SettingsService;
+import org.aibles.ecommerce.devbox_portal.service.TestAssets;
+import org.aibles.ecommerce.devbox_portal.service.ToolService;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * The portal's JSON API. Absolute method paths, no class-level mapping — the
@@ -36,11 +54,23 @@ public class PortalController {
 
     private static final String NAME = "[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?";
 
+    private static final String JOB_NAME = "devbox-[a-z0-9-]{1,63}";
+    private static final String PERF_RUN = "[a-z0-9-]{1,80}";
+
     private final EnvService envService;
+    private final JobService jobService;
+    private final ToolService toolService;
+    private final SettingsService settingsService;
+    private final TestAssets testAssets;
     private final PortalProperties properties;
 
-    public PortalController(EnvService envService, PortalProperties properties) {
+    public PortalController(EnvService envService, JobService jobService, ToolService toolService,
+                            SettingsService settingsService, TestAssets testAssets, PortalProperties properties) {
         this.envService = envService;
+        this.jobService = jobService;
+        this.toolService = toolService;
+        this.settingsService = settingsService;
+        this.testAssets = testAssets;
         this.properties = properties;
     }
 
@@ -76,5 +106,92 @@ public class PortalController {
     public Links links() {
         PortalProperties.Links l = properties.links();
         return new Links(l.argocd(), l.gitea(), l.grafana(), l.registry());
+    }
+
+    @GetMapping("/api/info")
+    public Info info() {
+        PortalProperties.Runner runner = properties.runner();
+        return new Info(links(), runner.maxPreviews(), runner.image() != null && !runner.image().isBlank());
+    }
+
+    @PostMapping("/api/jobs")
+    @ResponseStatus(HttpStatus.CREATED)
+    public JobView startJob(@RequestBody @Valid JobRequest request) {
+        return jobService.start(request.kind(), request.target(),
+                request.params() == null ? Map.of() : request.params());
+    }
+
+    @GetMapping("/api/jobs")
+    public List<JobView> jobs() {
+        return jobService.jobs();
+    }
+
+    @GetMapping("/api/jobs/{name}")
+    public JobView job(@PathVariable @Pattern(regexp = JOB_NAME) String name) {
+        return jobService.job(name);
+    }
+
+    @GetMapping(value = "/api/jobs/{name}/log", produces = MediaType.TEXT_PLAIN_VALUE)
+    public String jobLog(@PathVariable @Pattern(regexp = JOB_NAME) String name) {
+        return jobService.log(name);
+    }
+
+    @GetMapping("/api/tools")
+    public List<ToolView> tools() {
+        return toolService.tools();
+    }
+
+    @GetMapping("/api/envs/{env}/services/{service}/settings")
+    public SettingsView settings(@PathVariable @Pattern(regexp = NAME) String env,
+                                 @PathVariable @Pattern(regexp = NAME) String service) {
+        return settingsService.get(env, service);
+    }
+
+    @PutMapping("/api/envs/{env}/services/{service}/settings")
+    public SettingsResult saveSettings(@PathVariable @Pattern(regexp = NAME) String env,
+                                       @PathVariable @Pattern(regexp = NAME) String service,
+                                       @RequestBody SettingsRequest request) {
+        return settingsService.save(env, service, request.spring(), request.envVars(), request.baseSha());
+    }
+
+    @PostMapping("/api/envs/{env}/services/{service}/settings:revert")
+    public SettingsResult revertSettings(@PathVariable @Pattern(regexp = NAME) String env,
+                                         @PathVariable @Pattern(regexp = NAME) String service,
+                                         @RequestBody @Valid RevertRequest request) {
+        if (!request.commit().matches("[0-9a-f]{7,40}")) {
+            throw new IllegalArgumentException("not a commit sha: " + request.commit());
+        }
+        return settingsService.revert(env, service, request.commit());
+    }
+
+    @GetMapping("/api/perf-compare")
+    public MetricsClient.PerfComparison comparePerf(@RequestParam @Pattern(regexp = PERF_RUN) String a,
+                                                    @RequestParam @Pattern(regexp = PERF_RUN) String b) {
+        return envService.comparePerf(a, b);
+    }
+
+    /** Scenarios and the profiles each supports — the Perf page's run form. */
+    @GetMapping("/api/perf-scenarios")
+    public Map<String, java.util.Set<String>> perfScenarios() {
+        return JobKind.perfProfiles();
+    }
+
+    /** What the Build page can build: branches pushed to the devbox code repo. */
+    @GetMapping("/api/source/branches")
+    public List<GiteaClient.Branch> branches() {
+        return envService.branches();
+    }
+
+    /** The Bruno collection (api-tests/*.bru) — the API testing page parses and runs it. */
+    @GetMapping("/api/bruno/files")
+    public List<TestAssets.BrunoFile> brunoFiles() {
+        return testAssets.brunoFiles();
+    }
+
+    /** What a perf run will do, as k6 resolves it. Both values are validated against perf.sh's list. */
+    @GetMapping("/api/perf-scenarios/{scenario}/{profile}")
+    public TestAssets.PerfSettings perfSettings(@PathVariable @Pattern(regexp = "[a-z]{1,20}") String scenario,
+                                                @PathVariable @Pattern(regexp = "[a-z]{1,20}") String profile) {
+        return testAssets.perfSettings(scenario, profile);
     }
 }

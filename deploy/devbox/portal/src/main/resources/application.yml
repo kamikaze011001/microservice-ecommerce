@@ -32,11 +32,28 @@ devbox:
     owner: devbox
     env-repo: env-config
     branch: main
+    code-repo: microecom
   registry-url: http://registry.kube-system.svc.cluster.local
   metrics-url: http://vmsingle.monitoring.svc.cluster.local:8428
   argo-namespace: argocd
+  # The API console's proxy target; {namespace} = apps for prod-like, apps-<env> for a preview.
+  gateway-url: http://gateway.{namespace}.svc.cluster.local:6868
+  # Baked into the image by the Dockerfile; override to run the portal from a checkout.
+  assets:
+    api-tests-dir: ${API_TESTS_DIR:/app/api-tests}
+    k6-dir: ${K6_DIR:/app/k6-stress}
+    k6-binary: ${K6_BINARY:k6}
+  # Ingress hosts (minikube tunnel + /etc/hosts, like the storefront) — no
+  # port-forward to keep alive.
   links:
-    argocd: http://localhost:8180
-    gitea: http://localhost:3300
-    grafana: http://localhost:3301
-    registry: http://localhost:8181
+    argocd: http://argocd.microecom.local
+    gitea: http://gitea.microecom.local
+    grafana: http://grafana.microecom.local
+    registry: http://registry.microecom.local
+  # The Job that runs devbox.sh for the page (create/delete env, …).
+  # RUNNER_IMAGE is set by devbox.sh `portal`; unset = jobs disabled.
+  runner:
+    image: ${RUNNER_IMAGE:}
+    namespace: devbox
+    service-account: devbox-runner
+    max-previews: ${MAX_PREVIEWS:1}

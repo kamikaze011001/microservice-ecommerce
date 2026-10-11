@@ -33,3 +33,5 @@ deploy/charts/microecom/charts/infra/charts/
 # Python bytecode — deploy/scripts/lib/ is imported by the secrets tooling
 __pycache__/
 *.pyc
+deploy/devbox/portal/ui/node_modules/
+deploy/devbox/portal/ui/dist/

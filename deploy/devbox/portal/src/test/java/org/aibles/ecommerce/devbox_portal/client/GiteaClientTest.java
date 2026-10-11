@@ -35,7 +35,7 @@ class GiteaClientTest {
         RestClient.Builder builder = RestClient.builder().baseUrl(BASE);
         server = MockRestServiceServer.bindTo(builder).build();
         client = new GiteaClient(builder.build(),
-                new PortalProperties.Gitea(BASE, "devbox", "pw", "devbox", "env-config", "main"));
+                new PortalProperties.Gitea(BASE, "devbox", "pw", "devbox", "env-config", "main", "microecom"));
     }
 
     @Test

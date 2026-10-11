@@ -24,6 +24,10 @@ public class GiteaClient {
     public record RepoFile(String path, String content, String sha) {
     }
 
+    /** A branch of the code repo: its head commit. */
+    public record Branch(String name, String sha, String message, String author, String date) {
+    }
+
     public record Commit(String sha, String message, String author, String date) {
     }
 
@@ -71,9 +75,14 @@ public class GiteaClient {
     }
 
     public RepoFile read(String path) {
+        return readAt(path, cfg.branch());
+    }
+
+    /** {@code path} as it was at {@code ref} (a branch or a commit sha). */
+    public RepoFile readAt(String path, String ref) {
         try {
             JsonNode f = http.get()
-                    .uri(contents(path) + "?ref={b}", cfg.owner(), cfg.envRepo(), cfg.branch())
+                    .uri(contents(path) + "?ref={b}", cfg.owner(), cfg.envRepo(), ref)
                     .retrieve().body(JsonNode.class);
             // Gitea wraps base64 at 60 columns; the MIME decoder ignores the newlines.
             String content = new String(Base64.getMimeDecoder().decode(f.path("content").asText()), StandardCharsets.UTF_8);
@@ -91,7 +100,9 @@ public class GiteaClient {
                 "content", Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8)),
                 "sha", file.sha(),
                 "branch", cfg.branch(),
-                "message", subject + "\n\n" + body);
+                "message", subject + "\n\n" + body,
+                // Same author as the runner's commits: history says the portal made it.
+                "author", Map.of("name", "devbox-portal", "email", "devbox-portal@microecom.local"));
         try {
             JsonNode res = http.put()
                     .uri(contents(file.path()), cfg.owner(), cfg.envRepo())
@@ -106,6 +117,46 @@ public class GiteaClient {
                 throw PortalException.conflict(file.path() + " changed since it was read — reload and try again");
             }
             throw PortalException.upstream("Gitea", e);
+        } catch (RestClientException e) {
+            throw PortalException.upstream("Gitea", e);
+        }
+    }
+
+    /** Branches developers pushed to the code repo, most recently updated first. */
+    public List<Branch> codeBranches() {
+        try {
+            JsonNode list = http.get().uri("/api/v1/repos/{o}/{r}/branches?limit=50", cfg.owner(), cfg.codeRepo())
+                    .retrieve().body(JsonNode.class);
+            List<Branch> out = new ArrayList<>();
+            if (list != null) {
+                list.forEach(b -> {
+                    JsonNode c = b.path("commit");
+                    out.add(new Branch(b.path("name").asText(), c.path("id").asText(),
+                            c.path("message").asText().strip().split("\n", 2)[0],
+                            c.path("author").path("name").asText(), c.path("timestamp").asText()));
+                });
+            }
+            out.sort(java.util.Comparator.comparing(Branch::date).reversed());
+            return out;
+        } catch (HttpClientErrorException.NotFound e) {
+            return List.of();
+        } catch (RestClientException e) {
+            throw PortalException.upstream("Gitea", e);
+        }
+    }
+
+    /** The first parent of {@code sha} (the state a change was made on top of). */
+    public String parent(String sha) {
+        try {
+            JsonNode c = http.get().uri("/api/v1/repos/{o}/{r}/git/commits/{s}?stat=false&files=false",
+                    cfg.owner(), cfg.envRepo(), sha).retrieve().body(JsonNode.class);
+            JsonNode parents = c == null ? null : c.path("parents");
+            if (parents == null || parents.isEmpty()) {
+                throw PortalException.unprocessable("commit " + sha + " has no parent to go back to");
+            }
+            return parents.get(0).path("sha").asText();
+        } catch (HttpClientErrorException.NotFound e) {
+            throw PortalException.notFound("no commit " + sha + " in the env repo");
         } catch (RestClientException e) {
             throw PortalException.upstream("Gitea", e);
         }
