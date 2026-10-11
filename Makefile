@@ -919,6 +919,12 @@ devbox-env-delete:
 devbox-env-proof:
 	@KEEP=$(KEEP) $(DEVBOX) env-proof $(or $(name),proof)
 
+.PHONY: proxysql-proof
+
+## proxysql-proof: ProxySQL routes untagged→primary, /* replica */→replicas, write-tx→primary; a lagging replica is shunned
+proxysql-proof:
+	@CONTEXT=$(K8S_CLUSTER) bash scripts/db/proxysql-proof.sh
+
 .PHONY: inventory-redis-loss-proof
 
 ## inventory-redis-loss-proof env=preview-X [orders=12]: create orders, wipe the env's Redis, pay — no decrement may be lost

@@ -33,6 +33,7 @@ infra:
   mysql:          { enabled: false }   # RDS
   mysqlReplica:   { enabled: false }   # RDS read replicas
   mysqldExporter: { enabled: false }   # RDS Enhanced Monitoring / Performance Insights
+  proxysql:       { enabled: false }   # later: ProxySQL in front of RDS (ADR 0012)
   redis:          { enabled: false }   # ElastiCache
   minio:          { enabled: false }   # S3
   vault:          { enabled: false }   # AWS Secrets Manager via ExternalSecrets

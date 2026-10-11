@@ -17,6 +17,13 @@ mysql -h master -uroot -p"$MYSQL_MASTER_PASSWORD" -e "
 CREATE DATABASE IF NOT EXISTS ecommerce_dev;
 CREATE USER IF NOT EXISTS '$MYSQL_REPL_USER'@'%' IDENTIFIED WITH mysql_native_password BY '$MYSQL_REPL_PASSWORD';
 GRANT REPLICATION SLAVE ON *.* TO '$MYSQL_REPL_USER'@'%';
+-- ProxySQL (ADR 0012). Created on the master so they replicate to both slaves:
+-- ProxySQL logs into EVERY backend with the same credentials, and each slave's
+-- root password is its own (MYSQL_SLAVEn_PASSWORD), so root can't be that user.
+CREATE USER IF NOT EXISTS '$MYSQL_APP_USER'@'%' IDENTIFIED WITH mysql_native_password BY '$MYSQL_APP_PASSWORD';
+GRANT ALL PRIVILEGES ON ecommerce_dev.* TO '$MYSQL_APP_USER'@'%';
+CREATE USER IF NOT EXISTS 'monitor'@'%' IDENTIFIED WITH mysql_native_password BY '$PROXYSQL_MONITOR_PASSWORD';
+GRANT USAGE, REPLICATION CLIENT ON *.* TO 'monitor'@'%';
 FLUSH PRIVILEGES;
 "
 

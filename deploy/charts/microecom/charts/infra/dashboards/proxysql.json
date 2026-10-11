@@ -1,0 +1,107 @@
+{
+  "title": "ProxySQL — read/write routing",
+  "uid": "proxysql",
+  "description": "ADR 0012: primary by default (hostgroup 10), replicas only for @ReplicaRead (hostgroup 20). Is the offload real, and is any replica too far behind to serve?",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": { "from": "now-30m", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "DS_VICTORIAMETRICS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "VictoriaMetrics", "value": "VictoriaMetrics" },
+        "hide": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Queries/s by hostgroup — 10 primary · 20 replicas",
+      "description": "Everything is primary unless a method is @ReplicaRead. Hostgroup 20 is the read load taken OFF the primary.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_VICTORIAMETRICS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (hostgroup) (rate(proxysql_connpool_conns_queries_total[1m]))",
+          "legendFormat": "hostgroup {{hostgroup}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "stacking": { "mode": "normal" }, "fillOpacity": 25 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "hostgroup 10" }, "properties": [ { "id": "displayName", "value": "10 · primary" } ] },
+          { "matcher": { "id": "byName", "options": "hostgroup 20" }, "properties": [ { "id": "displayName", "value": "20 · replicas (@ReplicaRead)" } ] }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Queries/s per backend",
+      "description": "Within hostgroup 20 the replicas share the load (weight 1000 each); the primary there has weight 1 — it only answers when every replica is shunned.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_VICTORIAMETRICS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (hostgroup, endpoint) (rate(proxysql_connpool_conns_queries_total[1m]))",
+          "legendFormat": "{{hostgroup}} · {{endpoint}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Replica lag (s) — shunned above 5 s",
+      "description": "Seconds behind the primary, per replica (mysqld-exporter). Past the dashed line ProxySQL stops sending @ReplicaRead queries to that replica.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "${DS_VICTORIAMETRICS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (instance) (mysql_slave_status_seconds_behind_master)",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": { "thresholdsStyle": { "mode": "dashed" } },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 5 } ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Backends not ONLINE",
+      "description": "Per ProxySQL pod: backends SHUNNED (lag or errors) or OFFLINE. 0 is healthy.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "${DS_VICTORIAMETRICS}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count by (instance) (proxysql_connpool_conns_status != 1) or count by (instance) (proxysql_connpool_conns_status) * 0",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    }
+  ]
+}
