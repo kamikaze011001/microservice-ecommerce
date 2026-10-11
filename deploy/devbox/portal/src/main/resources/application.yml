@@ -38,6 +38,11 @@ devbox:
   argo-namespace: argocd
   # The API console's proxy target; {namespace} = apps for prod-like, apps-<env> for a preview.
   gateway-url: http://gateway.{namespace}.svc.cluster.local:6868
+  # Baked into the image by the Dockerfile; override to run the portal from a checkout.
+  assets:
+    api-tests-dir: ${API_TESTS_DIR:/app/api-tests}
+    k6-dir: ${K6_DIR:/app/k6-stress}
+    k6-binary: ${K6_BINARY:k6}
   # Ingress hosts (minikube tunnel + /etc/hosts, like the storefront) — no
   # port-forward to keep alive.
   links:

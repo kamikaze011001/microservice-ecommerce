@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, isActive } from '../api'
 import { notify } from '../toast'
+import PerfSettings from '../components/PerfSettings.vue'
 
 const router = useRouter()
 const runs = ref([])
@@ -16,6 +17,8 @@ const form = ref({ env: 'prod-like', scenario: 'storefront', profile: 'smoke' })
 const picked = ref([])           // two run ids to compare
 const comparison = ref(null)
 const comparing = ref(false)
+const settings = ref(null)
+const settingsError = ref('')
 
 const HELP = {
   payment: 'login → order → pay (mock PayPal) → saga. Exercises every service + Kafka.',
@@ -37,6 +40,13 @@ async function load() {
     error.value = ''
   } catch (e) { error.value = e.message } finally { loaded.value = true }
 }
+
+async function loadSettings() {
+  settings.value = null
+  settingsError.value = ''
+  try { settings.value = await api.perfSettings(form.value.scenario, form.value.profile) } catch (e) { settingsError.value = e.message }
+}
+watch(() => [form.value.scenario, form.value.profile], loadSettings)
 
 async function start() {
   try {
@@ -70,6 +80,7 @@ onMounted(async () => {
   try { scenarios.value = await api.perfScenarios() } catch { /* form shows nothing */ }
   try { envs.value = (await api.envs()).map((e) => e.name) } catch { /* default */ }
   await load()
+  loadSettings()
   timer = setInterval(load, 10000)
 })
 onUnmounted(() => clearInterval(timer))
@@ -93,6 +104,9 @@ onUnmounted(() => clearInterval(timer))
       <button class="primary" :disabled="!!running" @click="start">▶ Run</button>
     </div>
     <p class="muted small">{{ HELP[form.scenario] }} <b>{{ form.profile }}</b>: {{ HELP[form.profile] }}</p>
+    <PerfSettings v-if="settings" :settings="settings" />
+    <p v-else-if="settingsError" class="error small">Couldn't read this profile's settings: {{ settingsError }}</p>
+    <p v-else class="muted small">Reading the profile's settings…</p>
     <p v-if="running" class="muted small">
       Waiting for “{{ running.title }} {{ running.target }}” —
       <RouterLink :to="`/jobs/${running.name}`">watch it ›</RouterLink></p>

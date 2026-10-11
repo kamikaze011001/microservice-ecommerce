@@ -26,6 +26,8 @@ export const api = {
   }),
   revertSettings: (env, service, commit) => post(`/api/envs/${env}/services/${service}/settings:revert`, { commit }),
   branches: () => call('/api/source/branches'),
+  brunoFiles: () => call('/api/bruno/files'),
+  perfSettings: (scenario, profile) => call(`/api/perf-scenarios/${scenario}/${profile}`),
   perfRuns: () => call('/api/perf-runs'),
   perfScenarios: () => call('/api/perf-scenarios'),
   perfCompare: (a, b) => call(`/api/perf-compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`),

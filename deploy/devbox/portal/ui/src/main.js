@@ -23,7 +23,7 @@ const router = createRouter({
     { path: '/jobs', component: JobsView, meta: { title: 'Jobs' } },
     { path: '/jobs/:name', component: JobDetailView, props: true, meta: { title: 'Job' } },
     { path: '/perf', component: PerfView, meta: { title: 'Performance' } },
-    // Swagger UI is ~1.5 MB: loaded only when this page opens.
+    // chai + the console: loaded only when this page opens.
     { path: '/api-testing', component: () => import('./views/ApiView.vue'), meta: { title: 'API testing' } },
     { path: '/tools', component: ToolsView, meta: { title: 'Platform tools' } },
   ],

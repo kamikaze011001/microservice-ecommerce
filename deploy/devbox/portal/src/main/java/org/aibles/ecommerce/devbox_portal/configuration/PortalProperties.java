@@ -17,7 +17,8 @@ public record PortalProperties(
         @NotBlank String argoNamespace,
         Links links,
         Runner runner,
-        @NotBlank String gatewayUrl) {
+        @NotBlank String gatewayUrl,
+        Assets assets) {
 
     /** {@code codeRepo}: where developers push branches for the Build page (and `make devbox-push`). */
     public record Gitea(@NotBlank String url, @NotBlank String user, @NotBlank String password,
@@ -31,6 +32,10 @@ public record PortalProperties(
      * memory budget: each preview is a full copy of the app.
      */
     public record Runner(String image, @NotBlank String namespace, @NotBlank String serviceAccount, int maxPreviews) {
+    }
+
+    /** Where the image keeps api-tests/ and deploy/k6-stress/, and the k6 binary (Dockerfile). */
+    public record Assets(String apiTestsDir, String k6Dir, String k6Binary) {
     }
 
     /** Browser-facing URLs of the other UIs (ingress hosts, through the minikube tunnel). */

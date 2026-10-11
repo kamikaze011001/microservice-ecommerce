@@ -290,7 +290,14 @@ cmd_portal() {
     log_info "devbox-portal:$tag is already in the registry — no rebuild"
   else
     log_info "building devbox-portal:$tag"
-    docker build -q -t "$REGISTRY_HOST/devbox-portal:$tag" "$DEVBOX/portal" >/dev/null
+    # Context = portal/ + the test assets the page shows (k6-stress/, api-tests/).
+    local pstage; pstage="$(mktemp -d)"
+    COPYFILE_DISABLE=1 tar -C "$ROOT/deploy/devbox" --exclude='*/target' --exclude='*/node_modules' --exclude='*/dist' \
+      -cf - portal | tar -C "$pstage" -xf -
+    COPYFILE_DISABLE=1 tar -C "$ROOT/deploy" -cf - k6-stress | tar -C "$pstage" -xf -
+    COPYFILE_DISABLE=1 tar -C "$ROOT" --exclude='*/node_modules' -cf - api-tests | tar -C "$pstage" -xf -
+    docker build -q -t "$REGISTRY_HOST/devbox-portal:$tag" -f "$pstage/portal/Dockerfile" "$pstage" >/dev/null
+    rm -rf "$pstage"
     docker push -q "$REGISTRY_HOST/devbox-portal:$tag" >/dev/null
   fi
   local runner_tag; runner_tag="$(cd "$ROOT" && version_of devbox-runner)"

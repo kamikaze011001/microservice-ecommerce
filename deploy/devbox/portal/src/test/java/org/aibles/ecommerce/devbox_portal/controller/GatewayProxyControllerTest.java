@@ -37,7 +37,7 @@ class GatewayProxyControllerTest {
         });
         gateway.start();
         PortalProperties props = new PortalProperties(null, "r", "m", "argocd", null, null,
-                "http://127.0.0.1:" + gateway.getAddress().getPort());
+                "http://127.0.0.1:" + gateway.getAddress().getPort(), null);
         proxy = new GatewayProxyController(props);
     }
 
@@ -74,7 +74,7 @@ class GatewayProxyControllerTest {
     @Test
     void theNamespaceFollowsTheEnv() {
         PortalProperties props = new PortalProperties(null, "r", "m", "argocd", null, null,
-                "http://gateway.{namespace}.svc.cluster.local:6868");
+                "http://gateway.{namespace}.svc.cluster.local:6868", null);
         GatewayProxyController p = new GatewayProxyController(props);
 
         assertThat(p.gatewayBase("prod-like")).isEqualTo("http://gateway.apps.svc.cluster.local:6868");

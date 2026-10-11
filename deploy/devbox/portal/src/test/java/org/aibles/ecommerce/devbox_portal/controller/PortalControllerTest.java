@@ -7,6 +7,7 @@ import org.aibles.ecommerce.devbox_portal.service.EnvService;
 import org.aibles.ecommerce.devbox_portal.service.JobService;
 import org.aibles.ecommerce.devbox_portal.service.ToolService;
 import org.aibles.ecommerce.devbox_portal.service.SettingsService;
+import org.aibles.ecommerce.devbox_portal.service.TestAssets;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -51,6 +52,9 @@ class PortalControllerTest {
 
     @MockBean
     private SettingsService settingsService;
+
+    @MockBean
+    private TestAssets testAssets;
 
     @Test
     void deployIsAColonActionAndAnswersSnakeCase() throws Exception {

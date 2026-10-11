@@ -24,6 +24,7 @@ import org.aibles.ecommerce.devbox_portal.service.EnvService;
 import org.aibles.ecommerce.devbox_portal.service.JobKind;
 import org.aibles.ecommerce.devbox_portal.service.JobService;
 import org.aibles.ecommerce.devbox_portal.service.SettingsService;
+import org.aibles.ecommerce.devbox_portal.service.TestAssets;
 import org.aibles.ecommerce.devbox_portal.service.ToolService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -60,14 +61,16 @@ public class PortalController {
     private final JobService jobService;
     private final ToolService toolService;
     private final SettingsService settingsService;
+    private final TestAssets testAssets;
     private final PortalProperties properties;
 
     public PortalController(EnvService envService, JobService jobService, ToolService toolService,
-                            SettingsService settingsService, PortalProperties properties) {
+                            SettingsService settingsService, TestAssets testAssets, PortalProperties properties) {
         this.envService = envService;
         this.jobService = jobService;
         this.toolService = toolService;
         this.settingsService = settingsService;
+        this.testAssets = testAssets;
         this.properties = properties;
     }
 
@@ -177,5 +180,18 @@ public class PortalController {
     @GetMapping("/api/source/branches")
     public List<GiteaClient.Branch> branches() {
         return envService.branches();
+    }
+
+    /** The Bruno collection (api-tests/*.bru) — the API testing page parses and runs it. */
+    @GetMapping("/api/bruno/files")
+    public List<TestAssets.BrunoFile> brunoFiles() {
+        return testAssets.brunoFiles();
+    }
+
+    /** What a perf run will do, as k6 resolves it. Both values are validated against perf.sh's list. */
+    @GetMapping("/api/perf-scenarios/{scenario}/{profile}")
+    public TestAssets.PerfSettings perfSettings(@PathVariable @Pattern(regexp = "[a-z]{1,20}") String scenario,
+                                                @PathVariable @Pattern(regexp = "[a-z]{1,20}") String profile) {
+        return testAssets.perfSettings(scenario, profile);
     }
 }

@@ -9,15 +9,18 @@ import org.aibles.ecommerce.devbox_portal.client.RegistryClient;
 import org.aibles.ecommerce.devbox_portal.service.EnvService;
 import org.aibles.ecommerce.devbox_portal.service.JobService;
 import org.aibles.ecommerce.devbox_portal.service.SettingsService;
+import org.aibles.ecommerce.devbox_portal.service.TestAssets;
 import org.aibles.ecommerce.devbox_portal.service.ToolService;
 import org.aibles.ecommerce.devbox_portal.service.impl.EnvServiceImpl;
 import org.aibles.ecommerce.devbox_portal.service.impl.JobServiceImpl;
 import org.aibles.ecommerce.devbox_portal.service.impl.SettingsServiceImpl;
+import org.aibles.ecommerce.devbox_portal.service.impl.TestAssetsImpl;
 import org.aibles.ecommerce.devbox_portal.service.impl.ToolServiceImpl;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
 
+import java.nio.file.Path;
 import java.time.Clock;
 
 /** Manual wiring, as in every service in this repo (no @Service on implementations). */
@@ -72,5 +75,11 @@ public class PortalConfiguration {
     @Bean
     public SettingsService settingsService(GiteaClient gitea, ArgoClient argo) {
         return new SettingsServiceImpl(gitea, argo);
+    }
+
+    @Bean
+    public TestAssets testAssets(PortalProperties properties) {
+        PortalProperties.Assets a = properties.assets();
+        return new TestAssetsImpl(Path.of(a.apiTestsDir()), Path.of(a.k6Dir()), a.k6Binary());
     }
 }
