@@ -54,9 +54,12 @@ vault:
     dev:
       enabled: true
       devRootToken: "root"
+    # 256Mi stalled it (2026-10-18): dev mode keeps every KV version in memory,
+    # so each re-seed grows it; at the limit it stopped answering (readiness
+    # timeouts, then no HTTP at all) and blocked secrets-seed.
     resources:
       requests: { cpu: 50m, memory: 128Mi }
-      limits:   { cpu: 200m, memory: 256Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
   # Agent injector DISABLED. This stack's services read Vault directly via Spring
   # Cloud Vault (SPRING_CLOUD_VAULT_URI + TOKEN auth — see apps/base/_template/
   # deployment.yaml); nothing uses sidecar secret-injection (no

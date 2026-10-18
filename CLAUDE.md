@@ -94,7 +94,7 @@ make infra-status  # ps table per stack
   load-mutate-save, read-after-write, or money/stock/security reads. Calling one
   inside a read-write transaction throws `IllegalStateException` (the guard).
 - Initialization scripts in `/docker/scripts/`; `make proxysql-proof` checks
-  the routing on the local cluster, and `make db-lag-proof [env=preview-x]` holds
+  the routing on the local cluster, and `make db-lag-proof [env=preview-x|compose]` holds
   both replicas 10 s behind while cart, order detail, history and cancel read
   back their own writes (old Slave*Repo images FAIL, ProxySQL images PASS).
 

@@ -29,7 +29,13 @@ FLUSH PRIVILEGES;
 
 # Configure and start replication on slave1
 echo "Configuring slave1..."
+# STOP + RESET first: the relay log is named after the container's hostname, so
+# a recreated container can't find the old one and CHANGE MASTER fails with
+# ERROR 1872 on every later `make up`. RESET drops only relay state; with
+# MASTER_AUTO_POSITION the slave resumes from its own GTID set.
 mysql -h slave1 -uroot -p"$MYSQL_SLAVE1_PASSWORD" -e "
+STOP SLAVE;
+RESET SLAVE;
 CHANGE MASTER TO
   MASTER_HOST='master',
   MASTER_USER='$MYSQL_REPL_USER',
@@ -51,7 +57,13 @@ fi
 
 # Configure and start replication on slave2
 echo "Configuring slave2..."
+# STOP + RESET first: the relay log is named after the container's hostname, so
+# a recreated container can't find the old one and CHANGE MASTER fails with
+# ERROR 1872 on every later `make up`. RESET drops only relay state; with
+# MASTER_AUTO_POSITION the slave resumes from its own GTID set.
 mysql -h slave2 -uroot -p"$MYSQL_SLAVE2_PASSWORD" -e "
+STOP SLAVE;
+RESET SLAVE;
 CHANGE MASTER TO
   MASTER_HOST='master',
   MASTER_USER='$MYSQL_REPL_USER',
