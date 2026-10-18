@@ -31,10 +31,9 @@ import org.aibles.order_service.dto.response.OrderSummaryResponse;
 import org.aibles.order_service.entity.Order;
 import org.aibles.order_service.entity.OrderItem;
 import org.aibles.order_service.exception.InvalidProductQuantityException;
-import org.aibles.order_service.repository.master.MasterOrderItemRepo;
-import org.aibles.order_service.repository.master.MasterOrderRepo;
-import org.aibles.order_service.repository.slave.SlaveOrderItemRepo;
-import org.aibles.order_service.repository.slave.SlaveOrderRepo;
+import org.aibles.ecommerce.core_replica_routing.ReplicaRead;
+import org.aibles.order_service.repository.OrderItemRepository;
+import org.aibles.order_service.repository.OrderRepository;
 import org.aibles.order_service.service.OrderService;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -62,31 +61,25 @@ public class OrderServiceImpl implements OrderService {
     private final InventoryGrpcClientService inventoryGrpcClientService;
     private final RedisRepository redisRepository;
     private final PendingOrderCacheRepository pendingOrderCacheRepository;
-    private final MasterOrderRepo masterOrderRepo;
-    private final MasterOrderItemRepo masterOrderItemRepo;
+    private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
     private final RedissonClient redissonClient;
     private final ApplicationEventPublisher eventPublisher;
-    private final SlaveOrderRepo slaveOrderRepo;
-    private final SlaveOrderItemRepo slaveOrderItemRepo;
 
     public OrderServiceImpl(InventoryGrpcClientService inventoryGrpcClientService,
                             RedisRepository redisRepository,
                             PendingOrderCacheRepository pendingOrderCacheRepository,
-                            MasterOrderRepo masterOrderRepo,
-                            MasterOrderItemRepo masterOrderItemRepo,
+                            OrderRepository orderRepository,
+                            OrderItemRepository orderItemRepository,
                             RedissonClient redissonClient,
-                            ApplicationEventPublisher eventPublisher,
-                            SlaveOrderRepo slaveOrderRepo,
-                            SlaveOrderItemRepo slaveOrderItemRepo) {
+                            ApplicationEventPublisher eventPublisher) {
         this.inventoryGrpcClientService = inventoryGrpcClientService;
         this.redisRepository = redisRepository;
         this.pendingOrderCacheRepository = pendingOrderCacheRepository;
-        this.masterOrderRepo = masterOrderRepo;
-        this.masterOrderItemRepo = masterOrderItemRepo;
+        this.orderRepository = orderRepository;
+        this.orderItemRepository = orderItemRepository;
         this.redissonClient = redissonClient;
         this.eventPublisher = eventPublisher;
-        this.slaveOrderRepo = slaveOrderRepo;
-        this.slaveOrderItemRepo = slaveOrderItemRepo;
     }
 
     @Override
@@ -389,7 +382,7 @@ public class OrderServiceImpl implements OrderService {
         // Only the status changes here. inventory-service consumes the reservation
         // (reads the pending order → decrements stock → removes it), so releasing it
         // to `available` from this side would hand sold units back.
-        if (masterOrderRepo.updateStatusIfCurrent(orderId, OrderStatus.PROCESSING, OrderStatus.COMPLETED) == 0) {
+        if (orderRepository.updateStatusIfCurrent(orderId, OrderStatus.PROCESSING, OrderStatus.COMPLETED) == 0) {
             log.info("order not PROCESSING, success reply ignored (redelivery or already final). orderId={}", orderId);
         }
     }
@@ -407,7 +400,7 @@ public class OrderServiceImpl implements OrderService {
      * expiry cleanup job releases it later — late, but exactly once.
      */
     private void finishOrder(String orderId, OrderStatus target) {
-        if (masterOrderRepo.updateStatusIfCurrent(orderId, OrderStatus.PROCESSING, target) == 0) {
+        if (orderRepository.updateStatusIfCurrent(orderId, OrderStatus.PROCESSING, target) == 0) {
             log.info("order not PROCESSING, {} reply ignored (redelivery or already final). orderId={}", target, orderId);
             return;
         }
@@ -473,7 +466,7 @@ public class OrderServiceImpl implements OrderService {
                 .phoneNumber(phoneNumber)
                 .build();
 
-        return masterOrderRepo.save(order);
+        return orderRepository.save(order);
     }
 
     private void saveOrderItems(List<OrderItemRequest> orderItems, String orderId,
@@ -495,7 +488,7 @@ public class OrderServiceImpl implements OrderService {
                 })
                 .toList();
 
-        masterOrderItemRepo.saveAll(items);
+        orderItemRepository.saveAll(items);
     }
 
     private InventoryProductIdsResponse fetchInventoryData(InventoryProductIdsRequest request) {
@@ -504,18 +497,25 @@ public class OrderServiceImpl implements OrderService {
     }
 
 
+    /**
+     * Order history page — a display read, served from a replica. An order placed a
+     * second ago may be missing from it briefly; the detail page (get) reads the
+     * primary, so following the link after checkout always works.
+     */
     @Override
+    @ReplicaRead
     @Transactional(readOnly = true)
     public PagingResponse list(String userId, int page, int size) {
         log.info("(list) userId: {}, page: {}, size: {}", userId, page, size);
         PageRequest pageRequest = PageRequest.of(page - 1, size);
-        Page<Order> ordersByPage = slaveOrderRepo.findAllByUserId(userId, pageRequest);
+        Page<Order> ordersByPage = orderRepository.findAllByUserId(userId, pageRequest);
         List<Order> orders = ordersByPage.toList();
+        // One query for the whole page, not one per order.
+        Map<String, List<OrderItem>> itemsByOrder = orders.isEmpty() ? Map.of()
+                : orderItemRepository.findAllByOrderIdIn(orders.stream().map(Order::getId).toList())
+                        .stream().collect(Collectors.groupingBy(OrderItem::getOrderId));
         List<OrderSummaryResponse> orderSummaryResponses = orders.stream()
-                .map(order -> {
-                    List<OrderItem> items = slaveOrderItemRepo.findAllByOrderId(order.getId());
-                    return OrderSummaryResponse.from(order, items);
-                })
+                .map(order -> OrderSummaryResponse.from(order, itemsByOrder.getOrDefault(order.getId(), List.of())))
                 .toList();
         return PagingResponse.builder()
                 .size(size)
@@ -529,10 +529,10 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public OrderDetailResponse get(String userId, String orderId) {
         log.info("(get) userId: {}, orderId: {}", userId, orderId);
-        Order order = slaveOrderRepo.findByIdAndUserId(orderId, userId)
+        Order order = orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new NotFoundException("order.not_found", Map.of("id", orderId)));
 
-        List<OrderItem> orderItems = slaveOrderItemRepo.findAllByOrderId(orderId);
+        List<OrderItem> orderItems = orderItemRepository.findAllByOrderId(orderId);
 
         List<OrderItemResponse> orderItemResponses = orderItems.stream().map(OrderItemResponse::from).toList();
         return OrderDetailResponse.from(order, orderItemResponses);
@@ -541,7 +541,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public OrderCancelResponse cancel(String userId, String orderId) {
         log.info("(cancel)orderId: {}", orderId);
-        Order order = slaveOrderRepo.findById(orderId)
+        Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("order.not_found", Map.of("id", orderId)));
 
         if (!userId.equals(order.getUserId())) {

@@ -134,6 +134,9 @@ services:
       MYSQL_SLAVE2_PASSWORD: ${MYSQL_SLAVE2_PASSWORD:-slave2password}
       MYSQL_REPL_USER: ${MYSQL_REPL_USER:-repl_user}
       MYSQL_REPL_PASSWORD: ${MYSQL_REPL_PASSWORD:-replica_ecommerce}
+      MYSQL_APP_USER: ${MYSQL_APP_USER:-ecommerce}
+      MYSQL_APP_PASSWORD: ${MYSQL_APP_PASSWORD:-ecommerce_app}
+      PROXYSQL_MONITOR_PASSWORD: ${PROXYSQL_MONITOR_PASSWORD:-monitor}
     command: ["/bin/bash", "/scripts/init-mysql.sh"]
     depends_on:
       master:
@@ -143,6 +146,37 @@ services:
       slave2:
         condition: service_healthy
     restart: no
+
+  # Every service's one MySQL endpoint (ADR 0012): primary by default, a slave
+  # only for queries tagged by @ReplicaRead. Config is rendered from the
+  # template at start (ProxySQL's own file format has no env interpolation).
+  proxysql:
+    image: proxysql/proxysql:2.7.1
+    container_name: proxysql
+    networks:
+      - mysql-cluster
+    environment:
+      MYSQL_APP_USER: ${MYSQL_APP_USER:-ecommerce}
+      MYSQL_APP_PASSWORD: ${MYSQL_APP_PASSWORD:-ecommerce_app}
+      PROXYSQL_MONITOR_PASSWORD: ${PROXYSQL_MONITOR_PASSWORD:-monitor}
+    volumes:
+      - ./proxysql/proxysql.cnf.tpl:/etc/proxysql.cnf.tpl:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        sed -e "s|\$${MYSQL_APP_USER}|$$MYSQL_APP_USER|g"
+        -e "s|\$${MYSQL_APP_PASSWORD}|$$MYSQL_APP_PASSWORD|g"
+        -e "s|\$${PROXYSQL_MONITOR_PASSWORD}|$$PROXYSQL_MONITOR_PASSWORD|g"
+        /etc/proxysql.cnf.tpl > /tmp/proxysql.cnf &&
+        exec proxysql -f --initial -c /tmp/proxysql.cnf -D /var/lib/proxysql
+    depends_on:
+      mysql-init:
+        condition: service_completed_successfully
+    ports:
+      - "6033:6033"   # the app endpoint
+      - "6032:6032"   # admin (stats) — radmin/radmin
+      - "6070:6070"   # Prometheus /metrics
+    restart: unless-stopped
 
 networks:
   mysql-cluster:

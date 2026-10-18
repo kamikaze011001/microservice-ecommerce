@@ -60,6 +60,15 @@ infra:
   kafkaConnect:   { enabled: true }
   kafkaExporter:  { enabled: true }
   mysqldExporter: { enabled: true }
+  # Every service's one MySQL endpoint — primary by default, replicas only for
+  # @ReplicaRead (ADR 0012). Local-dev credentials, like mysqld-exporter.
+  proxysql:
+    enabled: true
+    replicas: 2
+    image: proxysql/proxysql:2.7.1
+    maxReplicationLag: 5          # seconds; a replica further behind is shunned
+    app:     { username: root, password: root }
+    monitor: { username: monitor, password: monitor }
 
   # EKS only — Phase 7 exercises these.
   storageClassGp3: { enabled: false }

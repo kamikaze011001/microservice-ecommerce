@@ -1,0 +1,147 @@
+{{- if and .Values.proxysql.enabled .Values.mysql.enabled }}
+{{- $ns := .Values.global.namespaces.infra -}}
+{{- $primary := include "microecom.fqdn" (dict "name" "mysql" "namespace" $ns) -}}
+{{- $headless := include "microecom.fqdn" (dict "name" "mysql-replica-headless" "namespace" $ns) -}}
+{{/*
+ProxySQL — every service's ONE MySQL endpoint (ADR 0012: primary by default).
+
+  hostgroup 10  writer   the primary
+  hostgroup 20  readers  the replicas (weight 1000, shunned past max_replication_lag)
+                         + the primary at weight 1, so a tagged read still gets an
+                           answer when every replica is lagging or down
+
+Routing: a query that starts with the replica hint comment (the SQL comment
+"replica", added by the @ReplicaRead StatementInspector — not spelled out here
+because its closing delimiter would end this Helm comment) goes to hostgroup 20;
+everything else goes to
+the user's default_hostgroup, 10. transaction_persistent=1 keeps a transaction
+on the hostgroup it started on, so a read-write transaction never splits.
+
+Config is declarative: every pod loads this exact file at start (--initial, an
+emptyDir datadir), so two replicas are identical without ProxySQL's runtime
+cluster sync (which needs stable peer addresses a Deployment doesn't have).
+Change config = change this template and roll the pods.
+
+Credentials: local-dev only, like mysqld-exporter — the app user is root
+(deploy/secrets/contexts/k8s.yaml records that finding), the monitor user is
+created by the mysql-replication hook.
+*/}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proxysql-config
+  namespace: {{ $ns }}
+  labels: { app.kubernetes.io/name: proxysql }
+data:
+  proxysql.cnf: |
+    datadir="/var/lib/proxysql"
+
+    admin_variables=
+    {
+      # admin = local socket only; radmin = remote (the proof script reads stats with it)
+      admin_credentials="admin:admin;radmin:radmin"
+      mysql_ifaces="0.0.0.0:6032"
+      restapi_enabled=true
+      restapi_port=6070
+    }
+
+    mysql_variables=
+    {
+      threads=4
+      max_connections=2048
+      interfaces="0.0.0.0:6033"
+      default_schema="information_schema"
+      server_version="8.0.40"
+      connect_timeout_server=3000
+      monitor_username="{{ .Values.proxysql.monitor.username }}"
+      monitor_password="{{ .Values.proxysql.monitor.password }}"
+      monitor_ping_interval=2000
+      monitor_read_only_interval=1500
+      monitor_replication_lag_interval=1000
+    }
+
+    mysql_servers=
+    (
+      { address="{{ $primary }}", port=3306, hostgroup=10, max_connections=500 },
+      { address="{{ $primary }}", port=3306, hostgroup=20, weight=1, max_connections=500 }
+      {{- if .Values.mysqlReplica.enabled }}
+      {{- range $i := until (int .Values.mysqlReplica.replicas) }},
+      { address="mysql-replica-{{ $i }}.{{ $headless }}", port=3306, hostgroup=20, weight=1000, max_connections=500, max_replication_lag={{ $.Values.proxysql.maxReplicationLag }} }
+      {{- end }}
+      {{- end }}
+    )
+
+    mysql_users=
+    (
+      { username="{{ .Values.proxysql.app.username }}", password="{{ .Values.proxysql.app.password }}", default_hostgroup=10, transaction_persistent=1 }
+    )
+
+    mysql_query_rules=
+    (
+      { rule_id=1, active=1, match_pattern="^/\\* replica \\*/", destination_hostgroup=20, apply=1 }
+    )
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proxysql
+  namespace: {{ $ns }}
+  labels: { app.kubernetes.io/name: proxysql }
+spec:
+  replicas: {{ .Values.proxysql.replicas }}
+  progressDeadlineSeconds: {{ .Values.progressDeadlineSeconds }}
+  selector:
+    matchLabels: { app.kubernetes.io/name: proxysql }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: proxysql }
+      annotations:
+        # A config change must roll the pods: they only read the file at start.
+        checksum/config: {{ .Values.proxysql | toJson | sha256sum }}
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: proxysql
+          image: {{ .Values.proxysql.image }}
+          # command, not args: the image has no ENTRYPOINT (its CMD is the whole
+          # proxysql invocation), so args alone would try to exec "-f".
+          command: ["proxysql", "-f", "--initial", "-c", "/etc/proxysql/proxysql.cnf", "-D", "/var/lib/proxysql"]
+          ports:
+            - { name: mysql, containerPort: 6033 }
+            - { name: admin, containerPort: 6032 }
+            - { name: metrics, containerPort: 6070 }
+          readinessProbe:
+            tcpSocket: { port: mysql }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: { port: admin }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          volumeMounts:
+            - { name: config, mountPath: /etc/proxysql, readOnly: true }
+            - { name: data, mountPath: /var/lib/proxysql }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
+      volumes:
+        - name: config
+          configMap: { name: proxysql-config }
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: proxysql
+  namespace: {{ $ns }}
+  labels: { app.kubernetes.io/name: proxysql }
+spec:
+  type: ClusterIP
+  selector: { app.kubernetes.io/name: proxysql }
+  ports:
+    - { name: mysql, port: 6033, targetPort: mysql }
+    - { name: admin, port: 6032, targetPort: admin }
+    - { name: metrics, port: 6070, targetPort: metrics }
+{{- end }}

@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * Guards the call-then-record boundary: PayPal HTTP calls live in
- * PaymentServiceImpl and must NOT run inside a JTA transaction (Atomikos
+ * PaymentServiceImpl and must NOT run inside a DB transaction (Atomikos
  * maxActives=50 saturated when ~1.3s HTTP calls held tx slots — see
  * docs/performance-stress-report-2026-06-10.md P2). All DB writes live in
  * PaymentRecorder behind short @Transactional methods.

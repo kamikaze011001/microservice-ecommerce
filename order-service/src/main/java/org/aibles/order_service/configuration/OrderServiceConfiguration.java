@@ -5,15 +5,12 @@ import org.aibles.ecommerce.core_order_cache.configuration.EnableOrderCache;
 import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheRepository;
 import org.aibles.ecommerce.core_redis.configuration.EnableCoreRedis;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
-import org.aibles.ecommerce.core_routing_db.configuration.EnableDatasourceRouting;
+import org.aibles.ecommerce.core_replica_routing.EnableReplicaRouting;
 import org.aibles.order_service.client.InventoryGrpcClientService;
-import org.aibles.order_service.repository.master.MasterOrderItemRepo;
-import org.aibles.order_service.repository.master.MasterOrderRepo;
-import org.aibles.order_service.repository.master.MasterShoppingCartItemRepo;
-import org.aibles.order_service.repository.master.MasterShoppingCartRepo;
-import org.aibles.order_service.repository.slave.SlaveOrderItemRepo;
-import org.aibles.order_service.repository.slave.SlaveOrderRepo;
-import org.aibles.order_service.repository.slave.SlaveShoppingCartRepo;
+import org.aibles.order_service.repository.OrderItemRepository;
+import org.aibles.order_service.repository.OrderRepository;
+import org.aibles.order_service.repository.ShoppingCartItemRepository;
+import org.aibles.order_service.repository.ShoppingCartRepository;
 import org.aibles.order_service.service.OrderService;
 import org.aibles.order_service.service.ShoppingCartService;
 import org.aibles.order_service.service.impl.OrderServiceImpl;
@@ -31,7 +28,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 
 @Configuration
 @EnableCoreExceptionApi
-@EnableDatasourceRouting
+@EnableReplicaRouting
 @EnableDiscoveryClient
 @EnableCoreRedis
 @EnableOrderCache
@@ -43,30 +40,25 @@ import org.springframework.scheduling.annotation.EnableAsync;
 public class OrderServiceConfiguration {
 
     @Bean
-    public ShoppingCartService shoppingCartService(MasterShoppingCartRepo masterShoppingCartRepo,
-                                                   SlaveShoppingCartRepo slaveShoppingCartRepo,
-                                                   MasterShoppingCartItemRepo masterShoppingCartItemRepo) {
-        return new ShoppingCartServiceImpl(masterShoppingCartRepo, slaveShoppingCartRepo, masterShoppingCartItemRepo);
+    public ShoppingCartService shoppingCartService(ShoppingCartRepository shoppingCartRepository,
+                                                   ShoppingCartItemRepository shoppingCartItemRepository) {
+        return new ShoppingCartServiceImpl(shoppingCartRepository, shoppingCartItemRepository);
     }
 
     @Bean
     public OrderService orderService(InventoryGrpcClientService inventoryGrpcClientService,
                                      RedisRepository redisRepository,
                                      PendingOrderCacheRepository pendingOrderCacheRepository,
-                                     MasterOrderRepo masterOrderRepo,
-                                     MasterOrderItemRepo masterOrderItemRepo,
+                                     OrderRepository orderRepository,
+                                     OrderItemRepository orderItemRepository,
                                      RedissonClient redissonClient,
-                                     ApplicationEventPublisher eventPublisher,
-                                     SlaveOrderRepo slaveOrderRepo,
-                                     SlaveOrderItemRepo slaveOrderItemRepo) {
+                                     ApplicationEventPublisher eventPublisher) {
         return new OrderServiceImpl(inventoryGrpcClientService,
                 redisRepository,
                 pendingOrderCacheRepository,
-                masterOrderRepo,
-                masterOrderItemRepo,
+                orderRepository,
+                orderItemRepository,
                 redissonClient,
-                eventPublisher,
-                slaveOrderRepo,
-                slaveOrderItemRepo);
+                eventPublisher);
     }
 }

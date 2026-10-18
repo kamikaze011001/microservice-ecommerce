@@ -3,7 +3,7 @@ package org.aibles.ecommerce.inventory_service.configuration;
 import org.aibles.ecommerce.core_redis.constant.RedisConstant;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
 import org.aibles.ecommerce.inventory_service.entity.InventoryProduct;
-import org.aibles.ecommerce.inventory_service.repository.master.MasterInventoryProductRepository;
+import org.aibles.ecommerce.inventory_service.repository.InventoryProductRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -15,26 +15,26 @@ import static org.mockito.Mockito.*;
 
 class AvailableStockSeederTest {
 
-    private MasterInventoryProductRepository masterInventoryProductRepository;
+    private InventoryProductRepository inventoryProductRepository;
     private RedisRepository redisRepository;
     private AvailableStockSeeder seeder;
 
     @BeforeEach
     void setUp() {
-        masterInventoryProductRepository = mock(MasterInventoryProductRepository.class);
+        inventoryProductRepository = mock(InventoryProductRepository.class);
         redisRepository = mock(RedisRepository.class);
-        seeder = new AvailableStockSeeder(masterInventoryProductRepository, redisRepository);
+        seeder = new AvailableStockSeeder(inventoryProductRepository, redisRepository);
     }
 
     @Test
     void run_backfillsStockBeforeReadingProducts() throws Exception {
-        when(masterInventoryProductRepository.findAll()).thenReturn(List.of());
+        when(inventoryProductRepository.findAll()).thenReturn(List.of());
 
         seeder.run(new DefaultApplicationArguments());
 
-        InOrder inOrder = inOrder(masterInventoryProductRepository);
-        inOrder.verify(masterInventoryProductRepository).backfillStockFromLedger();
-        inOrder.verify(masterInventoryProductRepository).findAll();
+        InOrder inOrder = inOrder(inventoryProductRepository);
+        inOrder.verify(inventoryProductRepository).backfillStockFromLedger();
+        inOrder.verify(inventoryProductRepository).findAll();
     }
 
     @Test
@@ -47,7 +47,7 @@ class AvailableStockSeederTest {
         p2.setId("prod-2");
         p2.setStock(15L);
 
-        when(masterInventoryProductRepository.findAll()).thenReturn(List.of(p1, p2));
+        when(inventoryProductRepository.findAll()).thenReturn(List.of(p1, p2));
 
         seeder.run(new DefaultApplicationArguments());
 
@@ -64,7 +64,7 @@ class AvailableStockSeederTest {
         p.setId("prod-zero");
         p.setStock(0L);
 
-        when(masterInventoryProductRepository.findAll()).thenReturn(List.of(p));
+        when(inventoryProductRepository.findAll()).thenReturn(List.of(p));
 
         seeder.run(new DefaultApplicationArguments());
 
@@ -78,7 +78,7 @@ class AvailableStockSeederTest {
         p.setId("prod-negative");
         p.setStock(-5L);
 
-        when(masterInventoryProductRepository.findAll()).thenReturn(List.of(p));
+        when(inventoryProductRepository.findAll()).thenReturn(List.of(p));
 
         seeder.run(new DefaultApplicationArguments());
 
@@ -92,7 +92,7 @@ class AvailableStockSeederTest {
         p.setId("prod-null-stock");
         p.setStock(null);
 
-        when(masterInventoryProductRepository.findAll()).thenReturn(List.of(p));
+        when(inventoryProductRepository.findAll()).thenReturn(List.of(p));
 
         seeder.run(new DefaultApplicationArguments());
 
@@ -102,11 +102,11 @@ class AvailableStockSeederTest {
 
     @Test
     void run_seedsNothingInRedisWhenNoProducts() throws Exception {
-        when(masterInventoryProductRepository.findAll()).thenReturn(List.of());
+        when(inventoryProductRepository.findAll()).thenReturn(List.of());
 
         seeder.run(new DefaultApplicationArguments());
 
-        verify(masterInventoryProductRepository).backfillStockFromLedger();
+        verify(inventoryProductRepository).backfillStockFromLedger();
         verifyNoInteractions(redisRepository);
     }
 }

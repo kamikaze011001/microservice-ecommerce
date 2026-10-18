@@ -87,6 +87,12 @@ victoriaMetrics:
     # Local dev: short retention. k6 runs are minutes; a week of history is plenty.
     retentionPeriod: 7d
 
+    # Re-read the scrape config when its ConfigMap changes. Without this, VM reads
+    # it only at start: a new scrape job (ProxySQL, ADR 0012) sat in the ConfigMap
+    # unscraped until a manual /-/reload — every future job would too.
+    extraArgs:
+      promscrape.configCheckInterval: 30s
+
     resources:
       requests: { cpu: 100m, memory: 200Mi }
       limits:   { cpu: 500m, memory: 400Mi }
@@ -203,6 +209,25 @@ victoriaMetrics:
               - source_labels: [__meta_kubernetes_pod_label_mysql_instance]
                 target_label: instance
 
+          # 6. ProxySQL's built-in exporter (restapi, :6070/metrics): queries per
+          #    hostgroup (10 = primary, 20 = replicas), backend status incl.
+          #    SHUNNED, and the replication lag ProxySQL itself measured — the
+          #    numbers that show whether @ReplicaRead offloads anything (ADR 0012).
+          - job_name: proxysql
+            kubernetes_sd_configs:
+              - role: endpoints
+                namespaces:
+                  names: [infra]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
+                action: keep
+                regex: proxysql
+              - source_labels: [__meta_kubernetes_endpoint_port_name]
+                action: keep
+                regex: metrics
+              - source_labels: [__meta_kubernetes_pod_name]
+                target_label: instance
+
   # The chart's ClusterRole grants nodes + nodes/metrics but NOT nodes/proxy. The
   # kubelet-cadvisor job scrapes /metrics/cadvisor THROUGH the API server proxy
   # (/api/v1/nodes/<node>/proxy/...), which requires `get` on the nodes/proxy
@@ -269,10 +294,57 @@ grafana:
       apiVersion: 1
       datasources:
         - name: VictoriaMetrics
+          # A fixed uid: alert rules reference a datasource by uid, not name.
+          uid: victoriametrics
           type: prometheus
           access: proxy
           url: http://vmsingle.monitoring.svc.cluster.local:8428
           isDefault: true
+
+  # Grafana-managed alert rules. There is no alerting stack in the local cluster
+  # and no contact point configured: a firing rule shows in Grafana → Alerting;
+  # routing it to Slack/email later is one contact point, not a new stack.
+  alerting:
+    rules.yaml:
+      apiVersion: 1
+      groups:
+        - orgId: 1
+          name: replica-lag
+          folder: Custom
+          interval: 30s
+          rules:
+            # ADR 0012: ProxySQL stops sending @ReplicaRead queries to a replica
+            # past 5 s; this says a replica HAS crossed it — capacity dropped,
+            # and if every replica is behind, the primary takes all reads.
+            - uid: mysql-replica-lag
+              title: MySQL replica lag > 5 s
+              condition: C
+              for: 1m
+              noDataState: OK
+              execErrState: Error
+              labels: { severity: warning }
+              # Plain text on purpose: the grafana chart runs these values through
+              # Helm's tpl, which would try to evaluate Grafana's {{ $labels }}.
+              # The firing instance is in the alert's labels and on the dashboard.
+              annotations:
+                summary: "A MySQL replica is more than 5 s behind; ProxySQL has shunned it for @ReplicaRead (dashboard: ProxySQL — read/write routing)"
+                dashboard: proxysql
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 300, to: 0 }
+                  datasourceUid: victoriametrics
+                  model:
+                    refId: A
+                    instant: true
+                    expr: max by (instance) (mysql_slave_status_seconds_behind_master)
+                - refId: C
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator: { type: gt, params: [5] }
 
   dashboardProviders:
     dashboardproviders.yaml:

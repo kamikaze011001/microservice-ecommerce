@@ -6,9 +6,8 @@ import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheReposit
 import org.aibles.ecommerce.core_paypal.configuration.EnableCorePaypal;
 import org.aibles.ecommerce.core_paypal.service.PaypalService;
 import org.aibles.ecommerce.core_redis.configuration.EnableCoreRedis;
-import org.aibles.ecommerce.core_routing_db.configuration.EnableDatasourceRouting;
-import org.aibles.payment_service.repository.master.MasterPaymentRepo;
-import org.aibles.payment_service.repository.slave.SlavePaymentRepo;
+import org.aibles.ecommerce.core_replica_routing.EnableReplicaRouting;
+import org.aibles.payment_service.repository.PaymentRepository;
 import org.aibles.payment_service.service.PaymentRecorder;
 import org.aibles.payment_service.service.PaymentService;
 import org.aibles.payment_service.service.PaymentServiceImpl;
@@ -22,7 +21,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 
 @Configuration
 @EnableCoreExceptionApi
-@EnableDatasourceRouting
+@EnableReplicaRouting
 @EnableCorePaypal
 @EnableCoreRedis
 @EnableOrderCache
@@ -33,17 +32,16 @@ import org.springframework.scheduling.annotation.EnableAsync;
 public class PaymentServiceConfiguration {
 
     @Bean
-    public PaymentRecorder paymentRecorder(MasterPaymentRepo masterPaymentRepo,
+    public PaymentRecorder paymentRecorder(PaymentRepository paymentRepository,
                                            ApplicationEventPublisher eventPublisher) {
-        return new PaymentRecorder(masterPaymentRepo, eventPublisher);
+        return new PaymentRecorder(paymentRepository, eventPublisher);
     }
 
     @Bean
     public PaymentService paymentService(PaypalService paypalService,
                                          PendingOrderCacheRepository pendingOrderCacheRepository,
-                                         MasterPaymentRepo masterPaymentRepo,
-                                         SlavePaymentRepo slavePaymentRepo,
+                                         PaymentRepository paymentRepository,
                                          PaymentRecorder paymentRecorder) {
-        return new PaymentServiceImpl(paypalService, pendingOrderCacheRepository, masterPaymentRepo, slavePaymentRepo, paymentRecorder);
+        return new PaymentServiceImpl(paypalService, pendingOrderCacheRepository, paymentRepository, paymentRecorder);
     }
 }

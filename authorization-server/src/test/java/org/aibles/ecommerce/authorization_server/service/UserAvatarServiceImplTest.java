@@ -1,8 +1,7 @@
 package org.aibles.ecommerce.authorization_server.service;
 
 import org.aibles.ecommerce.authorization_server.entity.User;
-import org.aibles.ecommerce.authorization_server.repository.master.MasterUserRepository;
-import org.aibles.ecommerce.authorization_server.repository.slave.SlaveUserRepository;
+import org.aibles.ecommerce.authorization_server.repository.UserRepository;
 import org.aibles.ecommerce.authorization_server.service.impl.UserAvatarServiceImpl;
 import org.aibles.ecommerce.common_dto.exception.ImageKeyForbiddenException;
 import org.aibles.ecommerce.common_dto.exception.ImageNotUploadedException;
@@ -32,30 +31,28 @@ import static org.mockito.Mockito.when;
 
 class UserAvatarServiceImplTest {
 
-    private MasterUserRepository masterUserRepo;
-    private SlaveUserRepository slaveUserRepo;
+    private UserRepository userRepository;
     private S3StorageService storage;
     private S3Properties props;
     private UserAvatarService service;
 
     @BeforeEach
     void setUp() {
-        masterUserRepo = mock(MasterUserRepository.class);
-        slaveUserRepo = mock(SlaveUserRepository.class);
+        userRepository = mock(UserRepository.class);
         storage = mock(S3StorageService.class);
         props = new S3Properties();
         props.setMaxUploadSize(5L * 1024 * 1024);
         props.setAllowedTypes(List.of("image/jpeg", "image/png", "image/webp"));
         props.setPresignTtl(Duration.ofMinutes(5));
         props.setPublicBaseUrl("http://localhost:9000/ecommerce-media");
-        service = new UserAvatarServiceImpl(masterUserRepo, slaveUserRepo, storage, props);
+        service = new UserAvatarServiceImpl(userRepository, storage, props);
     }
 
     @Test
     void presignReturnsAvatarScopedKey() {
         User u = new User();
         u.setId("u1");
-        when(slaveUserRepo.findById("u1")).thenReturn(Optional.of(u));
+        when(userRepository.findById("u1")).thenReturn(Optional.of(u));
         when(storage.presignUpload(anyString(), eq("image/png")))
             .thenAnswer(inv -> new PresignedUpload("http://signed", inv.getArgument(0), Instant.now().plusSeconds(300)));
 
@@ -69,7 +66,7 @@ class UserAvatarServiceImplTest {
     void presignRejectsUnsupportedType() {
         User u = new User();
         u.setId("u1");
-        when(slaveUserRepo.findById("u1")).thenReturn(Optional.of(u));
+        when(userRepository.findById("u1")).thenReturn(Optional.of(u));
         assertThatThrownBy(() -> service.presign("u1", new PresignImageRequest("application/pdf", 100L)))
             .isInstanceOf(ImageTypeNotAllowedException.class);
     }
@@ -78,7 +75,7 @@ class UserAvatarServiceImplTest {
     void presignRejectsOversize() {
         User u = new User();
         u.setId("u1");
-        when(slaveUserRepo.findById("u1")).thenReturn(Optional.of(u));
+        when(userRepository.findById("u1")).thenReturn(Optional.of(u));
         assertThatThrownBy(() -> service.presign("u1", new PresignImageRequest("image/jpeg", 10L * 1024 * 1024)))
             .isInstanceOf(ImageTooLargeException.class);
     }
@@ -87,7 +84,7 @@ class UserAvatarServiceImplTest {
     void attachRejectsKeyForOtherUser() {
         User u = new User();
         u.setId("u1");
-        when(slaveUserRepo.findById("u1")).thenReturn(Optional.of(u));
+        when(userRepository.findById("u1")).thenReturn(Optional.of(u));
         assertThatThrownBy(() -> service.attach("u1", new AttachImageRequest("avatars/u2/x.png")))
             .isInstanceOf(ImageKeyForbiddenException.class);
     }
@@ -96,7 +93,7 @@ class UserAvatarServiceImplTest {
     void attachRejectsWhenObjectMissing() {
         User u = new User();
         u.setId("u1");
-        when(slaveUserRepo.findById("u1")).thenReturn(Optional.of(u));
+        when(userRepository.findById("u1")).thenReturn(Optional.of(u));
         when(storage.objectExists("avatars/u1/x.png")).thenReturn(false);
         assertThatThrownBy(() -> service.attach("u1", new AttachImageRequest("avatars/u1/x.png")))
             .isInstanceOf(ImageNotUploadedException.class);
@@ -106,11 +103,11 @@ class UserAvatarServiceImplTest {
     void attachPersistsAvatarUrl() {
         User u = new User();
         u.setId("u1");
-        when(slaveUserRepo.findById("u1")).thenReturn(Optional.of(u));
+        when(userRepository.findById("u1")).thenReturn(Optional.of(u));
         when(storage.objectExists("avatars/u1/x.png")).thenReturn(true);
         when(storage.publicUrl("avatars/u1/x.png"))
             .thenReturn("http://localhost:9000/ecommerce-media/avatars/u1/x.png");
-        when(masterUserRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         service.attach("u1", new AttachImageRequest("avatars/u1/x.png"));
 

@@ -11,7 +11,11 @@ public interface InventoryService {
 
     void save(ProductUpdate productUpdate);
 
+    /** Display read — may come from a replica. */
     InventoryProductIdsResponse list(InventoryProductIdsRequest request);
+
+    /** Order-creation read — always the primary. */
+    InventoryProductIdsResponse listForCheckout(InventoryProductIdsRequest request);
 
     void update(String id, Long quantity, Boolean isAdd);
 

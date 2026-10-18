@@ -6,9 +6,8 @@ import org.aibles.order_service.dto.request.ShoppingCartAddRequest;
 import org.aibles.order_service.dto.response.ShoppingCartListResponse;
 import org.aibles.order_service.dto.response.ShoppingCartResponse;
 import org.aibles.order_service.entity.ShoppingCartItem;
-import org.aibles.order_service.repository.master.MasterShoppingCartItemRepo;
-import org.aibles.order_service.repository.master.MasterShoppingCartRepo;
-import org.aibles.order_service.repository.slave.SlaveShoppingCartRepo;
+import org.aibles.order_service.repository.ShoppingCartItemRepository;
+import org.aibles.order_service.repository.ShoppingCartRepository;
 import org.aibles.order_service.service.ShoppingCartService;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,11 +18,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ShoppingCartServiceImpl implements ShoppingCartService {
 
-    private final MasterShoppingCartRepo masterShoppingCartRepo;
-
-    private final SlaveShoppingCartRepo slaveShoppingCartRepo;
-
-    private final MasterShoppingCartItemRepo masterShoppingCartItemRepo;
+    private final ShoppingCartRepository shoppingCartRepository;
+    private final ShoppingCartItemRepository shoppingCartItemRepository;
 
 
     @Override
@@ -31,12 +27,12 @@ public class ShoppingCartServiceImpl implements ShoppingCartService {
     public void addItem(String userId, ShoppingCartAddRequest request) {
         log.info("(addItem)userId: {} request: {}", userId, request);
 
-        // Atomic upserts on the MASTER. The old check-then-insert read the slave,
+        // Atomic upserts on the primary. The old check-then-insert read a replica,
         // which lags under load (15s observed) — concurrent adds both saw "absent"
         // and inserted duplicates. The unique key on (shopping_cart_id, product_id)
         // plus ON DUPLICATE KEY UPDATE makes the merge race-free regardless of lag.
-        masterShoppingCartRepo.upsertCart(userId);
-        masterShoppingCartItemRepo.upsertItem(
+        shoppingCartRepository.upsertCart(userId);
+        shoppingCartItemRepository.upsertItem(
                 UUID.randomUUID().toString(),
                 userId,
                 request.getProductId(),
@@ -48,7 +44,7 @@ public class ShoppingCartServiceImpl implements ShoppingCartService {
     @Transactional(readOnly = true)
     public ShoppingCartListResponse list(String userId) {
         log.info("(list)userId: {}", userId);
-        List<ShoppingCartItem> shoppingCartItems = slaveShoppingCartRepo.getItemsById(userId);
+        List<ShoppingCartItem> shoppingCartItems = shoppingCartRepository.getItemsById(userId);
         ShoppingCartListResponse shoppingCartListResponse = new ShoppingCartListResponse();
         shoppingCartListResponse.setShoppingCarts(shoppingCartItems.stream()
                 .map(sci -> ShoppingCartResponse.builder()
@@ -64,13 +60,13 @@ public class ShoppingCartServiceImpl implements ShoppingCartService {
     @Transactional
     public void updateItem(String itemId, Long quantity) {
         log.info("(updateItem)itemId: {}, quantity: {}", itemId, quantity);
-        masterShoppingCartItemRepo.updateItem(itemId, quantity);
+        shoppingCartItemRepository.updateItem(itemId, quantity);
     }
 
     @Override
     @Transactional
     public void deleteItem(String itemId) {
         log.info("(deleteItem)itemId: {}", itemId);
-        masterShoppingCartItemRepo.deleteById(itemId);
+        shoppingCartItemRepository.deleteById(itemId);
     }
 }

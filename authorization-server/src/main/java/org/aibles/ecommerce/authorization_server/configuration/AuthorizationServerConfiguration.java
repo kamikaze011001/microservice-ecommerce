@@ -7,12 +7,10 @@ import com.nimbusds.jose.jwk.KeyUse;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import java.text.ParseException;
-import org.aibles.ecommerce.authorization_server.repository.master.MasterAccountRepository;
-import org.aibles.ecommerce.authorization_server.repository.master.MasterAccountRoleRepository;
-import org.aibles.ecommerce.authorization_server.repository.master.MasterUserRepository;
-import org.aibles.ecommerce.authorization_server.repository.slave.SlaveAccountRepository;
-import org.aibles.ecommerce.authorization_server.repository.slave.SlaveRoleRepository;
-import org.aibles.ecommerce.authorization_server.repository.slave.SlaveUserRepository;
+import org.aibles.ecommerce.authorization_server.repository.AccountRepository;
+import org.aibles.ecommerce.authorization_server.repository.AccountRoleRepository;
+import org.aibles.ecommerce.authorization_server.repository.UserRepository;
+import org.aibles.ecommerce.authorization_server.repository.RoleRepository;
 import org.aibles.ecommerce.authorization_server.service.*;
 import org.aibles.ecommerce.authorization_server.service.impl.*;
 import org.aibles.ecommerce.core_email.adapter.repository.EmailHelper;
@@ -20,7 +18,7 @@ import org.aibles.ecommerce.core_email.framework.configuration.EnableCoreEmail;
 import org.aibles.ecommerce.core_exception_api.configuration.EnableCoreExceptionApi;
 import org.aibles.ecommerce.core_redis.configuration.EnableCoreRedis;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
-import org.aibles.ecommerce.core_routing_db.configuration.EnableDatasourceRouting;
+import org.aibles.ecommerce.core_replica_routing.EnableReplicaRouting;
 import org.aibles.ecommerce.core_s3.EnableCoreS3;
 import org.aibles.ecommerce.core_s3.S3Properties;
 import org.aibles.ecommerce.core_s3.S3StorageService;
@@ -33,7 +31,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 @EnableCoreRedis
-@EnableDatasourceRouting
+@EnableReplicaRouting
 @EnableCoreEmail
 @EnableCoreExceptionApi
 @EnableCoreS3
@@ -71,22 +69,21 @@ public class AuthorizationServerConfiguration {
     }
 
     @Bean
-    public UserService userService(MasterUserRepository masterUserRepository, SlaveUserRepository slaveUserRepository) {
-        return new UserServiceImpl(masterUserRepository, slaveUserRepository);
+    public UserService userService(UserRepository userRepository) {
+        return new UserServiceImpl(userRepository);
     }
 
     @Bean
-    public AccountService accountService(MasterAccountRepository masterAccountRepository,
-                                         SlaveAccountRepository slaveAccountRepository,
-                                         MasterAccountRoleRepository masterAccountRoleRepository,
+    public AccountService accountService(AccountRepository accountRepository,
+                                         AccountRoleRepository accountRoleRepository,
                                          PasswordEncoder passwordEncoder,
                                          RefreshTokenService refreshTokenService) {
-        return new AccountServiceImpl(masterAccountRepository, slaveAccountRepository, masterAccountRoleRepository, passwordEncoder, refreshTokenService);
+        return new AccountServiceImpl(accountRepository, accountRoleRepository, passwordEncoder, refreshTokenService);
     }
 
     @Bean
-    public RoleService roleService(SlaveRoleRepository slaveRoleRepository) {
-        return new RoleServiceImpl(slaveRoleRepository);
+    public RoleService roleService(RoleRepository roleRepository) {
+        return new RoleServiceImpl(roleRepository);
     }
 
     @Bean
@@ -100,11 +97,10 @@ public class AuthorizationServerConfiguration {
     }
 
     @Bean
-    public UserAvatarService userAvatarService(MasterUserRepository masterUserRepository,
-                                               SlaveUserRepository slaveUserRepository,
+    public UserAvatarService userAvatarService(UserRepository userRepository,
                                                S3StorageService storage,
                                                S3Properties props) {
-        return new UserAvatarServiceImpl(masterUserRepository, slaveUserRepository, storage, props);
+        return new UserAvatarServiceImpl(userRepository, storage, props);
     }
 
     @Bean

@@ -32,8 +32,8 @@ RUN cd core-s3 && mvn -B -DskipTests install
 COPY core/core-order-cache/ ./core-order-cache/
 RUN cd core-order-cache && mvn -B -DskipTests install
 
-COPY core/core-routing-db/ ./core-routing-db/
-RUN cd core-routing-db && mvn -B -DskipTests install
+COPY core/core-replica-routing/ ./core-replica-routing/
+RUN cd core-replica-routing && mvn -B -DskipTests install
 
 COPY core/core-paypal/ ./core-paypal/
 RUN cd core-paypal && mvn -B -DskipTests install

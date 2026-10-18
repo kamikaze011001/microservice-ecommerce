@@ -7,7 +7,10 @@ option java_package = "org.aibles.ecommerce.inventory.grpc";
 option java_outer_classname = "InventoryServiceProto";
 
 service InventoryService {
+  // Display read (cart, product detail) — may be served from a MySQL replica.
   rpc ListInventoryProducts (InventoryProductIdsRequest) returns (InventoryProductIdsResponse) {}
+  // Order creation — always reads the primary (snapshots name/price into the order).
+  rpc ListInventoryProductsForCheckout (InventoryProductIdsRequest) returns (InventoryProductIdsResponse) {}
 }
 
 message InventoryProductIdsRequest {
