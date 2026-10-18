@@ -927,7 +927,7 @@ proxysql-proof:
 
 .PHONY: db-lag-proof
 
-## db-lag-proof [env=prod-like]: replicas 10 s behind — cart, order detail, history and cancel still read their own writes
+## db-lag-proof [env=prod-like|preview-x|compose]: replicas 10 s behind — cart, order detail, history and cancel still read their own writes
 db-lag-proof:
 	@CONTEXT=$(K8S_CLUSTER) bash scripts/db/db-lag-proof.sh $(or $(env),prod-like)
 
