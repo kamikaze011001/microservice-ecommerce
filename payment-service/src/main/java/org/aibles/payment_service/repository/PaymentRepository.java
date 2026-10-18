@@ -1,4 +1,4 @@
-package org.aibles.payment_service.repository.master;
+package org.aibles.payment_service.repository;
 
 import org.aibles.payment_service.constant.PaymentStatus;
 import org.aibles.payment_service.entity.Payment;
@@ -9,8 +9,14 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
+/**
+ * One repository, one datasource (ProxySQL — ADR 0012). Every query here reads
+ * the primary: payment is money, and each lookup either drives a state
+ * transition or answers "did my payment go through?" right after a write.
+ * None qualifies for {@code @ReplicaRead}.
+ */
 @Repository
-public interface MasterPaymentRepo extends JpaRepository<Payment, String> {
+public interface PaymentRepository extends JpaRepository<Payment, String> {
 
     @Modifying
     @Query(value = "update Payment p set p.status = :status where p.orderId = :orderId")
@@ -20,11 +26,6 @@ public interface MasterPaymentRepo extends JpaRepository<Payment, String> {
     @Query(value = "update Payment p set p.status = :status, p.captureId = :captureId where p.orderId = :orderId")
     void markSuccess(String orderId, PaymentStatus status, String captureId);
 
-    // Read-your-writes lookups for the payment lifecycle (PayPal success/cancel
-    // callbacks). These reads immediately follow the create-payment write and
-    // drive state transitions, so they must hit the primary — a lagging replica
-    // could miss the just-written row and drop a succeeded payment. The
-    // user-facing getByOrderId query stays on the slave (eventual consistency OK).
     Optional<Payment> findByToken(String token);
 
     Optional<Payment> findByOrderId(String orderId);

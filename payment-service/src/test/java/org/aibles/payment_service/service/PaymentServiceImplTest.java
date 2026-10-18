@@ -6,8 +6,7 @@ import org.aibles.ecommerce.core_paypal.dto.paypal.PaypalOrderDetail;
 import org.aibles.ecommerce.core_paypal.dto.paypal.PaypalOrderSimple;
 import org.aibles.ecommerce.core_paypal.service.PaypalService;
 import org.aibles.payment_service.entity.Payment;
-import org.aibles.payment_service.repository.master.MasterPaymentRepo;
-import org.aibles.payment_service.repository.slave.SlavePaymentRepo;
+import org.aibles.payment_service.repository.PaymentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -27,8 +26,7 @@ class PaymentServiceImplTest {
 
     private PaypalService paypalService;
     private PendingOrderCacheRepository pendingOrderCacheRepository;
-    private MasterPaymentRepo masterPaymentRepo;
-    private SlavePaymentRepo slavePaymentRepo;
+    private PaymentRepository paymentRepository;
     private PaymentRecorder paymentRecorder;
     private PaymentService sut;
 
@@ -36,11 +34,10 @@ class PaymentServiceImplTest {
     void setUp() {
         paypalService = mock(PaypalService.class);
         pendingOrderCacheRepository = mock(PendingOrderCacheRepository.class);
-        masterPaymentRepo = mock(MasterPaymentRepo.class);
-        slavePaymentRepo = mock(SlavePaymentRepo.class);
+        paymentRepository = mock(PaymentRepository.class);
         paymentRecorder = mock(PaymentRecorder.class);
         sut = new PaymentServiceImpl(paypalService, pendingOrderCacheRepository,
-                masterPaymentRepo, slavePaymentRepo, paymentRecorder);
+                paymentRepository, paymentRecorder);
     }
 
     @Test
@@ -55,7 +52,7 @@ class PaymentServiceImplTest {
         InOrder inOrder = inOrder(paypalService, paymentRecorder);
         inOrder.verify(paypalService).createOrder(anyList());
         inOrder.verify(paymentRecorder).recordPurchase("o-1", 99.0, "tok-1");
-        verifyNoInteractions(masterPaymentRepo); // impl no longer writes directly
+        verifyNoInteractions(paymentRepository); // impl no longer writes directly
     }
 
     @Test
@@ -67,7 +64,7 @@ class PaymentServiceImplTest {
         PaypalOrderDetail detail = mock(PaypalOrderDetail.class, RETURNS_DEEP_STUBS);
         when(detail.getPurchaseUnits().get(0).getCustomId()).thenReturn("o-1");
         when(paypalService.getOrderDetails("tok-1")).thenReturn(detail);
-        when(masterPaymentRepo.findByOrderId("o-1"))
+        when(paymentRepository.findByOrderId("o-1"))
                 .thenReturn(Optional.of(Payment.builder().orderId("o-1").build()));
 
         String orderId = sut.handleSuccessPayment("tok-1");

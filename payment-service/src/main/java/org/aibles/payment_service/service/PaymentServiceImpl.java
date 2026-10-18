@@ -12,8 +12,7 @@ import org.aibles.ecommerce.core_paypal.service.PaypalService;
 import org.aibles.payment_service.dto.PaymentResponse;
 import org.aibles.payment_service.entity.Payment;
 import org.aibles.payment_service.exception.OrderInvalidException;
-import org.aibles.payment_service.repository.master.MasterPaymentRepo;
-import org.aibles.payment_service.repository.slave.SlavePaymentRepo;
+import org.aibles.payment_service.repository.PaymentRepository;
 import org.springframework.web.client.ResourceAccessException;
 
 import java.util.List;
@@ -33,17 +32,14 @@ public class PaymentServiceImpl implements PaymentService {
 
     private final PendingOrderCacheRepository pendingOrderCacheRepository;
 
-    private final MasterPaymentRepo masterPaymentRepo;
-
-    private final SlavePaymentRepo slavePaymentRepo;
+    private final PaymentRepository paymentRepository;
 
     private final PaymentRecorder paymentRecorder;
 
-    public PaymentServiceImpl(PaypalService paypalService, PendingOrderCacheRepository pendingOrderCacheRepository, MasterPaymentRepo masterPaymentRepo, SlavePaymentRepo slavePaymentRepo, PaymentRecorder paymentRecorder) {
+    public PaymentServiceImpl(PaypalService paypalService, PendingOrderCacheRepository pendingOrderCacheRepository, PaymentRepository paymentRepository, PaymentRecorder paymentRecorder) {
         this.paypalService = paypalService;
         this.pendingOrderCacheRepository = pendingOrderCacheRepository;
-        this.masterPaymentRepo = masterPaymentRepo;
-        this.slavePaymentRepo = slavePaymentRepo;
+        this.paymentRepository = paymentRepository;
         this.paymentRecorder = paymentRecorder;
     }
 
@@ -91,7 +87,7 @@ public class PaymentServiceImpl implements PaymentService {
             orderId = paypalOrderDetail.getPurchaseUnits().get(0).getCustomId();
         } catch (PaypalRestTemplateException | ResourceAccessException | IndexOutOfBoundsException | NullPointerException e) {
             log.error("(handleSuccessPayment)paypal failure for token: {}", token, e);
-            Optional<Payment> paymentOptional = masterPaymentRepo.findByToken(token);
+            Optional<Payment> paymentOptional = paymentRepository.findByToken(token);
             if (paymentOptional.isEmpty()) {
                 return null;
             }
@@ -103,7 +99,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (orderId == null) {
             log.error("(handleSuccessPayment)order is null from paypal service");
-            Optional<Payment> paymentOptional = masterPaymentRepo.findByToken(token);
+            Optional<Payment> paymentOptional = paymentRepository.findByToken(token);
             if (paymentOptional.isEmpty()) {
                 return null;
             }
@@ -111,7 +107,7 @@ public class PaymentServiceImpl implements PaymentService {
             return paymentOptional.get().getOrderId();
         }
 
-        Optional<Payment> paymentOptional = masterPaymentRepo.findByOrderId(orderId);
+        Optional<Payment> paymentOptional = paymentRepository.findByOrderId(orderId);
 
         if (paymentOptional.isEmpty()) {
             log.error("(handleSuccessPayment)payment not found for order: {}", orderId);
@@ -133,7 +129,7 @@ public class PaymentServiceImpl implements PaymentService {
             orderId = paypalOrderDetail.getPurchaseUnits().get(0).getCustomId();
         } catch (PaypalRestTemplateException | ResourceAccessException | IndexOutOfBoundsException | NullPointerException e) {
             log.error("(handleCancelPayment)paypal failure for token: {}", token, e);
-            Optional<Payment> paymentOptional = masterPaymentRepo.findByToken(token);
+            Optional<Payment> paymentOptional = paymentRepository.findByToken(token);
             if (paymentOptional.isEmpty()) {
                 return null;
             }
@@ -143,7 +139,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (orderId == null) {
             log.error("(handleCancelPayment)order is null from paypal service");
-            Optional<Payment> paymentOptional = masterPaymentRepo.findByToken(token);
+            Optional<Payment> paymentOptional = paymentRepository.findByToken(token);
             if (paymentOptional.isEmpty()) {
                 return null;
             }
@@ -158,7 +154,7 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public PaymentResponse getByOrderId(String orderId) {
         log.info("(getByOrderId) orderId: {}", orderId);
-        return slavePaymentRepo.findByOrderId(orderId)
+        return paymentRepository.findByOrderId(orderId)
                 .map(PaymentResponse::from)
                 .orElse(null);
     }
