@@ -3,8 +3,7 @@ package org.aibles.ecommerce.authorization_server.service.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aibles.ecommerce.authorization_server.entity.User;
-import org.aibles.ecommerce.authorization_server.repository.master.MasterUserRepository;
-import org.aibles.ecommerce.authorization_server.repository.slave.SlaveUserRepository;
+import org.aibles.ecommerce.authorization_server.repository.UserRepository;
 import org.aibles.ecommerce.authorization_server.service.UserAvatarService;
 import org.aibles.ecommerce.common_dto.exception.ImageKeyForbiddenException;
 import org.aibles.ecommerce.common_dto.exception.ImageNotUploadedException;
@@ -24,15 +23,14 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UserAvatarServiceImpl implements UserAvatarService {
 
-    private final MasterUserRepository masterUserRepository;
-    private final SlaveUserRepository slaveUserRepository;
+    private final UserRepository userRepository;
     private final S3StorageService storage;
     private final S3Properties props;
 
     @Override
     public PresignedUploadResponse presign(String userId, PresignImageRequest request) {
         log.info("(presign avatar)userId: {}, contentType: {}", userId, request.getContentType());
-        slaveUserRepository.findById(userId).orElseThrow(NotFoundException::new);
+        userRepository.findById(userId).orElseThrow(NotFoundException::new);
         validate(request);
         String ext = extensionFor(request.getContentType());
         String key = "avatars/" + userId + "/" + UUID.randomUUID() + "." + ext;
@@ -43,7 +41,7 @@ public class UserAvatarServiceImpl implements UserAvatarService {
     @Override
     public User attach(String userId, AttachImageRequest request) {
         log.info("(attach avatar)userId: {}, objectKey: {}", userId, request.getObjectKey());
-        User user = slaveUserRepository.findById(userId).orElseThrow(NotFoundException::new);
+        User user = userRepository.findById(userId).orElseThrow(NotFoundException::new);
         String prefix = "avatars/" + userId + "/";
         if (!request.getObjectKey().startsWith(prefix)) {
             throw new ImageKeyForbiddenException();
@@ -52,7 +50,7 @@ public class UserAvatarServiceImpl implements UserAvatarService {
             throw new ImageNotUploadedException();
         }
         user.setAvatarUrl(storage.publicUrl(request.getObjectKey()));
-        return masterUserRepository.save(user);
+        return userRepository.save(user);
     }
 
     private void validate(PresignImageRequest req) {

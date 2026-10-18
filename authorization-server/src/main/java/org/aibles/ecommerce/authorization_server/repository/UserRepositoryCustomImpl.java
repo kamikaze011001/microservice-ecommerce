@@ -1,13 +1,11 @@
-package org.aibles.ecommerce.authorization_server.repository.slave;
+package org.aibles.ecommerce.authorization_server.repository;
 
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.criteria.*;
 import org.aibles.ecommerce.authorization_server.dto.QueryModel;
 import org.aibles.ecommerce.authorization_server.dto.SortModel;
 import org.aibles.ecommerce.authorization_server.entity.User;
 import org.aibles.ecommerce.authorization_server.entity.User_;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -18,8 +16,11 @@ public class UserRepositoryCustomImpl implements UserRepositoryCustom {
 
     private final EntityManager entityManager;
 
-    public UserRepositoryCustomImpl(@Qualifier("slaveEntityManager") EntityManagerFactory entityManagerFactory) {
-        this.entityManager = entityManagerFactory.createEntityManager();
+    // Spring's shared EntityManager: binds to the caller's transaction and thread.
+    // (It used to be ONE createEntityManager() for the whole app — not thread-safe,
+    // and outside every transaction.)
+    public UserRepositoryCustomImpl(EntityManager entityManager) {
+        this.entityManager = entityManager;
     }
 
     @Override

@@ -1,4 +1,4 @@
-package org.aibles.ecommerce.authorization_server.repository.slave;
+package org.aibles.ecommerce.authorization_server.repository;
 
 import org.aibles.ecommerce.authorization_server.dto.QueryModel;
 import org.aibles.ecommerce.authorization_server.dto.SortModel;
