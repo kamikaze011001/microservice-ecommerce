@@ -37,7 +37,8 @@ public class InventoryGrpcClientService {
         // Wrap gRPC call with circuit breaker
         Supplier<InventoryProductIdsResponse> grpcCallSupplier = () -> {
             try {
-                return blockingStub.listInventoryProducts(request);
+                // Order creation snapshots name/price/image: the primary-reading RPC.
+                return blockingStub.listInventoryProductsForCheckout(request);
             } catch (StatusRuntimeException e) {
                 log.error("gRPC call failed with status {}", e.getStatus());
                 if (e.getStatus().getCode() == Status.Code.UNAVAILABLE) {

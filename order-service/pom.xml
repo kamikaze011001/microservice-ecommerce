@@ -79,7 +79,7 @@
 		</dependency>
 		<dependency>
 			<groupId>org.aibles.ecommerce</groupId>
-			<artifactId>core-routing-db</artifactId>
+			<artifactId>core-replica-routing</artifactId>
 			<version>0.0.1</version>
 		</dependency>
 		<dependency>

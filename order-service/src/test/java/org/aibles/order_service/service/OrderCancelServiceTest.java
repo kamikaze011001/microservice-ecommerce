@@ -13,10 +13,8 @@ import org.aibles.order_service.client.InventoryGrpcClientService;
 import org.aibles.order_service.constant.OrderStatus;
 import org.aibles.order_service.dto.response.OrderCancelResponse;
 import org.aibles.order_service.entity.Order;
-import org.aibles.order_service.repository.master.MasterOrderItemRepo;
-import org.aibles.order_service.repository.master.MasterOrderRepo;
-import org.aibles.order_service.repository.slave.SlaveOrderItemRepo;
-import org.aibles.order_service.repository.slave.SlaveOrderRepo;
+import org.aibles.order_service.repository.OrderItemRepository;
+import org.aibles.order_service.repository.OrderRepository;
 import org.aibles.order_service.service.impl.OrderServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,13 +42,10 @@ class OrderCancelServiceTest {
     private InventoryGrpcClientService inventoryGrpcClientService;
     private RedisRepository redisRepository;
     private PendingOrderCacheRepository pendingOrderCacheRepository;
-    private MasterOrderRepo masterOrderRepo;
-    private MasterOrderItemRepo masterOrderItemRepo;
+    private OrderRepository orderRepository;
+    private OrderItemRepository orderItemRepository;
     private RedissonClient redissonClient;
     private ApplicationEventPublisher eventPublisher;
-    private SlaveOrderRepo slaveOrderRepo;
-    private SlaveOrderItemRepo slaveOrderItemRepo;
-
     private OrderService orderService;
 
     @BeforeEach
@@ -58,23 +53,19 @@ class OrderCancelServiceTest {
         inventoryGrpcClientService = mock(InventoryGrpcClientService.class);
         redisRepository = mock(RedisRepository.class);
         pendingOrderCacheRepository = mock(PendingOrderCacheRepository.class);
-        masterOrderRepo = mock(MasterOrderRepo.class);
-        masterOrderItemRepo = mock(MasterOrderItemRepo.class);
+        orderRepository = mock(OrderRepository.class);
+        orderItemRepository = mock(OrderItemRepository.class);
         redissonClient = mock(RedissonClient.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
-        slaveOrderRepo = mock(SlaveOrderRepo.class);
-        slaveOrderItemRepo = mock(SlaveOrderItemRepo.class);
 
         orderService = new OrderServiceImpl(
                 inventoryGrpcClientService,
                 redisRepository,
                 pendingOrderCacheRepository,
-                masterOrderRepo,
-                masterOrderItemRepo,
+                orderRepository,
+                orderItemRepository,
                 redissonClient,
-                eventPublisher,
-                slaveOrderRepo,
-                slaveOrderItemRepo
+                eventPublisher
         );
     }
 
@@ -100,7 +91,7 @@ class OrderCancelServiceTest {
         String userId = "u1";
         String orderId = "o1";
         Order order = orderWith(orderId, userId, OrderStatus.PROCESSING);
-        when(slaveOrderRepo.findById(orderId)).thenReturn(Optional.of(order));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
 
         // Act
         OrderCancelResponse response = orderService.cancel(userId, orderId);
@@ -135,7 +126,7 @@ class OrderCancelServiceTest {
         String callerUserId = "u2";
         String orderId = "o1";
         Order order = orderWith(orderId, ownerUserId, OrderStatus.PROCESSING);
-        when(slaveOrderRepo.findById(orderId)).thenReturn(Optional.of(order));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.cancel(callerUserId, orderId))
                 .isInstanceOf(ForbiddenException.class);
@@ -151,7 +142,7 @@ class OrderCancelServiceTest {
         String userId = "u1";
         String orderId = "o1";
         Order order = orderWith(orderId, userId, OrderStatus.COMPLETED);
-        when(slaveOrderRepo.findById(orderId)).thenReturn(Optional.of(order));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.cancel(userId, orderId))
                 .isInstanceOf(OrderNotCancellableException.class);
@@ -167,7 +158,7 @@ class OrderCancelServiceTest {
         String userId = "u1";
         String orderId = "o1";
         Order order = orderWith(orderId, userId, OrderStatus.CANCELED);
-        when(slaveOrderRepo.findById(orderId)).thenReturn(Optional.of(order));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.cancel(userId, orderId))
                 .isInstanceOf(OrderAlreadyCanceledException.class);
@@ -183,7 +174,7 @@ class OrderCancelServiceTest {
         String userId = "u1";
         String orderId = "o1";
         Order order = orderWith(orderId, userId, OrderStatus.FAILED);
-        when(slaveOrderRepo.findById(orderId)).thenReturn(Optional.of(order));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.cancel(userId, orderId))
                 .isInstanceOf(OrderNotCancellableException.class);
@@ -199,7 +190,7 @@ class OrderCancelServiceTest {
         String userId = "u1";
         String orderId = "o1";
         Order order = orderWith(orderId, userId, OrderStatus.REFUNDED);
-        when(slaveOrderRepo.findById(orderId)).thenReturn(Optional.of(order));
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.cancel(userId, orderId))
                 .isInstanceOf(OrderNotCancellableException.class);
@@ -214,7 +205,7 @@ class OrderCancelServiceTest {
     void cancelNonexistentOrder_throwsNotFound() {
         String userId = "u1";
         String orderId = "nonexistent";
-        when(slaveOrderRepo.findById(orderId)).thenReturn(Optional.empty());
+        when(orderRepository.findById(orderId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> orderService.cancel(userId, orderId))
                 .isInstanceOf(NotFoundException.class);

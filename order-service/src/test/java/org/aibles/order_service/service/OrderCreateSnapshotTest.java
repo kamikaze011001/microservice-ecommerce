@@ -9,10 +9,8 @@ import org.aibles.order_service.dto.request.OrderItemRequest;
 import org.aibles.order_service.dto.request.OrderRequest;
 import org.aibles.order_service.entity.Order;
 import org.aibles.order_service.entity.OrderItem;
-import org.aibles.order_service.repository.master.MasterOrderItemRepo;
-import org.aibles.order_service.repository.master.MasterOrderRepo;
-import org.aibles.order_service.repository.slave.SlaveOrderItemRepo;
-import org.aibles.order_service.repository.slave.SlaveOrderRepo;
+import org.aibles.order_service.repository.OrderItemRepository;
+import org.aibles.order_service.repository.OrderRepository;
 import org.aibles.order_service.service.impl.OrderServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,13 +36,10 @@ class OrderCreateSnapshotTest {
     private InventoryGrpcClientService inventoryGrpcClientService;
     private RedisRepository redisRepository;
     private PendingOrderCacheRepository pendingOrderCacheRepository;
-    private MasterOrderRepo masterOrderRepo;
-    private MasterOrderItemRepo masterOrderItemRepo;
+    private OrderRepository orderRepository;
+    private OrderItemRepository orderItemRepository;
     private RedissonClient redissonClient;
     private ApplicationEventPublisher eventPublisher;
-    private SlaveOrderRepo slaveOrderRepo;
-    private SlaveOrderItemRepo slaveOrderItemRepo;
-
     private OrderService orderService;
 
     @BeforeEach
@@ -52,23 +47,19 @@ class OrderCreateSnapshotTest {
         inventoryGrpcClientService = mock(InventoryGrpcClientService.class);
         redisRepository = mock(RedisRepository.class);
         pendingOrderCacheRepository = mock(PendingOrderCacheRepository.class);
-        masterOrderRepo = mock(MasterOrderRepo.class);
-        masterOrderItemRepo = mock(MasterOrderItemRepo.class);
+        orderRepository = mock(OrderRepository.class);
+        orderItemRepository = mock(OrderItemRepository.class);
         redissonClient = mock(RedissonClient.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
-        slaveOrderRepo = mock(SlaveOrderRepo.class);
-        slaveOrderItemRepo = mock(SlaveOrderItemRepo.class);
 
         orderService = new OrderServiceImpl(
                 inventoryGrpcClientService,
                 redisRepository,
                 pendingOrderCacheRepository,
-                masterOrderRepo,
-                masterOrderItemRepo,
+                orderRepository,
+                orderItemRepository,
                 redissonClient,
-                eventPublisher,
-                slaveOrderRepo,
-                slaveOrderItemRepo
+                eventPublisher
         );
     }
 
@@ -104,10 +95,10 @@ class OrderCreateSnapshotTest {
         // Stub order save → return order with id
         Order savedOrder = new Order();
         savedOrder.setId("order-abc");
-        when(masterOrderRepo.save(any(Order.class))).thenReturn(savedOrder);
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
 
-        // Stub masterOrderItemRepo.saveAll → return same list
-        when(masterOrderItemRepo.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
+        // Stub orderItemRepository.saveAll → return same list
+        when(orderItemRepository.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
 
         // Build request
         OrderItemRequest itemRequest = new OrderItemRequest(productId, 2L);
@@ -120,7 +111,7 @@ class OrderCreateSnapshotTest {
         // ---- assert ----
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<OrderItem>> captor = ArgumentCaptor.forClass(List.class);
-        verify(masterOrderItemRepo).saveAll(captor.capture());
+        verify(orderItemRepository).saveAll(captor.capture());
 
         List<OrderItem> savedItems = captor.getValue();
         assertThat(savedItems).hasSize(1);

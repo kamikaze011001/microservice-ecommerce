@@ -1,4 +1,4 @@
-package org.aibles.order_service.repository.master;
+package org.aibles.order_service.repository;
 
 import org.aibles.order_service.entity.ShoppingCartItem;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface MasterShoppingCartItemRepo extends JpaRepository<ShoppingCartItem, String> {
+public interface ShoppingCartItemRepository extends JpaRepository<ShoppingCartItem, String> {
 
     @Modifying
     @Query("update ShoppingCartItem sci set sci.quantity = :quantity where sci.id = :itemId")
