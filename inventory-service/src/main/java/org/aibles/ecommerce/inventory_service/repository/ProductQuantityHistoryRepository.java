@@ -1,4 +1,4 @@
-package org.aibles.ecommerce.inventory_service.repository.master;
+package org.aibles.ecommerce.inventory_service.repository;
 
 import org.aibles.ecommerce.inventory_service.entity.ProductQuantityHistory;
 import org.aibles.ecommerce.inventory_service.repository.projection.ProductQuantitySummary;
@@ -10,13 +10,12 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface MasterProductQuantityHistoryRepo extends JpaRepository<ProductQuantityHistory, String> {
+public interface ProductQuantityHistoryRepository extends JpaRepository<ProductQuantityHistory, String> {
 
-    // Authoritative (master) stock SUM. Used for the reservation-gating read so
-    // the atomic Lua reserve checks current stock, not a lagging slave replica —
-    // an async-replica stale read here over-permitted reservations and oversold
-    // stock to negative under load. Same query as the slave repo's; routed to
-    // master on purpose. Browse/display reads stay on the slave.
+    // Stock SUM per product. Primary by default; replica only when the caller is
+    // @ReplicaRead (the display `list`). Never route a reservation-gating read to a
+    // replica — a stale SUM there over-permitted reservations and oversold stock to
+    // negative under load.
     @Query("SELECT ph.productId as productId, SUM(ph.quantity) as totalQuantity " +
             "FROM ProductQuantityHistory ph " +
             "WHERE ph.productId IN :productIds " +

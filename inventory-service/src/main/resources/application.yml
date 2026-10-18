@@ -13,6 +13,15 @@ spring:
         application-name: inventory-service
   config:
     import: optional:vault://
+  # One datasource through ProxySQL (ADR 0012); url/username/password come from
+  # Vault. Pool sized like the Atomikos pool it replaces (min 5 / max 20).
+  datasource:
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+  jpa:
+    hibernate:
+      ddl-auto: update
   kafka:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer

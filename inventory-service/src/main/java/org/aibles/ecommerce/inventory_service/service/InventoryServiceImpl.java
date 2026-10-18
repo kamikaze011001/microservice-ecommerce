@@ -15,16 +15,15 @@ import org.aibles.ecommerce.inventory_service.dto.response.InventoryProductListR
 import org.aibles.ecommerce.core_order_cache.repository.PendingOrderCacheRepository;
 import org.aibles.ecommerce.core_redis.constant.RedisConstant;
 import org.aibles.ecommerce.core_redis.repository.RedisRepository;
+import org.aibles.ecommerce.core_replica_routing.ReplicaRead;
 import org.aibles.ecommerce.inventory_service.constant.PaymentEventType;
 import org.aibles.ecommerce.inventory_service.entity.InventoryProduct;
 import org.aibles.ecommerce.inventory_service.entity.ProcessedPaymentEvent;
 import org.aibles.ecommerce.inventory_service.entity.ProductQuantityHistory;
-import org.aibles.ecommerce.inventory_service.repository.master.MasterProcessedPaymentEventRepo;
-import org.aibles.ecommerce.inventory_service.repository.master.MasterInventoryProductRepository;
-import org.aibles.ecommerce.inventory_service.repository.master.MasterProductQuantityHistoryRepo;
+import org.aibles.ecommerce.inventory_service.repository.ProcessedPaymentEventRepository;
+import org.aibles.ecommerce.inventory_service.repository.InventoryProductRepository;
+import org.aibles.ecommerce.inventory_service.repository.ProductQuantityHistoryRepository;
 import org.aibles.ecommerce.inventory_service.repository.projection.ProductQuantitySummary;
-import org.aibles.ecommerce.inventory_service.repository.slave.SlaveInventoryProductRepository;
-import org.aibles.ecommerce.inventory_service.repository.slave.SlaveProductQuantityHistoryRepo;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.context.ApplicationEventPublisher;
@@ -46,13 +45,9 @@ public class InventoryServiceImpl implements InventoryService {
     private static final long INITIAL_BACKOFF_MS = 100;
     private static final Random RANDOM = new Random();
 
-    private final MasterInventoryProductRepository masterInventoryProductRepository;
+    private final InventoryProductRepository inventoryProductRepository;
 
-    private final SlaveInventoryProductRepository slaveInventoryProductRepository;
-
-    private final MasterProductQuantityHistoryRepo masterProductQuantityHistoryRepo;
-
-    private final SlaveProductQuantityHistoryRepo slaveProductQuantityHistoryRepo;
+    private final ProductQuantityHistoryRepository productQuantityHistoryRepository;
 
     private final ApplicationEventPublisher applicationEventPublisher;
 
@@ -62,26 +57,22 @@ public class InventoryServiceImpl implements InventoryService {
 
     private final RedissonClient redissonClient;
 
-    private final MasterProcessedPaymentEventRepo masterProcessedPaymentEventRepo;
+    private final ProcessedPaymentEventRepository processedPaymentEventRepository;
 
-    public InventoryServiceImpl(MasterInventoryProductRepository masterInventoryProductRepository,
-                                SlaveInventoryProductRepository slaveInventoryProductRepository,
-                                MasterProductQuantityHistoryRepo masterProductQuantityHistoryRepo,
-                                SlaveProductQuantityHistoryRepo slaveProductQuantityHistoryRepo,
+    public InventoryServiceImpl(InventoryProductRepository inventoryProductRepository,
+                                ProductQuantityHistoryRepository productQuantityHistoryRepository,
                                 ApplicationEventPublisher applicationEventPublisher,
                                 RedisRepository redisRepository,
                                 PendingOrderCacheRepository pendingOrderCacheRepository,
                                 RedissonClient redissonClient,
-                                MasterProcessedPaymentEventRepo masterProcessedPaymentEventRepo) {
-        this.masterInventoryProductRepository = masterInventoryProductRepository;
-        this.slaveInventoryProductRepository = slaveInventoryProductRepository;
-        this.masterProductQuantityHistoryRepo = masterProductQuantityHistoryRepo;
-        this.slaveProductQuantityHistoryRepo = slaveProductQuantityHistoryRepo;
+                                ProcessedPaymentEventRepository processedPaymentEventRepository) {
+        this.inventoryProductRepository = inventoryProductRepository;
+        this.productQuantityHistoryRepository = productQuantityHistoryRepository;
         this.applicationEventPublisher = applicationEventPublisher;
         this.redisRepository = redisRepository;
         this.pendingOrderCacheRepository = pendingOrderCacheRepository;
         this.redissonClient = redissonClient;
-        this.masterProcessedPaymentEventRepo = masterProcessedPaymentEventRepo;
+        this.processedPaymentEventRepository = processedPaymentEventRepository;
     }
 
     @Override
@@ -89,36 +80,54 @@ public class InventoryServiceImpl implements InventoryService {
     public void save(ProductUpdate productUpdate) {
         log.info("(save)productUpdate: {}", productUpdate);
 
-        if (!slaveInventoryProductRepository.existsById(productUpdate.getId().toString())) {
-            masterInventoryProductRepository.save(InventoryProduct.from(productUpdate));
+        // Upsert on the primary. The existence check used to read the slave: a second
+        // ProductUpdate for a product created a moment ago saw "not there yet" on a
+        // lagging replica and inserted it again (duplicate-key failure → retry/DLT).
+        String id = productUpdate.getId().toString();
+        Optional<InventoryProduct> existing = inventoryProductRepository.findById(id);
+        if (existing.isEmpty()) {
+            inventoryProductRepository.save(InventoryProduct.from(productUpdate));
             return;
         }
-        Optional<InventoryProduct> inventoryProductOptional =
-                slaveInventoryProductRepository.findById(productUpdate.getId().toString());
 
-        if (inventoryProductOptional.isEmpty()) {
-            return;
-        }
-
-        InventoryProduct inventoryProduct = inventoryProductOptional.get();
+        InventoryProduct inventoryProduct = existing.get();
         inventoryProduct.setName(productUpdate.getName().toString());
         inventoryProduct.setPrice(productUpdate.getPrice());
         inventoryProduct.setImageUrl(productUpdate.getImageUrl() != null
                 ? productUpdate.getImageUrl().toString()
                 : null);
-        masterInventoryProductRepository.save(inventoryProduct);
+        inventoryProductRepository.save(inventoryProduct);
     }
 
+    /**
+     * Display read (cart lines, product detail via bff): a few seconds of replica lag
+     * only shows a slightly old name/price/quantity, and reservation never uses this
+     * SUM (the Redis available counter is the reservation authority).
+     */
     @Override
+    @ReplicaRead
     @Transactional(readOnly = true)
     public InventoryProductIdsResponse list(InventoryProductIdsRequest request) {
         log.info("(list)request: {}", request);
-        List<InventoryProduct> inventoryProducts = masterInventoryProductRepository.findByIdIn(request.getIds());
-        // Browse/display reads tolerate slave staleness — reservation no longer uses this SUM
-        // (the AVAILABLE_PRODUCT_KEY Redis counter is now the reservation authority).
-        // Reverted to slave per the oversell fix design (locked decision #2).
+        return buildInventoryProducts(request.getIds());
+    }
+
+    /**
+     * Same data, read from the PRIMARY: order creation snapshots name, price and
+     * image into the order. A replica that lags a just-edited price would charge
+     * the old one.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public InventoryProductIdsResponse listForCheckout(InventoryProductIdsRequest request) {
+        log.info("(listForCheckout)request: {}", request);
+        return buildInventoryProducts(request.getIds());
+    }
+
+    private InventoryProductIdsResponse buildInventoryProducts(List<String> ids) {
+        List<InventoryProduct> inventoryProducts = inventoryProductRepository.findByIdIn(ids);
         List<ProductQuantitySummary> quantitySummaries =
-                slaveProductQuantityHistoryRepo.sumQuantitiesByProductIds(request.getIds());
+                productQuantityHistoryRepository.sumQuantitiesByProductIds(ids);
 
         Map<String, Long> productQuantityMap = quantitySummaries.stream().collect(
                 Collectors.toMap(ProductQuantitySummary::getProductId, ProductQuantitySummary::getTotalQuantity)
@@ -143,7 +152,7 @@ public class InventoryServiceImpl implements InventoryService {
     @Transactional
     public void update(String id, Long quantity, Boolean isAdd) {
         log.info("(update)id: {}, quantity: {}, isAdd: {}", id, quantity, isAdd);
-        if (!slaveInventoryProductRepository.existsById(id)) {
+        if (!inventoryProductRepository.existsById(id)) {
             log.warn("(update)id: {} is invalid", id);
             throw new NotFoundException("inventory.product.not_found", Map.of("id", id));
         }
@@ -154,10 +163,10 @@ public class InventoryServiceImpl implements InventoryService {
         ProductQuantityHistory productQuantityHistory = new ProductQuantityHistory();
         productQuantityHistory.setProductId(id);
         productQuantityHistory.setQuantity(actualQuantity);
-        masterProductQuantityHistoryRepo.save(productQuantityHistory);
+        productQuantityHistoryRepository.save(productQuantityHistory);
 
         // Sync materialized stock column (admin ops: use adjustStock, operator accepts responsibility)
-        masterInventoryProductRepository.adjustStock(id, actualQuantity);
+        inventoryProductRepository.adjustStock(id, actualQuantity);
 
         // Sync Redis available counter
         if (actualQuantity > 0) {
@@ -183,14 +192,15 @@ public class InventoryServiceImpl implements InventoryService {
     public PagingResponse listAll(int page, int size) {
         log.info("(listAll) page: {}, size: {}", page, size);
 
-        Page<InventoryProduct> inventoryProductPage = slaveInventoryProductRepository
+        // Primary: the admin list is read right after an admin stock update.
+        Page<InventoryProduct> inventoryProductPage = inventoryProductRepository
                 .findAll(PageRequest.of(page - 1, size));
 
         List<InventoryProduct> inventoryProducts = inventoryProductPage.getContent();
 
         List<String> productIds = inventoryProducts.stream().map(InventoryProduct::getId).toList();
 
-        List<ProductQuantitySummary> productQuantitySummaries = slaveProductQuantityHistoryRepo
+        List<ProductQuantitySummary> productQuantitySummaries = productQuantityHistoryRepository
                 .sumQuantitiesByProductIds(productIds);
 
         Map<String, Long> quantityMap = new HashMap<>();
@@ -243,14 +253,14 @@ public class InventoryServiceImpl implements InventoryService {
         log.info("(handleSuccessPayment)orderId: {} lines: {}", orderId, lines.size());
 
         String inboxId = ProcessedPaymentEvent.idOf(orderId, PaymentEventType.PAYMENT_SUCCESS);
-        if (masterProcessedPaymentEventRepo.existsById(inboxId)) {
+        if (processedPaymentEventRepository.existsById(inboxId)) {
             log.info("payment success already applied, skipping redelivery. orderId={}", orderId);
             return;
         }
 
         processInventoryUpdate(orderId, resolveLines(orderId, lines));
 
-        masterProcessedPaymentEventRepo.saveAndFlush(ProcessedPaymentEvent.of(orderId, PaymentEventType.PAYMENT_SUCCESS));
+        processedPaymentEventRepository.saveAndFlush(ProcessedPaymentEvent.of(orderId, PaymentEventType.PAYMENT_SUCCESS));
     }
 
     /**
@@ -298,7 +308,7 @@ public class InventoryServiceImpl implements InventoryService {
                 long qty = entry.getValue();
 
                 // Layer 2: atomic conditional DB decrement (floor at 0)
-                int rows = masterInventoryProductRepository.decrementStockIfSufficient(productId, qty);
+                int rows = inventoryProductRepository.decrementStockIfSufficient(productId, qty);
 
                 if (rows == 0) {
                     // DB floor: applying this paid order would take stock below zero.
@@ -316,7 +326,7 @@ public class InventoryServiceImpl implements InventoryService {
                 ProductQuantityHistory productQuantityHistory = new ProductQuantityHistory();
                 productQuantityHistory.setProductId(productId);
                 productQuantityHistory.setQuantity(qty * -1);
-                masterProductQuantityHistoryRepo.save(productQuantityHistory);
+                productQuantityHistoryRepository.save(productQuantityHistory);
 
                 // Publish inventory update event
                 productQuantityUpdated = ProductQuantityUpdated.newBuilder()

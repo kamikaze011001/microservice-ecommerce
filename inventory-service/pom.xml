@@ -86,7 +86,7 @@
 		</dependency>
 		<dependency>
 			<groupId>org.aibles.ecommerce</groupId>
-			<artifactId>core-routing-db</artifactId>
+			<artifactId>core-replica-routing</artifactId>
 			<version>0.0.1</version>
 		</dependency>
 		<dependency>
@@ -97,11 +97,6 @@
 			<groupId>org.springdoc</groupId>
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
 			<version>2.6.0</version>
-		</dependency>
-		<dependency>
-			<groupId>com.atomikos</groupId>
-			<artifactId>transactions-spring-boot3-starter</artifactId>
-			<version>6.0.0</version>
 		</dependency>
 		<dependency>
 			<groupId>org.aibles.ecommerce</groupId>

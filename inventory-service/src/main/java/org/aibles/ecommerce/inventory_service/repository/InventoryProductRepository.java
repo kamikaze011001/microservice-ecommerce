@@ -1,4 +1,4 @@
-package org.aibles.ecommerce.inventory_service.repository.master;
+package org.aibles.ecommerce.inventory_service.repository;
 
 import org.aibles.ecommerce.inventory_service.entity.InventoryProduct;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Repository
-public interface MasterInventoryProductRepository extends JpaRepository<InventoryProduct, String> {
+public interface InventoryProductRepository extends JpaRepository<InventoryProduct, String> {
     List<InventoryProduct> findByIdIn(List<String> ids);
 
     /**
@@ -29,7 +29,7 @@ public interface MasterInventoryProductRepository extends JpaRepository<Inventor
      *
      * `@Transactional` is required: this is a `@Modifying` query invoked from a
      * non-transactional ApplicationRunner (the seeder), so the method must open its
-     * own JTA transaction or it throws TransactionRequiredException at boot.
+     * own transaction or it throws TransactionRequiredException at boot.
      */
     @Modifying
     @Transactional

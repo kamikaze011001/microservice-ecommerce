@@ -1,4 +1,4 @@
-package org.aibles.ecommerce.inventory_service.repository.master;
+package org.aibles.ecommerce.inventory_service.repository;
 
 import org.junit.jupiter.api.Test;
 import static org.mockito.Mockito.*;
@@ -7,11 +7,11 @@ import static org.mockito.Mockito.*;
  * Contract test — verifies the method signatures exist on the interface/class.
  * Real DB behavior is verified by the k8s boundary regression test.
  */
-class MasterInventoryProductRepositoryContractTest {
+class InventoryProductRepositoryContractTest {
 
     @Test
     void decrementStockIfSufficient_methodExists_andReturnsInt() {
-        MasterInventoryProductRepository repo = mock(MasterInventoryProductRepository.class);
+        InventoryProductRepository repo = mock(InventoryProductRepository.class);
         when(repo.decrementStockIfSufficient("prod-1", 5L)).thenReturn(1);
 
         int result = repo.decrementStockIfSufficient("prod-1", 5L);
@@ -22,7 +22,7 @@ class MasterInventoryProductRepositoryContractTest {
 
     @Test
     void decrementStockIfSufficient_returns0_whenStockInsufficient() {
-        MasterInventoryProductRepository repo = mock(MasterInventoryProductRepository.class);
+        InventoryProductRepository repo = mock(InventoryProductRepository.class);
         when(repo.decrementStockIfSufficient("prod-1", 999L)).thenReturn(0);
 
         int result = repo.decrementStockIfSufficient("prod-1", 999L);
@@ -32,7 +32,7 @@ class MasterInventoryProductRepositoryContractTest {
 
     @Test
     void adjustStock_methodExists() {
-        MasterInventoryProductRepository repo = mock(MasterInventoryProductRepository.class);
+        InventoryProductRepository repo = mock(InventoryProductRepository.class);
 
         repo.adjustStock("prod-1", 10L);
 
