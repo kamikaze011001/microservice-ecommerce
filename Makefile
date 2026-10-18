@@ -925,6 +925,12 @@ devbox-env-proof:
 proxysql-proof:
 	@CONTEXT=$(K8S_CLUSTER) bash scripts/db/proxysql-proof.sh
 
+.PHONY: db-lag-proof
+
+## db-lag-proof [env=prod-like]: replicas 10 s behind — cart, order detail, history and cancel still read their own writes
+db-lag-proof:
+	@CONTEXT=$(K8S_CLUSTER) bash scripts/db/db-lag-proof.sh $(or $(env),prod-like)
+
 .PHONY: inventory-redis-loss-proof
 
 ## inventory-redis-loss-proof env=preview-X [orders=12]: create orders, wipe the env's Redis, pay — no decrement may be lost
