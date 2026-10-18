@@ -9,10 +9,14 @@
 # Infra hosts (`*.infra.svc.cluster.local`) are shared and unchanged.
 walk(if type == "string" then gsub("(?<svc>[a-z-]+)\\.apps\\.svc\\.cluster\\.local"; "\(.svc)") else . end)
 
-# 2026-10-18, ADR 0012 step 2: payment-service connects through ProxySQL with
+# 2026-10-18, ADR 0012: each migrated service (identified below by a key only it
+# owns: payment, inventory, order, auth) connects through ProxySQL with
 # one plain spring.datasource.* set (no master/slave routing, no Atomikos).
 # The resolved values must match deploy/secrets/contexts/k8s.yaml mysql.proxy.*.
-| if type == "object" and has("application.paypal.success-path") then . + {
+| if type == "object" and (has("application.paypal.success-path")
+                          or has("application.kafka.group-id.product.update")
+                          or has("application.kafka.group-id.order.update-status")
+                          or has("application.authentication-key-id")) then . + {
   "spring.datasource.driver-class-name": "com.mysql.cj.jdbc.Driver",
   "spring.datasource.url": "jdbc:mysql://proxysql.infra.svc.cluster.local:6033/ecommerce_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
   "spring.datasource.username": "root",
