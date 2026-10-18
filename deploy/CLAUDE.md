@@ -140,6 +140,13 @@ over HTTPS would also resolve it.
 
 ### SCAR: master+slave XA self-deadlock on one MySQL (load-slave / mutate / save-master)
 
+> **Historical since 2026-10-18 (ADR 0012).** Atomikos, the per-role
+> EntityManagerFactories and `core-routing-db` (with `ReadOnlySlaveInterceptor`)
+> are gone: each service has ONE persistence context on one datasource through
+> ProxySQL, so two EMFs can no longer flush the same row. The lesson that stays:
+> a read that feeds a write must happen in the writing transaction, on the primary
+> — which is why `@ReplicaRead` refuses to run inside a read-write transaction.
+
 **Symptom (2026-06-01):** `POST /authorization-server/v1/auth:activate` hung ~50s
 then failed. The browser showed `401 "Full authentication is required to access
 this resource"` — a **red herring**. Activate is `permitAll` and the request

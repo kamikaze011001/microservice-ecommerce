@@ -74,23 +74,31 @@ make infra-status  # ps table per stack
 | Kafka Connect REST | 8093 |
 | MySQL Master | 3306 |
 | MySQL Slave1/Slave2 | 3307/3308 |
+| ProxySQL (apps connect here) / admin / metrics | 6033 / 6032 / 6070 |
 | MinIO S3 API | 9000 |
 | MinIO Console | 9001 |
 
 ## Database Architecture
 
-### Master-Slave MySQL Setup
-- **Master**: Port 3306 (writes)
-- **Slave1**: Port 3307 (reads)
-- **Slave2**: Port 3308 (reads)
-- Uses GTID replication with automatic failover
-- Read queries are routed to slaves, writes to master
-- Initialization scripts in `/docker/scripts/`
+### MySQL: one primary, two replicas, ProxySQL in front (ADR 0012)
+- **Primary**: Port 3306 · **Replicas**: 3307/3308 (async GTID replication,
+  **no automatic failover** — a dead primary is a manual repair)
+- Every JPA service has ONE datasource pointing at **ProxySQL** (`:6033`; admin
+  `:6032`, metrics `:6070`). Credentials come from Vault (`mysql.proxy.*` in
+  `deploy/secrets/contexts/`).
+- **Primary by default.** A query goes to a replica only when it runs inside a
+  method annotated `@ReplicaRead` (`core-replica-routing`): Hibernate prefixes the
+  SELECT with `/* replica */` and ProxySQL's query rule routes it. A replica more
+  than 5 s behind is shunned and the read falls back to the primary.
+- `@ReplicaRead` only on display reads: never on check-then-write,
+  load-mutate-save, read-after-write, or money/stock/security reads. Calling one
+  inside a read-write transaction throws `IllegalStateException` (the guard).
+- Initialization scripts in `/docker/scripts/`; `make proxysql-proof` checks
+  the routing on the local cluster.
 
 ### Configuration
-Services use `@EnableRoutingDatasource` annotation with separate configurations:
-- `MasterEntityFactoryConfiguration` for write operations
-- `SlaveEntityFactoryConfiguration` for read operations
+Services add `@EnableReplicaRouting` to their `@Configuration`; Spring Boot's
+standard DataSource/JPA autoconfiguration does the rest (Hikari, min 5 / max 20).
 
 ## Event-Driven Architecture
 
@@ -190,9 +198,9 @@ constructed manually in `@Configuration` classes (e.g. `OrderServiceConfiguratio
 When adding a constructor parameter, update the corresponding `@Bean` method.
 
 ### Repository layout
-JPA-using services split repositories into `repository/master/` (writes) and
-`repository/slave/` (reads). The routing datasource picks the connection based on
-which package the bean lives in.
+One repository per entity in `repository/` — no master/slave split. Where a read
+goes (primary or replica) is decided per service method with `@ReplicaRead`, not
+by which package the repository lives in.
 
 ### Response & paging shapes (from `common-dto`)
 - All controllers return `BaseResponse` via static factories: `BaseResponse.ok(data)`,
