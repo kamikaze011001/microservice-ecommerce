@@ -4,36 +4,46 @@ package org.aibles.ecommerce.core_replica_routing;
  * "Is the current thread inside a {@link ReplicaRead} method?" — the one bit of
  * state the aspect writes and the inspector reads.
  *
- * <p>TODO(you) — behaviour the tests pin (ReplicaContextTest):
  * <ul>
- *   <li>off by default, per thread (one request's flag never leaks into another
- *       thread — the servers reuse threads);</li>
- *   <li>{@code enter()} / {@code exit()} pair up and NEST: a @ReplicaRead method
- *       calling another one must still be "on" after the inner one exits;</li>
- *   <li>after the outermost exit, it is off again and holds no per-thread
- *       leftovers.</li>
+ *   <li>Per thread: a {@link ThreadLocal}, so one request's flag never reaches
+ *       another request's thread.</li>
+ *   <li>Nests: it holds a depth, not a boolean — a @ReplicaRead method calling
+ *       another one is still "on" after the inner one returns.</li>
+ *   <li>Leaves nothing behind: at depth 0 the ThreadLocal is removed, because the
+ *       servers' threads are pooled and the next request would inherit it.</li>
  * </ul>
- * Why it matters: a flag that stays on after the method (a missed exit, a
- * reused thread) would silently send a later write-path read to a stale replica —
- * the very bug class this module exists to remove.
+ * Why it matters: a flag that stays on after the method would silently send a
+ * later write-path read to a stale replica — the bug class this module removes.
  */
 public final class ReplicaContext {
+
+    private static final ThreadLocal<Integer> DEPTH = new ThreadLocal<>();
 
     private ReplicaContext() {
     }
 
     /** The current thread starts (another level of) a replica read. */
     public static void enter() {
-        throw new UnsupportedOperationException("TODO(you): ReplicaContext.enter");
+        DEPTH.set(depth() + 1);
     }
 
-    /** The current thread leaves one level; off once the outermost leaves. */
+    /** The current thread leaves one level; off — and cleared — once the outermost leaves. */
     public static void exit() {
-        throw new UnsupportedOperationException("TODO(you): ReplicaContext.exit");
+        int depth = depth() - 1;
+        if (depth <= 0) {
+            DEPTH.remove();   // never negative, never a stale 0 left on a pooled thread
+        } else {
+            DEPTH.set(depth);
+        }
     }
 
     /** True while the current thread is inside a {@link ReplicaRead} method. */
     public static boolean isOn() {
-        throw new UnsupportedOperationException("TODO(you): ReplicaContext.isOn");
+        return depth() > 0;
+    }
+
+    private static int depth() {
+        Integer d = DEPTH.get();
+        return d == null ? 0 : d;
     }
 }
