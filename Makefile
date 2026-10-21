@@ -316,7 +316,7 @@ logs:
 
 K8S_CLUSTER := microecom
 
-.PHONY: k8s-cluster-up k8s-cluster-down k8s-cluster-status k8s-nuke k8s-stop k8s-start k8s-tunnel k8s-tunnel-stop
+.PHONY: k8s-cluster-up k8s-cluster-down k8s-cluster-status k8s-nuke k8s-stop k8s-start k8s-tunnel k8s-tunnel-stop k8s-pin-volumes
 
 k8s-cluster-up:
 	@deploy/scripts/cluster.sh up
@@ -335,6 +335,13 @@ k8s-nuke:
 
 k8s-cluster-status:
 	@deploy/scripts/cluster.sh status
+
+# One-off for clusters created before local-path became the default class:
+# re-create each minikube-hostpath PV with nodeAffinity to the node holding its
+# data, so a restarted stateful pod can never land on an empty copy. Restarts
+# each stateful workload once; a re-run is a no-op. Preview: ARGS=--dry-run
+k8s-pin-volumes:
+	@CONTEXT=$(K8S_CLUSTER) deploy/scripts/pin-volumes.sh $(ARGS)
 
 # Pause the cluster without destroying it. PVC data and images survive.
 k8s-stop:
