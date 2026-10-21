@@ -107,6 +107,21 @@ YAML
   kubectl -n kube-system rollout status deployment/registry --timeout=5m
 }
 
+# minikube's default `standard` class (minikube-hostpath) makes hostPath PVs
+# with no nodeAffinity, so a stateful pod that lands on another node silently
+# gets an empty directory. local-path (minikube's storage-provisioner-rancher
+# addon) writes nodeAffinity onto every PV it makes and binds on first
+# consumer, so make it the default. Volumes made before this switch:
+# deploy/scripts/pin-volumes.sh.
+ensure_pinned_storage() {
+  minikube addons enable storage-provisioner-rancher -p "$CLUSTER_NAME" >/dev/null
+  kubectl wait --for=jsonpath='{.metadata.name}'=local-path storageclass/local-path --timeout=2m >/dev/null
+  kubectl patch storageclass standard -p \
+    '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}' >/dev/null
+  kubectl patch storageclass local-path -p \
+    '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}' >/dev/null
+}
+
 profile_exists() {
   minikube profile list -o json 2>/dev/null \
     | grep -q "\"Name\":\"$CLUSTER_NAME\""
@@ -171,6 +186,7 @@ cmd_up() {
   fi
 
   apply_node_limits
+  ensure_pinned_storage
   enable_registry
   start_registry_forward
 
@@ -208,6 +224,7 @@ cmd_start() {
   fi
   apply_node_limits
 
+  ensure_pinned_storage
   enable_registry
   start_registry_forward
 

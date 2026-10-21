@@ -118,9 +118,12 @@ spec:
               mountPath: /var/lib/mysql
             - name: conf
               mountPath: /etc/mysql/conf.d
+          # A replica grows past the primary: 8 parallel applier workers plus
+          # performance_schema reached 980Mi after 9 days (96% of the old 1Gi
+          # limit, measured 2026-10-18). Request what it settles at.
           resources:
-            requests: { cpu: 200m, memory: 512Mi }
-            limits:   { cpu: 1000m, memory: 1Gi }
+            requests: { cpu: 200m, memory: 1Gi }
+            limits:   { cpu: 1000m, memory: 1536Mi }
           livenessProbe:
             exec:
               command: ["mysqladmin", "ping", "-uroot", "-proot"]

@@ -126,8 +126,10 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/kafka/data
+          # The image's default heap is -Xmx1G; with page cache and off-heap the
+          # broker sits at ~760Mi (2026-10-18), so a 512Mi request undercounted it.
           resources:
-            requests: { cpu: 200m, memory: 512Mi }
+            requests: { cpu: 200m, memory: 1Gi }
             limits:   { cpu: "1", memory: 1536Mi }
           readinessProbe:
             tcpSocket:
