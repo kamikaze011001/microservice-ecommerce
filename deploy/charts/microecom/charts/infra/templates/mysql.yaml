@@ -93,9 +93,12 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/mysql
+          # Request = steady-state use (~650Mi, measured 2026-10-18), so the
+          # scheduler counts what the pod really holds; the limit leaves room
+          # for connection buffers under load (77 connections via ProxySQL).
           resources:
-            requests: { cpu: 200m, memory: 512Mi }
-            limits:   { cpu: 1000m, memory: 1Gi }
+            requests: { cpu: 200m, memory: 768Mi }
+            limits:   { cpu: 1000m, memory: 1536Mi }
           livenessProbe:
             exec:
               command: ["mysqladmin", "ping", "-uroot", "-proot"]

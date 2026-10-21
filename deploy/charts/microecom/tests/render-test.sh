@@ -1169,7 +1169,7 @@ pv_order_json="$(env_value "$(doc_named Deployment order-service "$pv_all")" SPR
 assert_has "preview: order-service consumes prefixed topics" \
   '\\"order-service\.order\.success-status\\":\\"preview-x\.order-service\.order\.success-status\\"' "$pv_order_json"
 assert_has "preview: ...in a prefixed consumer group" '\\"preview-x\.order\.update-status\\"' "$pv_order_json"
-assert_has "preview: ...against its own MySQL database" '3306/ecommerce_preview_x\?' "$pv_order_json"
+assert_has "preview: ...against its own MySQL database, through ProxySQL" 'proxysql\.infra\.svc\.cluster\.local:6033/ecommerce_preview_x\?' "$pv_order_json"
 assert_has "preview: ...and its own Redis" '\\"redis\\":\{\\"host\\":\\"redis\\"\}' "$pv_order_json"
 assert_has "preview: orchestrator reads the env's own CDC topic" \
   '\\"mongo\.event\\":\\"preview-x\.ecommerce_db\.ecommerce_preview_x\.event\\"' \
