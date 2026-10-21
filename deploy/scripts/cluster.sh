@@ -120,7 +120,36 @@ apply_node_limits() {
       --memory "$MEMORY" \
       --memory-swap "$MEMORY" \
       "$node" >/dev/null
+    reserve_node_memory "$node"
   done < <(minikube node list -p "$CLUSTER_NAME" | awk '{print $1}')
+  kubectl wait --for=condition=Ready nodes --all --timeout=2m >/dev/null
+}
+
+# The docker update above caps each node container at $MEMORY, but the kubelet
+# inside reads /proc/meminfo, which is the WHOLE Docker VM (~30 GiB). Left
+# alone it advertises that as allocatable, so the scheduler packs a node far
+# past its cap, pods are never capped as a group, and when the container hits
+# $MEMORY the kernel kills whatever it likes, kubelet and MySQL included.
+#
+# systemReserved = (VM - cap) + NODE_SYSTEM_RESERVED_MI makes allocatable
+# = cap - reserve, and the kubelet caps the kubepods cgroup at that size,
+# so an over-limit pod gets OOM-killed inside kubepods and kubelet, containerd
+# and the node itself stay up. minikube start rewrites config.yaml, so this
+# runs on every up/start; the kubelet is restarted only when the value
+# changes (running pods are not touched).
+reserve_node_memory() {
+  docker exec -i "$1" bash -s "${NODE_SYSTEM_RESERVED_MI:-512}" <<'SH'
+set -euo pipefail
+cap_ki=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+limit=$(cat /sys/fs/cgroup/memory.max)
+[[ "$limit" == max ]] && exit 0   # no container cap: nothing to correct
+reserved="$(( (cap_ki - limit / 1024) / 1024 + $1 ))Mi"
+cfg=/var/lib/kubelet/config.yaml
+grep -qx "  memory: $reserved" <(sed -n '/^systemReserved:/,/^[^ ]/p' "$cfg") && exit 0
+sed -i '/^systemReserved:/,/^[^ ]/{/^systemReserved:/d;/^  /d}' "$cfg"
+printf 'systemReserved:\n  memory: %s\n' "$reserved" >>"$cfg"
+systemctl restart kubelet
+SH
 }
 
 cmd_up() {
