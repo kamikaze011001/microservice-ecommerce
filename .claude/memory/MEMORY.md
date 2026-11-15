@@ -11,6 +11,10 @@
 - [0006 — staleness is membership, not equality](decisions/0006-staleness-is-membership-not-equality.md) — the check asks whether the registered address is one this host OWNS; equality against a default-route guess coupled it to Spring's InetUtils choice, which agreed only by luck
 - [0007 — first AWS run keeps k8s 1.31](decisions/0007-first-aws-run-keeps-k8s-1-31.md) — pay the extended-support surcharge; the 2024-era controllers make a version bump change the thing under test
 - [0008 — unexercised paths run in checkpoints](decisions/0008-unexercised-paths-run-in-checkpoints-not-one-shot.md) — four checkpoints grouped by failure vocabulary, not one `make aws-all`
+- [0009 — Kafka consumer scaling design](decisions/0009-kafka-consumer-scaling-design.md) — correctness first: per-aggregate keys, 12 partitions, concurrency 1, at-least-once + idempotent, blocking retry → DLT, cooperative-sticky; PR0→PR5
+- [0010 — shared Mongo event module](decisions/0010-shared-mongo-event-module.md) — `core-mongo-event`: MongoTemplate, AFTER_COMMIT + fallbackExecution, synchronous; replaces 4 divergent copies; not in common-dto (Mongo starter would leak)
+- [0011 — devbox: local GitOps platform](decisions/0011-devbox-local-gitops-platform.md) — Gitea env-config repo + Argo CD ApplicationSet (one App per env×service); assemble OSS; phases 1–6; apps only, infra stays on make
+- [0012 — ProxySQL, primary by default](decisions/0012-proxysql-primary-by-default-routing.md) — one datasource → ProxySQL, delete master/slave split + Atomikos XA; replica only via @ReplicaRead (/* replica */ hint); 6 staged PRs; coworking: user writes the routing core
 
 ## Conventions (conventions + gotchas, durable)
 - [two-memory-systems-coexist](conventions/two-memory-systems-coexist.md) — global personal auto-memory vs in-repo team-shared `.claude/memory/`; which to use when
@@ -24,6 +28,8 @@
 - [kafka-internal-topics-need-explicit-compaction](conventions/kafka-internal-topics-need-explicit-compaction.md) — auto-created `_schemas`/`connect-*` get cleanup.policy=delete and Schema Registry/Connect then refuse to start
 - [kafka-exporter-applies-after-kafka-ready](conventions/kafka-exporter-applies-after-kafka-ready.md) — it hard-exits with no broker; apply after Kafka's rollout + restart it so a wedged reconcile recovers
 - [minikube-node-resources-only-apply-at-creation](conventions/minikube-node-resources-only-apply-at-creation.md) — `--cpus/--memory` ignored on resume; cluster.sh re-applies via `docker update` (and is over-subscribed here)
+- [a-capped-docker-node-reports-the-whole-vm](conventions/a-capped-docker-node-reports-the-whole-vm.md) — kubelet saw the 29.4Gi VM, not the 6g cap: overpacked nodes, no kubepods cap, eviction dead; fix = systemReserved (PR #86)
+- [minikube-hostpath-pvs-are-not-node-pinned](conventions/minikube-hostpath-pvs-are-not-node-pinned.md) — standard-class PVs had no nodeAffinity; moved pods got empty copies; local-path default + make k8s-pin-volumes (PR #87); Retain before delete, pick node by data
 - [minikube-tunnel-external-ip-is-sticky](conventions/minikube-tunnel-external-ip-is-sticky.md) — 3 ways to misjudge tunnel health: sticky `EXTERNAL-IP`, `lsof` blind to the root-owned listener, and `sudo -v` cached per-tty
 - [buildkit-cache-mount-shadows-baked-m2](conventions/buildkit-cache-mount-shadows-baked-m2.md) — a cache mount hides the image's baked `/root/.m2`; seed it from a read-only bind with `cp -r` (never `-n`)
 - [vault-config-comment-keys-are-really-seeded](conventions/vault-config-comment-keys-are-really-seeded.md) — `_comment*` in `docker/vault-configs/*.json` are live Vault properties, not comments; explains the 94-vs-90 key count
@@ -43,6 +49,10 @@
 - [the-pidfile-holds-the-launcher-not-the-port-holder](conventions/the-pidfile-holds-the-launcher-not-the-port-holder.md) — `logs/pids/*.pid` is the `mvn` wrapper, not the JVM on the port; kill by port, and don't delete `kill_orphan_on_port` as redundant
 - [refactor-first-is-an-ordering-constraint](conventions/refactor-first-is-an-ordering-constraint.md) — the unification CREATES the single site the semantic change lands in; the reverse order was impossible, not just untidy
 - [a-gaps-registry-decays-through-success](conventions/a-gaps-registry-decays-through-success.md) — a "known gaps" list goes stale exactly when the work goes well, and no task brief ever names that file
+- [mockito-strict-stubs-make-expect-throw-tests-false-green](conventions/mockito-strict-stubs-make-expect-throw-tests-false-green.md) — an overload called with other args throws PotentialStubbingProblem, which satisfies `assertThatThrownBy`; use `lenient()` and assert on WHAT was thrown
+- [key-equals-value-config-hides-key-vs-topic-bugs](conventions/key-equals-value-config-hides-key-vs-topic-bugs.md) — every topic property maps to itself, so sending to the KEY works by coincidence; fixtures must use different names
+- [Deploy checks assert digest, not tag](conventions/deploy-checks-assert-digest-not-tag.md) — same inputs ⇒ same bytes under two tags; a tag-string rollback check passes on a no-op; compare pod imageID to the registry digest
+- [Proof invariants follow workload + state machine](conventions/proof-invariants-follow-workload-and-state-machine.md) — k6 mix is 90/5/5 and a PayPal cancel waits AWAITING_PAYMENT for the 30-min saga TTL; assert "non-terminal = a designed wait", not "all terminal"
 
 ## Current
 - [HANDOFF](HANDOFF.md) — latest WIP state (overwritten each session)
