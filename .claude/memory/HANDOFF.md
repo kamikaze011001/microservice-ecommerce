@@ -1,89 +1,55 @@
 # HANDOFF
 
-**Updated:** 2026-08-28 · **Branch:** `main` @ `320467d` · **Last:** PR #64 merged
+**Updated:** 2026-10-21 · **Branch:** `main` (nothing open) · **Last merged:** PR #87 (volume pinning + request sizing)
 
 ## Current goal
 
-None in flight. `ENV=aws` has now been **run against real AWS** — the thing five
-phases shipped without ever demonstrating. The path works up to a live EKS cluster
-with all nine services deployed; the remaining question is the acceptance tiers.
+Local k8s cluster hardening: DONE. #86 made node allocatable honest ([[a-capped-docker-node-reports-the-whole-vm]]);
+#87 pinned all 9 hostpath volumes to their data node and sized MySQL/Kafka requests ([[minikube-hostpath-pvs-are-not-node-pinned]]).
+Both are live on `microecom`. No task in progress.
 
-## Done recently
+## Done
 
-- **PR #63** — the two HTML teaching pages corrected from kind to minikube.
-- **PR #64** (21 commits) — offline pre-flight for the first live `ENV=aws` run,
-  **plus the run itself and the four fixes it produced.**
+- **#81:** Redis-loss stock-decrement fix. **#82:** devbox portal.
+- **ProxySQL, ADR [[0012-proxysql-primary-by-default-routing]]:**
+  - #83: one datasource → ProxySQL, `@ReplicaRead`, Atomikos and `core-routing-db` deleted.
+  - #84: `make db-lag-proof`, which holds both replicas 10 s behind while read-your-writes flows run.
+  - #85:
+    - orchestrator moved to ProxySQL, and the dead master/slave Vault keys dropped;
+    - Vault dev-mode limits raised to 512Mi;
+    - compose replication init can be re-run;
+    - `db-lag-proof env=compose`.
+  - Proof 8/8 and Bruno pass on prod-like, preview-ui and compose. Compose is 21/22 on Bruno; the one miss is the env-specific PayPal sandbox link.
+- **PR #86 (open):** `reserve_node_memory` in `deploy/scripts/cluster.sh` sets `systemReserved = (VM − cap) + 512Mi`. Result: allocatable and the kubepods cap are both 5632Mi per node; no pod restarted.
 
-### What the run cost and proved
+## In progress / Next
 
-Two sessions, roughly **$6–8** total at ~$1.00/hr. Checkpoint 1 (infra) passed
-cleanly: 3 nodes `Ready`, VPC/EKS/RDS/ElastiCache/IRSA/both Helm controllers all
-created. Teardown verified clean twice — `terraform state list` at 0, every
-`aws-leak-check` table empty.
-
-### Blockers found by READING (offline, free)
-
-1. `build.sh` probed every registry over plain HTTP → 75 s hang against ECR, then an
-   error telling the operator to start minikube ([[a-shared-builder-assumes-its-local-registry]]).
-2. `down.sh` named no kube context and swallowed transport failures with `|| true` →
-   could strand a billing ALB with every command exiting 0
-   ([[the-teardown-path-lacks-the-guards-the-creation-path-has]]).
-3. The plan's `PUSH=all make aws-push` pushed one service out of ten.
-
-### Blockers found by RUNNING (only discoverable live)
-
-4. **`aws-deploy.sh` had `--set infra.enabled=false` in its render branch only**, so
-   `make aws-diff-test` validated a command the live apply never issued
-   ([[an-oracle-can-validate-a-command-nobody-runs]]). This is the most significant
-   defect of the whole workstream.
-5. `up.sh` ran `update-kubeconfig` only after a successful apply → a partial apply left
-   a running, billing cluster the operator could not reach.
-6. The four `PAYPAL_*` / `APPLICATION_MAIL_*` env vars were never exported, because the
-   checkpoint design routes around `up-all.sh`'s Step 0 preflight
-   ([[decomposing-a-wrapper-drops-what-it-did-besides-calling-steps]]).
-7. `microecom.click` carried a registrar **`clientHold`** and resolved nowhere, so ACM
-   validation burned its full 1h15m timeout after building ~143 resources. `up.sh` now
-   refuses to start unless the apex domain delegates publicly.
-
-## In progress — one loose end
-
-A review of PR #64's **last three commits** (`97d1afc`, `80de663`) was dispatched
-before the merge and had not returned when the branch merged. Those commits touch
-billed-path scripts (`up.sh`'s new control flow under `set -euo pipefail`, the DNS
-pre-check, `HELM_FLAGS`). **If it surfaces anything, the fix needs a fresh branch off
-`main`** — `feat/aws-live-run` is merged and done.
-
-Specifically worth confirming: `up.sh`'s `if CLUSTER_NAME="$(...)" && CLUSTER_REGION="$(...)"`
-compound, and that a failed apply still exits non-zero after the kubeconfig wiring.
-
-## Next, if picking something up
-
-1. **Finish the acceptance tiers.** The deploy works; whether the *stack* works
-   (tier 4 = an order completing through the saga) is still unconfirmed. Needs a
-   billed session and roughly $2–4.
-2. **The SMTP egress question.** Mail is wired for `ENV=aws`, but whether pods in
-   private subnets can reach the SMTP host through the NAT gateway is unanswerable
-   offline — it resolves at tier 3.
-3. `deploy/README.md`'s Verification status still says `ENV=aws` is **NOT proven**.
-   That is now partly false and should be updated with what the run established
-   ([[a-gaps-registry-decays-through-success]]).
+- Delete the merged local branches `fix/k8s-node-allocatable` and `fix/k8s-pin-volumes` (the user runs `-D`).
+- **Optional follow-ups:**
+  - m03 is at 90% of what pods can request (5100/5632Mi). Pod limits are still 178% of what m03 can hold; the kubepods cap contains a spike.
+  - The Docker VM is nearly full: 4 × 6g of nodes + ~5.4Gi of compose containers on 29.4Gi. `make down` when compose isn't needed.
+- **Product decision:** `PATCH /orders/{id}:cancel` only cancels the payment attempt. The order stays PROCESSING until the pending-order entry expires (~24 h).
 
 ## Settled decisions
 
-- [[0007-first-aws-run-keeps-k8s-1-31]] — pay the surcharge rather than confound the test.
-- [[0008-unexercised-paths-run-in-checkpoints-not-one-shot]] — four checkpoints by failure domain.
-- [[0005-aws-infra-stays-outside-the-umbrella-chart]] — and the live run showed exactly
-  why: the umbrella tried to create objects `infra-up.sh`'s releases already owned.
+- [[0012-proxysql-primary-by-default-routing]]: primary by default; a replica only via `@ReplicaRead`.
+- [[0011-devbox-local-gitops-platform]]; the env repo is in local Gitea, cloned at `deploy/.run/env-config`.
+- Only use `--context microecom`; never touch microecom-eks.
+- First pushes are done by the user: husky's `core.hooksPath` hides the global gitleaks pre-push hook, so a hook blocks them for Claude.
+- Ask before disruptive infra actions: node or kubelet restarts, Vault restarts, volume wipes.
 
-## Context to load
+## Context to Load (paths only)
 
-- `docs/superpowers/plans/2026-08-21-aws-live-run.md` — Part B runbook, now with Checkpoint 0
-- `docs/superpowers/plans/2026-08-21-aws-preflight-findings.md` — the audit and its gaps
-- `scripts/aws/RUNBOOK.md` — the nine steps and teardown
-- `deploy/README.md` — Verification status (stale, see Next #3)
+- `deploy/scripts/cluster.sh`
+- `deploy/scripts/pin-volumes.sh`
+- `scripts/db/db-lag-proof.sh`
+- `scripts/db/db-lag-proof.js`
+- `deploy/secrets/contexts/k8s.yaml`
+- `deploy/charts/microecom/charts/infra/values.yaml`
+- `docker/scripts/init-mysql.sh`
 
 ## Blocked
 
-Nothing. Standing constraints: `rm`/`git rm` and `git push` are human-gated, and **no
-assistant runs a billed AWS command** — every `make aws-*`, `terraform`, and
-`scripts/aws/*` invocation is the operator's.
+- Nothing. Known open items:
+  - Vault on k8s is in-memory dev mode: after a restart, run `make secrets-seed ENV=k8s CONTEXT=microecom`.
+  - The perftest login users are a k8s-only fixture; compose needs `deploy/k8s-jobs/06-perftest-seed/perftest-users.sql` loaded by hand.
